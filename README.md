@@ -1,4 +1,4 @@
-# MineRadio（Apple Music Edition）
+# MineRadio-Apple-Music-Specially-Customized-Edition
 
 > Windows 沉浸式音乐播放器：Apple Music（SMTC）实时同步、原生音频可视化、FFT 频谱分析、粒子视觉舞台、专辑封面与多源双语歌词。
 
