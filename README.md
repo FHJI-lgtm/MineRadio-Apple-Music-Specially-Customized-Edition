@@ -2,12 +2,16 @@
 
 > Windows 沉浸式音乐播放器：Apple Music（SMTC）实时同步、原生音频可视化、FFT 频谱分析、粒子视觉舞台、专辑封面与多源双语歌词。
 
+> **本仓库是基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) 的二次开发（fork）版本**，在原 MineRadio 基础上新增 Apple Music（Windows SMTC）接入、原生音频可视化、专辑封面、播放控制与多源歌词等能力。原项目的版权归原作者/原项目所有者所有，详见下文「[项目来源与二次开发声明](#项目来源与二次开发声明)」。
+
 MineRadio 是一款 Windows 桌面沉浸式音乐播放器。本分支聚焦 **Apple Music for Windows** 的外部接入：MineRadio 只做「媒体状态监听（SMTC）+ 歌词匹配 + 视觉呈现」，音频与播放完全由 Apple Music 自己负责——不需要任何第三方音频直链，也不触碰 DRM。
 
 ---
 
 ## 目录
 
+- [项目来源与二次开发声明](#项目来源与二次开发声明)
+- [主要改动](#主要改动)
 - [Apple Music Windows 接入原理](#apple-music-windows-接入原理)
 - [SMTC Bridge](#smtc-bridge)
 - [Native Audio Capture](#native-audio-capture)
@@ -25,9 +29,32 @@ MineRadio 是一款 Windows 桌面沉浸式音乐播放器。本分支聚焦 **A
 - [已知限制](#已知限制)
 - [用户数据与隐私](#用户数据与隐私)
 - [第三方音乐平台说明](#第三方音乐平台说明)
+- [致谢](#致谢)
 - [License](#license)
 
 ---
+
+## 项目来源与二次开发声明
+
+- 本项目（MineRadio Apple Music Edition）是**基于原 MineRadio 项目（[XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio)）的二次开发版本**，不是从零独立开发。
+- 原 MineRadio 项目及其原始代码的版权归原作者（XxHuberrr）所有；本项目保留原项目全部版权声明、许可证文本与 NOTICE。
+- 本项目在原项目基础上进行了功能扩展与修改，包括但不限于：Apple Music（Windows SMTC）外部播放状态接入、原生 WASAPI 音频可视化、FFT 频谱分析、专辑封面获取、SMTC 播放控制、多源歌词（QQ 音乐 / 酷狗音乐 / 网易云音乐）、双语歌词翻译与歌词源优先级设置等。
+- **本项目与 Apple Inc. 没有官方关联，也不是 Apple 官方软件。** Apple Music、Apple 等相关商标及服务名称归其各自权利人所有。
+- 原项目许可证（GPL-3.0）继续适用于原始代码部分；本仓库整体按仓库内 [LICENSE](./LICENSE)（GPL-3.0）授权，详见「[License](#license)」。
+
+## 主要改动
+
+本项目在保留原 MineRadio 全部既有功能（搜索播放、歌词舞台、粒子视觉、3D 歌单架、桌面模式、多平台登录等）的基础上，实际新增并验证的功能：
+
+- **Apple Music（Windows SMTC）外部接入**：监听系统媒体会话，实时同步歌名 / 歌手 / 专辑 / 播放状态 / 进度（`desktop/smtc-bridge.ps1`，PowerShell 5.1 + WinRT）
+- **SMTC 播放控制**：上一首 / 播放 / 暂停 / 下一首（官方 `TryXXXAsync`，与 Apple Music 解耦）
+- **专辑封面**：SMTC 优先，iTunes Search API 兜底 + 会话内缓存 + 快速切歌防串台
+- **原生音频可视化**：WASAPI Process Loopback 采集 `AMPLibraryAgent.exe` 音频（`desktop/native/MineRadioAudioCapture.cpp`，源码随仓库提供）
+- **FFT 频谱分析**：64 频段频谱 + bass / mid / treble，驱动粒子与视觉
+- **多源歌词**：QQ 音乐 → 酷狗音乐 → 网易云音乐，严格优先级 fallback，可拖动排序 / 启用禁用 / 持久化
+- **双语歌词**：原文 + 中文翻译双行显示；主源无翻译时自动从网易云 `tlyric` 补齐
+- **歌词竞态防护**：切歌时旧歌曲的晚到歌词/封面不会覆盖新歌曲
+
 
 ## Apple Music Windows 接入原理
 
@@ -226,6 +253,12 @@ build.bat
 ## 第三方音乐平台说明
 
 MineRadio 不是网易云音乐、QQ 音乐、酷狗音乐或腾讯音乐娱乐集团的官方客户端，也不隶属于任何音乐平台。第三方平台接入仅用于个人学习、本地客户端体验和用户自有账号的播放辅助。请遵守对应平台的用户协议、版权规则和会员权益规则。项目不提供绕过付费、绕过会员、破解音质或重新分发音乐内容的能力。
+
+## 致谢
+
+原 MineRadio 由 XxHuberrr 主要设计与打造。emily 作为早期视觉底层想法与 `emily` 视觉预设改进方向的共创者和灵感来源之一，特此感谢。同时感谢小天才e宝、应春日、锋将军、軌跡、林中、骊、风痕、花椰菜🥦在早期体验、测试反馈和发布准备中的帮助。
+
+本二次开发版本的 Apple Music（SMTC）接入、原生音频可视化、多源歌词等功能由本仓库维护者完成；对原项目作者及所有社区贡献者表示感谢。
 
 ## License
 

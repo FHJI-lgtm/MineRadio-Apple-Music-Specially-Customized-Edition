@@ -1,5 +1,14 @@
 # NOTICE
 
+## 二次开发声明 / Secondary Development
+
+本项目（MineRadio Apple Music Edition）为基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) 的二次开发版本。
+
+- 原 MineRadio 项目及其原始代码的版权归原作者（XxHuberrr）所有。
+- 本项目在原项目基础上进行了功能扩展和修改，包括但不限于：Apple Music 外部播放状态接入（Windows SMTC）、SMTC 播放控制、专辑封面获取、原生音频可视化、FFT 频谱分析、多源歌词（QQ 音乐 / 酷狗音乐 / 网易云音乐）及双语歌词翻译等。
+- 本项目与 Apple Inc. 没有官方关联，也不是 Apple 官方软件。Apple Music、Apple 等相关商标及服务名称归其各自权利人所有。
+- 原项目的许可证（GPL-3.0）及其版权声明继续适用于原始代码部分；本仓库整体按仓库内 LICENSE（GPL-3.0）授权。
+
 Mineradio 使用了以下第三方项目或服务。各项目版权归其原作者所有。
 
 ## Third-party Libraries
