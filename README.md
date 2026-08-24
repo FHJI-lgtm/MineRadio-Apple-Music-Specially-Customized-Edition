@@ -70,7 +70,7 @@ MineRadio SMTC Bridge（PowerShell + WinRT）
 渲染层（歌词匹配 / 视觉 / 粒子 / 封面 / 控制按钮）
 ```
 
-MineRadio 与 Apple Music 完全解耦：关闭 Apple Music 只影响 SMTC 状态，MineRadio 自身播放器照常工作。
+MineRadio-Apple-Music-Specially-Customized-Edition 与 Apple Music 完全解耦：关闭 Apple Music 只影响 SMTC 状态，MineRadio-Apple-Music-Specially-Customized-Edition 自身播放器照常工作。
 
 ## SMTC Bridge
 
@@ -96,7 +96,7 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 粒子 / 视觉着色器
 ```
 
-辅助进程与音频采集逻辑与 MineRadio 主程序完全隔离：任何采集失败只会让视觉回到非响应状态，不影响 SMTC / 歌词 / 封面 / 控制。
+辅助进程与音频采集逻辑与 MineRadio-Apple-Music-Specially-Customized-Edition 主程序完全隔离：任何采集失败只会让视觉回到非响应状态，不影响 SMTC / 歌词 / 封面 / 控制。
 
 ## FFT 音频分析
 
@@ -182,7 +182,7 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 
 ### 预打包版本
 
-下载 `Mineradio-2.1.0-Setup.exe`（NSIS 安装包）或 `Mineradio 2.1.0.exe`（portable），运行即可。安装包会创建桌面快捷方式。
+下载 `MineRadio-Apple-Music-Specially-Customized-Edition-1.0-Setup.exe`（NSIS 安装包）或 `MineRadio-Apple-Music-Specially-Customized-Edition 1.0.exe`（portable），运行即可。安装包会创建桌面快捷方式。
 
 ### 源码运行
 
@@ -194,7 +194,7 @@ npm start
 ### 使用
 
 1. 打开 Apple Music for Windows 并播放一首歌
-2. MineRadio 自动检测 SMTC 会话：状态胶囊显示歌名/歌手/进度/歌词来源
+2. MineRadio-Apple-Music-Specially-Customized-Edition 自动检测 SMTC 会话：状态胶囊显示歌名/歌手/进度/歌词来源
 3. 歌词/封面/粒子视觉随歌曲自动同步
 4. 右上角控制按钮可暂停/播放/切歌
 
@@ -263,7 +263,7 @@ MineRadio-Apple-Music-Specially-Customized-Edition 无法完全控制其上游�
 
 ## 第三方音乐平台说明
 
-MineRadio 不是网易云音乐、QQ 音乐、酷狗音乐或腾讯音乐娱乐集团的官方客户端，也不隶属于任何音乐平台。第三方平台接入仅用于个人学习、本地客户端体验和用户自有账号的播放辅助。请遵守对应平台的用户协议、版权规则和会员权益规则。项目不提供绕过付费、绕过会员、破解音质或重新分发音乐内容的能力。
+MineRadio-Apple-Music-Specially-Customized-Edition 不是网易云音乐、QQ 音乐、酷狗音乐或腾讯音乐娱乐集团的官方客户端，也不隶属于任何音乐平台。第三方平台接入仅用于个人学习、本地客户端体验和用户自有账号的播放辅助。请遵守对应平台的用户协议、版权规则和会员权益规则。项目不提供绕过付费、绕过会员、破解音质或重新分发音乐内容的能力。
 
 ## 致谢
 
