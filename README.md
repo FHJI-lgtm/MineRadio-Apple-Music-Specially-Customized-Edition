@@ -221,7 +221,7 @@ build.bat
 
 `build.bat` 自动定位编译器（环境变量 `W64DEVKIT_GXX` → 常见 w64devkit 安装位置 → `PATH` 中的 `g++`，或 MSVC `cl`）。诊断工具源码（`AudioProbe / SessionProbe / RenderProbe / PathProbe / SinePlayer / LoopbackSelfTest`）同样随仓库提供。
 
-### Apple Music 开发者凭据（可选）
+### Apple Music 开发者凭据（可选）（未经过验证，谨慎使用）
 
 搜索页签与登录面板需要 MusicKit 开发者凭据（可选用环境变量或配置文件注入，详见上文 SMTC 接入说明）：
 
