@@ -24,6 +24,7 @@ var smtcLyricState = {
   loaded: false,
   hasLyrics: false,
   error: '',
+  source: '',        // 多歌词源: 'qq' | 'kugou' | 'netease' | ''
   neteaseId: '',
 };
 
@@ -120,6 +121,7 @@ async function smtcLoadLyrics() {
   smtcLyricState.loaded = false;
   smtcLyricState.hasLyrics = false;
   smtcLyricState.error = '';
+  smtcLyricState.source = '';
   smtcClearLyrics();
   if (typeof smtcRenderChip === 'function') smtcRenderChip();
 
@@ -131,44 +133,44 @@ async function smtcLoadLyrics() {
     return;
   }
 
-  // 1) 多策略搜索候选（网络只在歌曲变化时发生一次）
-  var candidate = null;
-  var queries = smtcSearchQueries();
-  for (var i = 0; i < queries.length; i++) {
-    if (seq !== smtcLyricState.seq) return;
-    candidate = await smtcSearchBestCandidate(queries[i]);
-    if (candidate) break;
+  // 多源解析 (搜索/缓存/严格优先级 fallback 由 05-smtc-lyric-sources 编排,
+  // 竞态由 seq generationId 在每次 await 后校验: A 的晚到结果不会覆盖 B)
+  console.log('[LYRICS] request title=' + (smtcStore.title || '') + ' artist=' + (smtcStore.artist || ''));
+  var result = null;
+  try {
+    result = await smtcResolveLyricViaSources(smtcStore.title, smtcStore.artist, seq);
+  } catch (e) {
+    result = null; // 编排器意外异常 -> 视为无歌词, 不阻塞歌词系统
   }
   if (seq !== smtcLyricState.seq) return;
-  if (!candidate) {
+  if (!result) {
     smtcLyricState.loading = false;
+    smtcLyricState.loaded = false;
+    smtcLyricState.hasLyrics = false;
     smtcLyricState.error = 'no-lyrics';
-    smtcLyricState.neteaseId = '';
     smtcLogToFile('lyric no candidate: ' + (smtcStore.title || '') + ' - ' + (smtcStore.artist || ''));
     if (typeof smtcRenderChip === 'function') smtcRenderChip();
     return;
   }
 
-  var synthetic = smtcBuildSyntheticSong(candidate);
-  smtcLyricState.neteaseId = String(candidate.id || '');
+  var synthetic = result.synthetic;
+  smtcLyricState.source = result.source;
   try {
-    // 2) 优先缓存，命中则不再请求 API
-    var response = await readPersistentLyricCache(synthetic);
-    var fromCache = !!response;
-    if (!response) {
-      var r = await apiJson(lyricEndpointForSong(synthetic), { timeoutMs: 6500 });
-      response = mergeInlineLyricResponseForSong(synthetic, r || {});
-    }
-    if (seq !== smtcLyricState.seq) return;
-    // 3) 解析并写入现有歌词状态（stage 会自动渲染）
-    console.log('[LYRIC][' + Date.now() + '] response received (T9) seq=' + seq + ' fromCache=' + fromCache + ' neteaseId=' + (synthetic.id || ''));
-    var state = parseLyricResponseToOriginalState(synthetic, response);
+    // 解析并写入现有歌词状态 (stage 自动渲染; 对唱/背景人声等由现有解析器保留)
+    console.log('[LYRIC][' + Date.now() + '] response received (T9) seq=' + seq + ' fromCache=' + result.fromCache + ' source=' + result.source + ' id=' + (synthetic.id || synthetic.mid || synthetic.hash || ''));
+    var state = parseLyricResponseToOriginalState(synthetic, result.response);
     setOriginalLyricsState(state.lines, state.hasNativeKaraoke, state.timingSource, state.translationLines, state.translationSource);
     applyOriginalLyricsState({ reason: 'smtc' });
     smtcLyricState.hasLyrics = !!state.usableLyric;
     smtcLyricState.loaded = true;
     smtcLyricState.error = '';
-    if (state.usableLyric && !fromCache) writePersistentLyricCache(synthetic, response);
+    smtcLogToFile('lyric source=' + (typeof smtcLyricSourceName === 'function' ? smtcLyricSourceName(result.source) : result.source));
+    // 主源无翻译且非网易云 -> 异步从网易云补翻译 (seq 保护, 不阻塞原文显示)
+    if (state.usableLyric && !state.translationLines.length && result.source !== 'netease') {
+      if (typeof smtcSupplementNeteaseTranslation === 'function') {
+        smtcSupplementNeteaseTranslation(smtcStore.title, smtcStore.artist, seq);
+      }
+    }
   } catch (err) {
     if (seq !== smtcLyricState.seq) return;
     smtcLyricState.loaded = false;
@@ -197,6 +199,7 @@ function onSmtcStateChanged(prevActive, prevPlaying) {
       smtcLyricState.loaded = false;
       smtcLyricState.hasLyrics = false;
       smtcLyricState.error = '';
+      smtcLyricState.source = '';
       smtcClearLyrics();
     }
   }

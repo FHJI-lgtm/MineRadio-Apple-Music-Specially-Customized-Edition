@@ -36,7 +36,7 @@ function smtcChipText() {
     else if (smtcLyricState.error === 'no-lyrics' || (!smtcLyricState.hasLyrics && smtcLyricState.loaded)) parts.push('未找到歌词');
     else if (smtcLyricState.error === 'lyric-fetch-failed') parts.push('歌词获取失败');
     else if (smtcLyricState.error === 'no-title') parts.push('缺少歌曲信息');
-    else if (smtcLyricState.hasLyrics) parts.push('歌词已同步');
+    else if (smtcLyricState.hasLyrics) parts.push('歌词已同步' + (smtcLyricState.source && typeof smtcLyricSourceName === 'function' ? ' · 歌词来源：' + smtcLyricSourceName(smtcLyricState.source) : ''));
     if (smtcPlayerCfg.enabled === false) parts.push('外部歌词已关闭');
   }
   // Audio（外部音频捕获）状态 — 经 AudioAdapter
