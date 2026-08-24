@@ -243,6 +243,17 @@ build.bat
 - **音频采集**：依赖系统默认渲染端点与 Apple Music 会话激活；采集失败时视觉自动降级为无响应状态
 - **歌词**：QQ/酷狗对部分歌曲（尤其英文歌）不返回翻译，此时自动从网易云补齐或降级为仅原文
 - 未签名安装包可能触发 SmartScreen 提示（小众 Electron 软件常见），请从官方 Release 下载并确认文件名
+- 歌词同步
+
+由于 Apple Music for Windows 的播放进度和媒体状态通过 Windows SMTC
+（System Media Transport Controls）提供，在切歌、拖动进度条或播放状态快速变化
+时，SMTC 可能出现短暂的时间轴延迟、跳变或事件乱序。
+
+因此，MineRadio-Apple-Music-Specially-Customized-Edition 的歌词显示在极少数情况下可能出现短暂的歌词跳行、回跳或同步
+延迟。该问题属于 Apple Music / Windows SMTC 播放状态同步链路的已知限制，
+MineRadio-Apple-Music-Specially-Customized-Edition 无法完全控制其上游数据质量。
+
+如果出现短暂不同步，通常会在 SMTC 状态恢复后自动重新同步。
 
 ## 用户数据与隐私
 
