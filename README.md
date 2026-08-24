@@ -126,7 +126,7 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 
 ## 多源歌词（QQ → 酷狗 → 网易云）
 
-MineRadio **不再使用 Apple Music 官方歌词**（无需登录凭证、独立于 Apple Music 播放模块）。默认优先级：
+默认优先级：
 
 1. **QQ 音乐**
 2. **酷狗音乐**
