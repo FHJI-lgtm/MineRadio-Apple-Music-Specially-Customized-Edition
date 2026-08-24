@@ -350,28 +350,60 @@ if ($null -ne $global:SmtcManager) {
 [Console]::Out.Flush()
 global:Log 'Bridge ready'
 
-# 保活 + Phase 4B: stdin JSON 控制命令入口
-# Register-ObjectEvent 的 Action 在后台 runspace 执行, 主 runspace 阻塞在
-# [Console]::In.ReadLine() 等待控制命令 (不会影响事件订阅 / 状态上报)。
-$stdinAvailable = $true
+# 保活 + Phase 4B: stdin JSON 控制命令入口 (非阻塞版)
+# PS 5.1 关键约束: 主 runspace 若阻塞在 [Console]::In.ReadLine() 上,
+# Register-ObjectEvent 的事件泵送会被冻结 (poll/Media/Playback/Timeline
+# 全部排队不执行 -> SMTC 状态停更)。因此:
+#   - stdin 由独立后台 runspace 阻塞读取, 行写入共享线程安全队列
+#   - 主 runspace 保活循环非阻塞 TryDequeue, 其余时间 Start-Sleep 保持空闲
+# 命令协议不变: {"command":"play"|"pause"|"toggle"|"next"|"previous"}
+$global:SmtcCmdQueue = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
+$global:SmtcStdinReaderHandle = $null
+$global:SmtcStdinReaderPs = $null
+$global:SmtcStdinReaderRs = $null
+try {
+  $global:SmtcStdinReaderRs = [runspacefactory]::CreateRunspace()
+  $global:SmtcStdinReaderRs.Open()
+  $global:SmtcStdinReaderPs = [powershell]::Create()
+  $global:SmtcStdinReaderPs.Runspace = $global:SmtcStdinReaderRs
+  $readerScript = {
+    param($queue, $stream)
+    try {
+      $rd = New-Object System.IO.StreamReader($stream)
+      while ($true) {
+        $line = $rd.ReadLine()
+        if ($null -eq $line) { Start-Sleep -Milliseconds 250; continue }   # stdin EOF: 纯保活
+        try { $queue.Enqueue([string]$line) } catch { }
+      }
+    } catch { }
+  }
+  [void]$global:SmtcStdinReaderPs.AddScript($readerScript)
+  [void]$global:SmtcStdinReaderPs.AddArgument($global:SmtcCmdQueue)
+  [void]$global:SmtcStdinReaderPs.AddArgument([Console]::OpenStandardInput())
+  $global:SmtcStdinReaderHandle = $global:SmtcStdinReaderPs.BeginInvoke()
+  global:Log 'stdin reader started (background runspace)'
+} catch {
+  global:Log ('stdin reader start failed: ' + $_.Exception.Message)
+}
+
+$stdinUnavailableLogged = $false
 while ($true) {
   try {
-    $line = [Console]::In.ReadLine()
-    if ($null -eq $line) { Start-Sleep -Milliseconds 300; continue }   # stdin EOF (无管道): 纯保活
-    $line = $line.Trim()
-    if ($line -eq '') { continue }
-    $cmdObj = $null
-    try { $cmdObj = $line | ConvertFrom-Json } catch { }
-    if ($null -eq $cmdObj -or [string]::IsNullOrEmpty([string]$cmdObj.command)) {
-      global:EmitControlResult ([string]$cmdObj.command) $false 'invalid command json'
-      continue
+    $line = ''
+    if ($global:SmtcCmdQueue.TryDequeue([ref]$line) -and -not [string]::IsNullOrWhiteSpace($line)) {
+      $cmdObj = $null
+      try { $cmdObj = $line | ConvertFrom-Json } catch { }
+      if ($null -eq $cmdObj -or [string]::IsNullOrEmpty([string]$cmdObj.command)) {
+        global:EmitControlResult ([string]$cmdObj.command) $false 'invalid command json'
+      } else {
+        global:HandleControlCommand ([string]$cmdObj.command)
+      }
     }
-    global:HandleControlCommand ([string]$cmdObj.command)
   } catch {
-    if ($stdinAvailable) {
-      $stdinAvailable = $false
-      global:Log 'stdin unavailable, control commands disabled (bridge keeps running)'
+    if (-not $stdinUnavailableLogged) {
+      $stdinUnavailableLogged = $true
+      global:Log 'control loop error, control commands may be unavailable (bridge keeps running)'
     }
-    Start-Sleep -Milliseconds 500
   }
+  Start-Sleep -Milliseconds 200
 }
