@@ -29,6 +29,10 @@ win-unpacked/
 spotify-credentials.json
 .spotify-token.json
 spotify-token.json
+# Apple Music credentials / user token (real secrets; keep the *.example.json template committed)
+.apple-music-credentials.json
+apple-music-credentials.json
+.apple-music-token.json
 listen-sync-journal.json
 login-easter-egg.json
 login-easter-egg-state.json

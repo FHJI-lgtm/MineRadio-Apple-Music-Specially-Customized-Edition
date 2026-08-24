@@ -11,7 +11,9 @@ setlocal
 cd /d "%~dp0"
 
 set "GXX="
-if exist "C:\Users\limin\OneDrive\.w64kit\w64devkit\bin\g++.exe" set "GXX=C:\Users\limin\OneDrive\.w64kit\w64devkit\bin\g++.exe"
+rem 工具链定位: 1) 环境变量覆盖 2) 常见 w64devkit 安装位置 3) PATH 中的 g++
+if defined W64DEVKIT_GXX set "GXX=%W64DEVKIT_GXX%"
+if not defined GXX if exist "C:\w64devkit\w64devkit\bin\g++.exe" set "GXX=C:\w64devkit\w64devkit\bin\g++.exe"
 if not defined GXX for /f "delims=" %%i in ('where g++ 2^>nul') do set "GXX=%%i"
 
 if defined GXX (

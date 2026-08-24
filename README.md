@@ -1,162 +1,236 @@
-# Mineradio (Apple Music Edition)
+# MineRadio（Apple Music Edition）
 
-> 本分支基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) 源码，新增 **Apple Music** 平台接入：搜索、用户歌单、资料库（喜欢）与官方登录窗口。其余功能与上游一致。
+> Windows 沉浸式音乐播放器：Apple Music（SMTC）实时同步、原生音频可视化、FFT 频谱分析、粒子视觉舞台、专辑封面与多源双语歌词。
 
-## Apple Music 新增能力
+MineRadio 是一款 Windows 桌面沉浸式音乐播放器。本分支聚焦 **Apple Music for Windows** 的外部接入：MineRadio 只做「媒体状态监听（SMTC）+ 歌词匹配 + 视觉呈现」，音频与播放完全由 Apple Music 自己负责——不需要任何第三方音频直链，也不触碰 DRM。
 
-- 搜索框新增 `AM` 页签：搜索 Apple Music 官方曲库（需要先配置开发者凭据，不需要登录）
-- 登录面板新增 Apple Music 节点：
-  - 粘贴 **Team ID / Key ID / P8 私钥**（Apple 开发者后台 MusicKit 配置）保存
-  - 点击「连接 Apple Music」打开官方登录窗口，登录 Apple ID 后自动读取 `media-user-token`（music user token）
-  - 备用：直接粘贴浏览器中 `music.apple.com` 的 `media-user-token` Cookie 值保存登录态
-- 连接后可同步：
-  - 用户歌单（`Apple Music 资料库` 虚拟歌单 + 个人歌单）
-  - 喜欢/取消喜欢（写入 Apple Music 资料库）
-  - 专辑收藏
-- 播放说明：Apple Music 官方 API 不向第三方提供无 DRM 的完整音频直链，因此与 Spotify 一致采用「匹配源」策略——点击 Apple Music 歌曲会自动在其他可播平台（网易/QQ/酷狗/汽水）匹配同曲完整播放；搜索结果的 `AM` 标记会提示这一点。
+---
 
-## 获取 Apple 开发者凭据
+## 目录
 
-1. 打开 [Apple Developer](https://developer.apple.com/account) 登录（需付费开发者账号）。
-2. `Certificates, Identifiers & Profiles` → 创建 MusicKit Key（ES256），下载 `.p8` 私钥文件并记录 **Key ID**。
-3. 页面右上角头像菜单里查看 **Team ID**（10 位字母数字）。
-4. 在 Mineradio 登录面板的 Apple Music 页签中按行粘贴三项（或粘贴 JSON），保存后点「连接 Apple Music」。
+- [Apple Music Windows 接入原理](#apple-music-windows-接入原理)
+- [SMTC Bridge](#smtc-bridge)
+- [Native Audio Capture](#native-audio-capture)
+- [FFT 音频分析](#fft-音频分析)
+- [Visualizer / 粒子视觉](#visualizer--粒子视觉)
+- [专辑封面](#专辑封面)
+- [播放控制](#播放控制)
+- [多源歌词（QQ → 酷狗 → 网易云）](#多源歌词qq--酷狗--网易云)
+- [双语歌词](#双语歌词)
+- [核心特性](#核心特性)
+- [Windows 环境要求](#windows-环境要求)
+- [Electron / Node.js 要求](#electron--nodejs-要求)
+- [安装与运行](#安装与运行)
+- [构建方法](#构建方法)
+- [已知限制](#已知限制)
+- [用户数据与隐私](#用户数据与隐私)
+- [第三方音乐平台说明](#第三方音乐平台说明)
+- [License](#license)
 
-也可用环境变量注入（适合脚本/无界面环境）：
+---
+
+## Apple Music Windows 接入原理
+
+Apple Music for Windows 通过系统级的 **Windows SMTC（System Media Transport Controls）** 广播当前播放状态（歌名/歌手/专辑/进度/播放状态）。MineRadio 不做播放，只监听 SMTC：
+
+```
+Apple Music（播放/暂停/切歌）
+        ↓ Windows SMTC
+MineRadio SMTC Bridge（PowerShell + WinRT）
+        ↓ stdout JSON
+主进程（状态解析 / 封面 / 播放控制 IPC）
+        ↓ IPC
+渲染层（歌词匹配 / 视觉 / 粒子 / 封面 / 控制按钮）
+```
+
+MineRadio 与 Apple Music 完全解耦：关闭 Apple Music 只影响 SMTC 状态，MineRadio 自身播放器照常工作。
+
+## SMTC Bridge
+
+`desktop/smtc-bridge.ps1` 使用 Windows PowerShell 5.1 + WinRT `GlobalSystemMediaTransportControlsSessionManager`，通过事件驱动读取当前 active media session：
+
+- `MediaPropertiesChanged` → 歌名 / 歌手 / 专辑
+- `PlaybackInfoChanged` → 播放 / 暂停状态
+- `TimelinePropertiesChanged` → 播放进度
+
+Bridge 以 **stdout JSON-lines** 与主进程通信（`{"type":"state",...}`），并接受 **stdin JSON 控制命令**（`{"command":"play|pause|toggle|next|previous"}`）调用官方 `TryXXXAsync()` 方法。
+
+## Native Audio Capture
+
+音频可视化不依赖浏览器音频 API：主进程启动原生辅助进程 `MineRadioAudioCapture.exe`（`desktop/native/MineRadioAudioCapture.cpp`，源码随仓库提供），通过 **WASAPI Process Loopback** 采集目标进程（`AMPLibraryAgent.exe`——Apple Music 实际渲染音频的进程）的音频数据：
+
+```
+AMPLibraryAgent.exe（音频渲染）
+        ↓ WASAPI Process Loopback（真实默认渲染端点 + IAgileObject）
+MineRadioAudioCapture.exe（原生 C++，静态链接）
+        ↓ stdout JSONL（rms / bass / mid / treble / 64 频段 spectrum，~20Hz）
+主进程 → IPC → 渲染层 AudioAdapter
+        ↓
+粒子 / 视觉着色器
+```
+
+辅助进程与音频采集逻辑与 MineRadio 主程序完全隔离：任何采集失败只会让视觉回到非响应状态，不影响 SMTC / 歌词 / 封面 / 控制。
+
+## FFT 音频分析
+
+`MineRadioAudioCapture.exe` 内部对采集到的 PCM 做 **FFT**，映射为 64 个对数频段，聚合出 `bass / mid / treble` 与频谱，经音频 IPC 进入渲染层，驱动粒子强度、beat 检测与视觉能量场。渲染层有严格的数值卫生（无 NaN/Infinity）与静默降级。
+
+## Visualizer / 粒子视觉
+
+- 粒子舞台与歌词舞台共用 WebGL 渲染管线
+- 封面纹理（来自当前播放歌曲）驱动粒子颜色、浮色与背景渐变
+- 音频指标驱动粒子运动、burst 与节奏镜头系统
+- 分辨率可调（256/384/512 纹理），内置 AI 深度封面增强（可选）
+
+## 专辑封面
+
+- SMTC 可提供的封面优先（PS 5.1 下不可用时自动降级）
+- 兜底走 **iTunes Search API**（公开接口，按 `artist + title` 搜索取 `artworkUrl100` → 提升到 300×300）
+- 会话内内存缓存（identity 键 `aumid|title|artist|album`，LRU 上限 100）+ 发送去重 + 请求 in-flight 去重 + 旧请求 identity 校验（快速切歌不串台）
+- 封面同时驱动右上角 UI 胶囊与 Visualizer 背景粒子纹理（同一 `applyCoverCanvas` 入口）
+
+## 播放控制
+
+右上角提供 `上一首 / 播放暂停 / 下一首` 按钮，通过 SMTC 官方 `TrySkipPreviousAsync / TryPlayAsync / TryPauseAsync / TrySkipNextAsync` 控制 Apple Music：
+
+- 按钮状态只由 SMTC 事件回推（`isPlaying`），点击后不本地改状态
+- 无 active session 或内部播放器播放时按钮禁用
+- 主进程侧命令队列防抖（快速连续点击不堆积、不阻塞）
+
+## 多源歌词（QQ → 酷狗 → 网易云）
+
+MineRadio **不再使用 Apple Music 官方歌词**（无需登录凭证、独立于 Apple Music 播放模块）。默认优先级：
+
+1. **QQ 音乐**
+2. **酷狗音乐**
+3. **网易云音乐**
+
+- 严格按用户设置顺序 fallback：网络错误 / API 错误 / 无结果 / 歌词为空 / 解析失败 / 匹配度过低 → 自动下一源
+- 每个源：`enabled / name / id / priority / search() / getLyrics()`，复用现有解析器（LRC/YRC/逐字）
+- 标题/艺术家规范化：去 `Remix / Live / Radio Edit` 等版本后缀、处理 `feat./ft./with`、大小写、全角/半角、异常 Unicode；候选按匹配度评分，不盲取第一条
+- 异步竞态：`generationId` 校验，切歌时旧歌曲的晚到结果不会覆盖新歌曲
+- 右上角「词源」按钮可打开优先级设置面板：拖动排序、启用/禁用、恢复默认（localStorage 持久化）
+- 歌词来源显示在状态胶囊：`歌词已同步 · 歌词来源：QQ 音乐`
+
+## 双语歌词
+
+- 原文 + 中文翻译双行显示（翻译行数可少于原文、无翻译自动降级为仅原文）
+- 主源（QQ/酷狗）无翻译时，自动从网易云 `tlyric` 补齐（时序 + 顺序双策略配对）
+- 渲染模式可调：`译文 / 当前 / 双行 / 多行 / 关闭`
+- 逐字（YRC/词级）卡拉OK保留
+
+## 核心特性
+
+- Apple Music（SMTC）实时同步：歌名/歌手/进度/播放状态
+- SMTC 播放控制（上一首/播放暂停/下一首）
+- 原生 WASAPI 进程回环音频采集 + FFT 频谱（bass/mid/treble）
+- 粒子视觉舞台、歌词舞台、3D 歌单架、节奏镜头
+- 专辑封面（SMTC → iTunes Search 兜底 + 缓存）驱动视觉
+- 多源歌词（QQ/酷狗/网易云）+ 双语翻译 + 歌词源优先级
+- 完整桌面模式、本地 MP4 / Wallpaper Engine 视觉
+- 网易云 / QQ / 酷狗 / 汽水 / Spotify 登录与音源补充接入
+
+## Windows 环境要求
+
+| 项 | 要求 |
+| --- | --- |
+| 系统 | Windows 10 / 11（x64） |
+| PowerShell | Windows PowerShell 5.1（系统自带，无需安装） |
+| Apple Music | Apple Music for Windows（[Microsoft Store](https://apps.microsoft.com/detail/9pfhdd2n4n4p)） |
+| 音频 | WASAPI 默认渲染端点可用 |
+
+> 音频采集需要目标系统存在可用的渲染端点；Apple Music 需处于播放状态（Session 激活）后采集才会启动。
+
+## Electron / Node.js 要求
+
+| 项 | 版本 |
+| --- | --- |
+| Electron | 42.4.x |
+| Node.js | 18+（开发构建用） |
+| electron-builder | 26.x |
+
+无需 `npm install` 也可以直接运行已打包版本；源码构建需要 Node.js 18+ 与 npm。
+
+## 安装与运行
+
+### 预打包版本
+
+下载 `Mineradio-2.1.0-Setup.exe`（NSIS 安装包）或 `Mineradio 2.1.0.exe`（portable），运行即可。安装包会创建桌面快捷方式。
+
+### 源码运行
+
+```bash
+npm install
+npm start
+```
+
+### 使用
+
+1. 打开 Apple Music for Windows 并播放一首歌
+2. MineRadio 自动检测 SMTC 会话：状态胶囊显示歌名/歌手/进度/歌词来源
+3. 歌词/封面/粒子视觉随歌曲自动同步
+4. 右上角控制按钮可暂停/播放/切歌
+
+## 构建方法
+
+### Electron 应用
+
+```bash
+npm run build:win        # NSIS 安装包
+npm run dist             # NSIS + portable
+npm run dist:portable    # portable
+```
+
+产物位于 `dist/`。
+
+### 原生音频采集辅助进程
+
+`MineRadioAudioCapture.exe` 由仓库内源码 `desktop/native/MineRadioAudioCapture.cpp` 构建（`#define INITGUID` + `-lole32 -luuid`，静态链接）。仓库**不提交二进制**，运行预打包版本已内置；从源码构建时：
+
+```bash
+cd desktop/native
+build.bat
+```
+
+`build.bat` 自动定位编译器（环境变量 `W64DEVKIT_GXX` → 常见 w64devkit 安装位置 → `PATH` 中的 `g++`，或 MSVC `cl`）。诊断工具源码（`AudioProbe / SessionProbe / RenderProbe / PathProbe / SinePlayer / LoopbackSelfTest`）同样随仓库提供。
+
+### Apple Music 开发者凭据（可选）
+
+搜索页签与登录面板需要 MusicKit 开发者凭据（可选用环境变量或配置文件注入，详见上文 SMTC 接入说明）：
 
 | 环境变量 | 含义 |
 | --- | --- |
 | `APPLE_MUSIC_TEAM_ID` | Team ID |
 | `APPLE_MUSIC_KEY_ID` | MusicKit Key ID |
 | `APPLE_MUSIC_PRIVATE_KEY` | P8 私钥内容（或指向 .p8 文件路径） |
-| `APPLE_MUSIC_STOREFRONT` | 地区代码，默认 `us`（如 `cn`） |
+| `APPLE_MUSIC_STOREFRONT` | 地区代码，默认 `us` |
 | `APPLE_MUSIC_TOKEN_FILE` | music user token 保存路径 |
 | `APPLE_MUSIC_CONFIG_FILE` | 凭据保存路径 |
 
-配置文件格式参见 [`.apple-music-credentials.example.json`](./.apple-music-credentials.example.json)。
+配置文件模板见 [`.apple-music-credentials.example.json`](./.apple-music-credentials.example.json)。**SMTC 歌词同步不依赖任何 Apple 开发者凭据。**
 
-> 凭据与登录态只保存在本机用户数据目录（`.apple-music-credentials.json` / `.apple-music-token.json`），不会上传。music user token 属于敏感凭据，请勿分享。
+## 已知限制
 
-
-![Mineradio 暗场启动页](./docs/assets/readme/cinema-beat-smoke.png)
-
-Mineradio 是一款 Windows 桌面沉浸式音乐播放器，把搜索播放、歌词舞台、粒子视觉、3D 歌单架和完整桌面模式组合成一个更接近现场感的私人音乐空间。
-
-## 系统媒体（SMTC）歌词同步
-
-> 本分支新增能力：读取 **Windows 系统媒体传输控制（SMTC）**，为正在播放的外部媒体（例如 Apple Music for Windows）自动匹配并同步歌词。MineRadio 只做「媒体状态监听 + 歌词匹配 + 歌词显示」，不控制外部播放器。
-
-- 打开 Apple Music（或任何支持 SMTC 的播放器）播放歌曲，MineRadio 自动检测：歌名 / 歌手 / 专辑 / 播放状态 / 播放进度
-- 自动匹配歌词（复用现有网易云歌词源与本地缓存），按播放进度实时滚动
-- 暂停 / 继续 / 切歌自动同步；本地时间轴平滑器处理 SMTC position 更新不稳定与长时间不更新的情况
-- 右上角显示系统媒体状态胶囊（点击可开关外部歌词同步）；内部播放器播放时自动让位
-- 实现：`desktop/smtc-bridge.ps1`（PowerShell + WinRT 读取 SMTC）→ 主进程 IPC → 渲染层 `public/js/modules/12-smtc/`
-
-## Apple Music 搜索接入（可选的开发者凭据方案）
-
-> 除 SMTC 歌词同步外，本分支还保留了基于 Apple Music API 的搜索/歌单接入。**该功能与 SMTC 歌词同步相互独立**：歌词同步 100% 走 Windows SMTC，不依赖 Apple Developer 凭据；搜索页签 `AM` 与登录面板则需要开发者凭据才可用（详见下文）。
-
-## 立即下载 Windows 安装包
-
-> 安装包可从夸克盘、百度云、蓝奏云或 GitHub Release 手动下载；软件内更新入口仍只打开网盘线路，不读取 Release 附件。
-
-| 下载入口 | 推荐人群 | 链接 |
-| --- | --- | --- |
-| 夸克盘 | 夸克用户 | [下载 Mineradio 2.1.0](https://pan.quark.cn/s/df00d9520835) |
-| 百度云 | 百度网盘用户（提取码 `SJHP`） | [下载 Mineradio 2.1.0](https://pan.baidu.com/s/1UAAyvXHNJjxVXAHIPtl4Ow?pwd=SJHP) |
-| 蓝奏云 | 直接下载 | [下载 Mineradio 2.1.0](https://xxhuber.lanzout.com/s/Mineradio) |
-| GitHub Release | GitHub 用户、版本说明与源码 | [下载 Mineradio 2.1.0](https://github.com/XxHuberrr/Mineradio/releases/tag/v2.1.0) |
-
-安装时只需要下载并运行 `Mineradio-2.1.0-Setup.exe`。不要把 `.blockmap`、`latest.yml` 或 `win-unpacked` 当成正式安装包。
-
-## 下载或安装被拦截怎么办
-
-小众 Electron 桌面软件、未签名安装包有时会被浏览器、Windows Defender 或 SmartScreen 提示风险。请先确认安装包来自上面的网盘入口或官方 GitHub Release，文件名是 `Mineradio-2.1.0-Setup.exe`。
-
-1. 浏览器下载栏提示风险时，打开下载列表，点这条下载右侧的 `...` 三个点，选择 `保留` / `仍要保留` / `显示更多` 后继续保留。
-2. Windows SmartScreen 弹出蓝色拦截窗口时，点 `更多信息`，再点 `仍要运行`。
-3. 如果杀毒软件明确显示木马、高危或已经隔离，不要强行运行；删除该文件后重新从上面的网盘入口下载，仍然异常请带截图反馈给作者。
-
-## 作者支持
-
-如果 Mineradio 陪你多听了一首歌，也欢迎请作者一杯咖啡。
-
-[查看完整支持页](./docs/SUPPORT.md)
-
-![Mineradio 作者支持渠道](./docs/assets/support/mineradio-author-support-poster.png)
-
-Mineradio 2.1 进一步优化了壁纸与全屏体验，并提升了登录、账号、本地曲库和长时间运行的稳定性。
-
-## 当前版本
-
-当前版本：`2.1.0`
-
-状态：Mineradio 2.1.0 正式版。
-
-> 安全提示：`v1.0.10` 及更早旧安装包不再建议继续安装或传播。请使用本页提供的 `Mineradio-2.1.0-Setup.exe`。
-
-## 核心特性
-
-- 首页包含每日推荐、平台推荐、继续听、听歌画像和我的歌单入口
-- 完整桌面模式保留播放器、主页、歌单和桌面交互
-- 支持本地 MP4 与 Wallpaper Engine 视觉内容
-- 播放后切换到 Emily / 默认播放态视觉，歌词舞台与粒子舞台同步工作
-- 基于节奏的电影镜头视觉系统
-- 面向长播客和 DJ 曲目的专属视觉模式
-- 歌词舞台、自定义歌词、歌词位置与视觉控制
-- 自定义专辑封面上传与裁剪
-- 右键唤起 3D 歌单架，支持歌单队列浏览
-- 网易云音乐账号、搜索、歌单、播客等体验接入
-- QQ 音乐搜索、登录态与音源补充接入
-- GitHub Releases 更新检测与下载入口
-- 首次启动内置「默认测试」视觉用户存档，软件内默认视觉参数与该存档一致
-
-## 使用说明
-
-Windows 用户可以从本页列出的夸克盘、百度云、蓝奏云或 GitHub Release 下载安装包。
-
-正式分发以 `Mineradio-2.1.0-Setup.exe` 为准，不建议直接使用 `win-unpacked` 目录。安装包会创建桌面快捷方式。
-
-已经安装过旧版本的用户可直接运行 `Mineradio-2.1.0-Setup.exe` 完成更新。软件内更新入口只会打开浏览器下载页，不会在客户端内下载或应用补丁。
-
-## 开发运行
-
-```bash
-npm install
-npm start
-npm run build:win
-```
-
-桌面版入口由 Electron 主进程加载本地服务。`npm run build:win` 会生成 Windows NSIS 安装包，产物位于 `dist/`。
-
-## 更新机制
-
-Mineradio 会请求 GitHub Releases latest 检测新版本。远端版本高于本地版本时，应用内更新入口会展示 Release 内容，并通过系统浏览器打开可选网盘线路；即使 Release 附带完整安装包，`2.0.3+` 客户端也不会读取、下载、缓存或应用该附件与补丁。
-
-本地验证更新链路时，可以通过 `MINERADIO_UPDATE_MANIFEST` 指向一个本地 manifest JSON 或 HTTP 地址来模拟线上 Release。
-
-## 第三方音乐平台说明
-
-Mineradio 不是网易云音乐、QQ 音乐或腾讯音乐娱乐集团的官方客户端，也不隶属于任何音乐平台。
-
-项目中的第三方平台接入仅用于个人学习、本地客户端体验和用户自有账号的播放辅助。请遵守对应平台的用户协议、版权规则和会员权益规则。项目不会提供绕过付费、绕过会员、破解音质或重新分发音乐内容的能力。
+- **不提供 Apple Music 音频直链/下载**：Apple Music 官方 API 不向第三方提供无 DRM 完整音频；音频播放由 Apple Music 自身负责，MineRadio 只做视觉/歌词/封面
+- **专辑封面**：PS 5.1 无法直接读取 SMTC Thumbnail 流，封面走 iTunes Search 兜底（公开接口），个别冷门歌曲可能搜不到封面
+- **音频采集**：依赖系统默认渲染端点与 Apple Music 会话激活；采集失败时视觉自动降级为无响应状态
+- **歌词**：QQ/酷狗对部分歌曲（尤其英文歌）不返回翻译，此时自动从网易云补齐或降级为仅原文
+- 未签名安装包可能触发 SmartScreen 提示（小众 Electron 软件常见），请从官方 Release 下载并确认文件名
 
 ## 用户数据与隐私
 
-登录 Cookie、搜索历史、自定义封面、自定义歌词、节奏分析缓存等数据只应保存在本机用户数据目录或浏览器本地存储中，不应提交到仓库。
+登录 Cookie、搜索历史、自定义封面、自定义歌词、节奏分析缓存、Apple Music 凭据与 music user token **只保存在本机用户数据目录**（例如 `.apple-music-credentials.json` / `.apple-music-token.json`），不会上传，也不会提交到仓库。music user token 属于敏感凭据，请勿分享。
 
 更多说明见 [PRIVACY.md](./PRIVACY.md)。
 
-## 致谢
+## 第三方音乐平台说明
 
-Mineradio 由 XxHuberrr 主要设计与打造。emily 作为早期视觉底层想法与 `emily` 视觉预设改进方向的共创者和灵感来源之一，特此感谢。
+MineRadio 不是网易云音乐、QQ 音乐、酷狗音乐或腾讯音乐娱乐集团的官方客户端，也不隶属于任何音乐平台。第三方平台接入仅用于个人学习、本地客户端体验和用户自有账号的播放辅助。请遵守对应平台的用户协议、版权规则和会员权益规则。项目不提供绕过付费、绕过会员、破解音质或重新分发音乐内容的能力。
 
-同时感谢小天才e宝、应春日、锋将军、軌跡、林中、骊、风痕、花椰菜🥦在早期体验、测试反馈和发布准备中的帮助。
-
-## 版权与授权
+## License
 
 Copyright (C) 2026 XxHuberrr.
 
-本项目采用 GPL-3.0 授权。详见 [LICENSE](./LICENSE)。
+本项目采用 **GPL-3.0** 授权。详见 [LICENSE](./LICENSE)。
 
 MR Logo、Mineradio 名称、界面视觉设计与原创视觉表达归作者所有；第三方依赖和第三方服务分别遵循其各自授权与服务条款。
