@@ -6,6 +6,7 @@ function playbackProviderLabel(song) {
   if (provider === 'kugou') return '酷狗音乐';
   if (provider === 'qishui') return '汽水音乐';
   if (provider === 'spotify') return 'Spotify';
+  if (provider === 'apple') return 'Apple Music';
   return '网易云';
 }
 function playbackLoginProvider(song) {

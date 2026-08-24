@@ -83,6 +83,10 @@ function currentAlbumKey(song) {
     var spotifyAlbumId = song.albumId || song.spotifyAlbumId || '';
     return spotifyAlbumId ? 'spotify:' + spotifyAlbumId : '';
   }
+  if (provider === 'apple') {
+    var appleAlbumId = song.albumId || song.appleAlbumId || '';
+    return appleAlbumId ? 'apple:' + appleAlbumId : '';
+  }
   if (provider === 'netease') {
     var albumId = song.albumId || song.album_id || '';
     return albumId ? 'netease:' + albumId : '';
@@ -107,6 +111,10 @@ function albumDetailUrlForSong(song) {
     var spotifyAlbumId = song && (song.albumId || song.spotifyAlbumId || '');
     return spotifyAlbumId ? '/api/spotify/album/detail?id=' + encodeURIComponent(spotifyAlbumId) + '&limit=100' : '';
   }
+  if (provider === 'apple') {
+    var appleAlbumId = song && (song.albumId || song.appleAlbumId || '');
+    return appleAlbumId ? '/api/apple/album/detail?id=' + encodeURIComponent(appleAlbumId) + '&limit=100' : '';
+  }
   if (provider === 'netease') {
     var albumId = song && (song.albumId || song.album_id || '');
     return albumId ? '/api/album/detail?id=' + encodeURIComponent(albumId) + '&limit=120' : '';
@@ -125,6 +133,7 @@ function albumCollectionConfig(song) {
   if (!albumId) return null;
   if (provider === 'netease') return { provider: provider, id: String(albumId), endpoint: '/api/album/subscribe', field: 'subscribed', label: '网易云' };
   if (provider === 'spotify') return { provider: provider, id: String(albumId), endpoint: '/api/spotify/album/like', field: 'like', label: 'Spotify' };
+  if (provider === 'apple') return { provider: provider, id: String(albumId), endpoint: '/api/apple/album/like', field: 'like', label: 'Apple Music' };
   if (provider === 'qishui') return { provider: provider, id: String(albumId), endpoint: '/api/qishui/album/collect', field: 'collected', label: '汽水音乐' };
   return null;
 }
@@ -159,6 +168,9 @@ function syncAlbumCollectionState(song) {
     responseField = 'subscribed';
   } else if (config.provider === 'spotify') {
     url = '/api/spotify/album/like/check?ids=' + encodeURIComponent(config.id);
+    responseField = 'liked';
+  } else if (config.provider === 'apple') {
+    url = '/api/apple/album/like/check?ids=' + encodeURIComponent(config.id);
     responseField = 'liked';
   }
   if (!url) return;
@@ -1164,6 +1176,19 @@ var SONG_ACCOUNT_ACTION_ADAPTERS = {
     playlistCreateUrl: '/api/spotify/playlist/create',
     playlistTracksUrl: '/api/spotify/playlist/tracks'
   },
+  apple: {
+    provider: 'apple',
+    label: 'Apple Music',
+    like: true,
+    collect: true,
+    createPlaylist: false,
+    likeCheckUrl: '/api/apple/song/like/check',
+    likeCheckParam: 'ids',
+    likeUrl: '/api/apple/song/like',
+    playlistAddUrl: '',
+    playlistCreateUrl: '',
+    playlistTracksUrl: '/api/apple/playlist/tracks'
+  },
   qishui: {
     provider: 'qishui',
     label: '汽水音乐',
@@ -1189,6 +1214,7 @@ var SONG_ACCOUNT_ACTION_ADAPTERS = {
 function songAccountProvider(song) {
   if (!song || song.type === 'local' || song.type === 'podcast' || song.source === 'podcast') return 'local';
   if (typeof songProviderKey === 'function') return songProviderKey(song);
+  if (song.provider === 'apple' || song.source === 'apple' || song.type === 'apple' || song.appleId || song.appleUrl || song.isrc) return 'apple';
   if (song.provider === 'spotify' || song.source === 'spotify' || song.type === 'spotify' || song.spotifyId || song.spotifyUri) return 'spotify';
   if (song.provider === 'qq' || song.source === 'qq' || song.type === 'qq') return 'qq';
   if (song.provider === 'qishui' || song.source === 'qishui' || song.type === 'qishui') return 'qishui';
@@ -1209,6 +1235,9 @@ function songAccountIdentityValues(song, provider) {
     raw = [song.spotifyId, song.providerSongId, song.id];
     var uri = String(song.spotifyUri || song.uri || '');
     if (/^spotify:track:/i.test(uri)) raw.push(uri.split(':').pop());
+  } else if (provider === 'apple') {
+    // Apple Music library matching prefers the ISRC; fall back to catalog id.
+    raw = [song.isrc, song.appleIsrc, song.appleId, song.providerSongId, song.id];
   } else if (provider === 'qishui') {
     raw = [song.providerSongId, song.trackId, song.track_id, song.id];
   } else {
@@ -1234,9 +1263,10 @@ function songAccountStateKey(song) {
 }
 function playlistAccountProvider(playlist) {
   var provider = String(playlist && (playlist.provider || playlist.source) || '').toLowerCase();
-  return /^(netease|qq|kugou|qishui|spotify)$/.test(provider) ? provider : 'netease';
+  return /^(netease|qq|kugou|qishui|spotify|apple)$/.test(provider) ? provider : 'netease';
 }
 function songAccountLoginStatus(provider) {
+  if (provider === 'apple') return appleLoginStatus || {};
   if (provider === 'spotify') return spotifyLoginStatus || {};
   if (provider === 'qishui') return qishuiLoginStatus || {};
   if (provider === 'kugou') return kugouLoginStatus || {};

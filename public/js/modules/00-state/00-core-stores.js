@@ -31,6 +31,9 @@ var kugouLoginAutoRefreshTimer = null;
 var qishuiLoginAutoRefreshTimer = null;
 var spotifyLoginStatus = { provider: 'spotify', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Spotify', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match' };
 var spotifyLoginAutoRefreshTimer = null;
+var appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+var appleLoginAutoRefreshTimer = null;
+var appleLoginWasLoggedIn = false;
 var qqLoginWasLoggedIn = false;
 var kugouLoginWasLoggedIn = false;
 var qishuiLoginWasLoggedIn = false;
@@ -44,6 +47,8 @@ var qishuiTokenBusy = false;
 var qishuiOAuthBusy = false;
 var spotifyConfigBusy = false;
 var spotifyOAuthBusy = false;
+var appleConfigBusy = false;
+var appleOAuthBusy = false;
 var neteaseWebLoginBusy = false;
 var qqWebLoginBusy = false;
 var kugouWebLoginBusy = false;
@@ -69,7 +74,7 @@ var AUDIO_FADE_IN_MS = audioFadePreference.fadeInMs;
 var AUDIO_FADE_OUT_MS = audioFadePreference.fadeOutMs;
 var AUDIO_SILENCE_GAIN = 0.0001;
 var audioFadeEnvelope = 1;
-var userPlaylists = [], neteasePlaylists = [], qqPlaylists = [], kugouPlaylists = [], qishuiPlaylists = [], spotifyPlaylists = [], myPodcastCollections = [], myPodcastItems = {}, playlistCoverCache = {};
+var userPlaylists = [], neteasePlaylists = [], qqPlaylists = [], kugouPlaylists = [], qishuiPlaylists = [], spotifyPlaylists = [], applePlaylists = [], myPodcastCollections = [], myPodcastItems = {}, playlistCoverCache = {};
 var queueHydrationState = {
   token: 0,
   active: false,
@@ -109,7 +114,7 @@ var AUDIO_INPUT_BRIDGE_STORE_KEY = 'mineradio-audio-input-bridge-v1';
 var PROVIDER_VIP_AUDIT_STORE_KEY = 'mineradio-provider-vip-audit-v1';
 var QQ_PLAYBACK_VIP_EVIDENCE_STORE_KEY = 'mineradio-qq-playback-vip-evidence-v1';
 var LOGIN_COOKIE_EXPORT_STORE_KEY = 'mineradio-login-cookie-export-v1';
-var PLAYBACK_QUALITY_DEFAULTS = { netease: 'hires', qq: 'lossless', kugou: 'lossless', qishui: 'standard', spotify: 'standard' };
+var PLAYBACK_QUALITY_DEFAULTS = { netease: 'hires', qq: 'lossless', kugou: 'lossless', qishui: 'standard', spotify: 'standard', apple: 'standard' };
 var PLAYBACK_QUALITY_OPTIONS = {
   netease: [
     { key: 'jymaster', title: '超清母带', sub: 'SVIP / 最高规格', svip: true },

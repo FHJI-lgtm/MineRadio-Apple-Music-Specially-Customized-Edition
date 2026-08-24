@@ -1,7 +1,7 @@
 var loginRefreshRequestSeq = 0;
 var loginWorkflowDrag = null;
 var LOGIN_WORKFLOW_CONNECTION_STORE_KEY = 'mineradio-login-workflow-connections-v1';
-var LOGIN_WORKFLOW_PROVIDERS = ['netease', 'qq', 'kugou', 'qishui', 'spotify'];
+var LOGIN_WORKFLOW_PROVIDERS = ['netease', 'qq', 'kugou', 'qishui', 'spotify', 'apple'];
 var loginWorkflowPendingProvider = '';
 var loginWorkflowVerifiedSession = {};
 var loginProviderPointer = null;
@@ -16,15 +16,16 @@ function isLoginRefreshCurrent(provider, seq) {
 }
 
 function normalizeLoginProviderKey(provider) {
-  return provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : 'netease')));
+  return provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : (provider === 'apple' ? 'apple' : 'netease'))));
 }
 function loginProviderSupportsCookieMode(provider) {
   provider = normalizeLoginProviderKey(provider);
-  return provider !== 'spotify' && provider !== 'qishui';
+  return provider !== 'spotify' && provider !== 'qishui' && provider !== 'apple';
 }
 function loginProviderOfficialModeText(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'spotify') return { title: 'OAuth', sub: '弹出 Spotify 授权窗口' };
+  if (provider === 'apple') return { title: '官方登录', sub: '弹出 Apple Music 登录窗口' };
   if (provider === 'qishui') return { title: '扫码', sub: '使用抖音 App 官方授权' };
   if (provider === 'kugou') return { title: '官网', sub: '弹出酷狗官方窗口' };
   return { title: '扫码', sub: '连接后弹出官方窗口' };
@@ -504,7 +505,7 @@ function connectLoginMode(mode) {
   markLoginNodeConnecting();
   if (mode === 'cookie') {
     if (!loginProviderSupportsCookieMode(loginProvider)) {
-      showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : 'Spotify 使用官方 OAuth 登录');
+      showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : (loginProvider === 'apple' ? 'Apple Music 使用官方登录窗口或手动 token' : 'Spotify 使用官方 OAuth 登录'));
       return;
     }
     setManualCookieOpenForProvider(loginProvider, true);
@@ -691,6 +692,66 @@ function openQishuiPublicSearch() {
   }
   showToast('汽水搜索已切换为匹配源');
 }
+function appleLoginStatusText(info) {
+  info = info || appleLoginStatus || {};
+  if (info.loggedIn) return 'Apple Music 已连接 / ' + (info.nickname || 'Apple Music') + ' / 可同步用户歌单与资料库；播放按匹配源自动换源';
+  if (info.reauthRequired) return 'Apple Music 登录态已失效，请重新连接官方登录窗口';
+  if (info.stale) return 'Apple Music 登录已过期，请重新连接官方登录窗口';
+  if (info.localConfigMissing) return 'Apple Music 未连接：先粘贴 Team ID、Key ID 与 P8 私钥保存配置';
+  if (info.privateKeyConfigured) return 'Apple 开发者凭据已保存，点击“连接 Apple Music”打开官方登录窗口（登录 Apple ID 后自动获取 music user token）';
+  if (info.configured || info.searchReady) return 'Apple Music 搜索已可用；登录后可同步用户歌单与资料库';
+  var missing = info.oauthMissing && info.oauthMissing.length ? (' 缺少: ' + info.oauthMissing.join(', ')) : '';
+  return '粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥（在 developer.apple.com 的 MusicKit 配置中获取）' + missing;
+}
+var APPLE_DEVELOPER_CERTIFICATES_URL = 'https://developer.apple.com/account/resources/certificates/list';
+var APPLE_MUSIC_SETUP_GUIDE_URL = 'https://developer.apple.com/documentation/applemusicapi/obtaining_keys_and_authentication_tokens';
+function openAppleDeveloperCertificates() {
+  try { window.open(APPLE_DEVELOPER_CERTIFICATES_URL, '_blank'); } catch (e) { }
+  showToast('已打开 Apple 开发者证书页');
+}
+function openAppleSetupGuide() {
+  try { window.open(APPLE_MUSIC_SETUP_GUIDE_URL, '_blank'); } catch (e) { }
+  showToast('已打开 Apple Music 官方接入文档');
+}
+function parseAppleConfigInput(text) {
+  text = String(text || '').trim();
+  if (!text) return {};
+  var parsed = null;
+  if (/^\s*\{/.test(text)) {
+    try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+  }
+  if (parsed && typeof parsed === 'object') {
+    var source = parsed.apple && typeof parsed.apple === 'object' ? parsed.apple : parsed;
+    return {
+      teamId: source.teamId || source.team_id || source.iss || '',
+      keyId: source.keyId || source.key_id || source.kid || '',
+      privateKey: source.privateKey || source.private_key || source.p8 || source.key || '',
+      musicId: source.musicId || source.music_id || source.clientId || source.client_id || '',
+      storefront: source.storefront || source.country || source.market || ''
+    };
+  }
+  var payload = {};
+  var loose = [];
+  text.split(/[\r\n;]+/).forEach(function (part) {
+    part = String(part || '').trim();
+    if (!part) return;
+    var pair = part.match(/^([A-Za-z0-9_\-\s]+)\s*[:=]\s*(.+)$/);
+    if (!pair) {
+      loose.push(part);
+      return;
+    }
+    var key = pair[1].toLowerCase().replace(/[\s_-]+/g, '');
+    var value = pair[2].trim();
+    if (key === 'teamid' || key === 'iss' || key === 'appleteamid') payload.teamId = value;
+    else if (key === 'keyid' || key === 'kid' || key === 'applekeyid') payload.keyId = value;
+    else if (key === 'privatekey' || key === 'p8' || key === 'key' || key === 'privatekeycontent') payload.privateKey = value;
+    else if (key === 'musicid' || key === 'clientid' || key === 'musickitid') payload.musicId = value;
+    else if (key === 'storefront' || key === 'country' || key === 'market') payload.storefront = value;
+  });
+  if (!payload.teamId && loose.length >= 1) payload.teamId = loose[0];
+  if (!payload.keyId && loose.length >= 2) payload.keyId = loose[1];
+  return payload;
+}
 function updateLoginProviderUi() {
   var meta = platformMeta(loginProvider);
   var isQQ = loginProvider === 'qq';
@@ -779,8 +840,76 @@ function updateLoginProviderUi() {
     updateLoginNodeGraphUi();
     return;
   }
+  var isApple = loginProvider === 'apple';
+  var appleBtn = document.getElementById('login-provider-apple');
+  var canOpenAppleLogin = !!(window.desktopWindow && typeof window.desktopWindow.openAppleMusicLogin === 'function');
+  var appleBusy = !!(appleConfigBusy || appleOAuthBusy);
+  if (isApple) {
+    if (neteaseBtn) neteaseBtn.classList.toggle('active', false);
+    if (qqBtn) qqBtn.classList.toggle('active', false);
+    if (kugouBtn) kugouBtn.classList.toggle('active', false);
+    if (qishuiBtn) qishuiBtn.classList.toggle('active', false);
+    if (spotifyBtn) spotifyBtn.classList.toggle('active', false);
+    if (appleBtn) appleBtn.classList.toggle('active', true);
+    if (title) title.textContent = '连接 Apple Music';
+    if (desc) desc.innerHTML = canOpenAppleLogin
+      ? '先粘贴 <b>Apple 开发者凭据</b>（Team ID / Key ID / P8 私钥）保存，然后打开官方登录窗口登录 Apple ID，自动获取 music user token。'
+      : '当前环境不支持桌面授权桥；请在 Mineradio 桌面版中连接 Apple Music。';
+    if (shell) {
+      shell.classList.add('web-login-preview');
+      shell.classList.remove('qq-preview', 'netease-preview');
+    }
+    if (qqPanel) {
+      qqPanel.classList.add('show', 'spotify-guide-panel');
+    }
+    if (qqCookieToggle) qqCookieToggle.classList.remove('show');
+    if (qqCookieInput) qqCookieInput.placeholder = appleLoginStatus.privateKeyConfigured
+      ? '已保存开发者凭据；可粘贴新的 Team ID / Key ID / 私钥 覆盖（每行一项，或粘贴 JSON）'
+      : '粘贴 Apple 开发者凭据：Team ID、Key ID、P8 私钥（每行一项，或粘贴 JSON）';
+    if (qqCookieNote) qqCookieNote.innerHTML =
+      '<div class="spotify-guide-title">Apple Music 接入三步</div>' +
+      '<div class="spotify-guide-steps">' +
+        '<span>1. 在 Apple 开发者后台创建 MusicKit Key（ES256），下载 .p8 私钥</span>' +
+        '<span>2. 把 Team ID、Key ID、P8 私钥内容粘贴到输入框并保存</span>' +
+        '<span>3. 点“连接 Apple Music”，在官方窗口登录 Apple ID</span>' +
+      '</div>' +
+      '<div class="spotify-guide-actions">' +
+        '<button type="button" class="spotify-guide-link" onclick="openAppleDeveloperCertificates()">开发者证书页</button>' +
+        '<button type="button" class="spotify-guide-link" onclick="openAppleSetupGuide()">官方接入文档</button>' +
+        '<span>搜索只用开发者凭据；歌单/收藏需要登录 Apple ID</span>' +
+      '</div>' +
+      '<div class="apple-manual-token-row">' +
+        '<small>备用：粘贴 music user token（浏览器登录 music.apple.com 后取 Cookie 中的 media-user-token）</small>' +
+        '<input id="apple-manual-token-input" type="password" autocomplete="off" placeholder="粘贴 media-user-token 后点击保存登录态" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:inherit;font-size:12px;margin-top:8px">' +
+        '<button type="button" class="spotify-guide-link" onclick="submitAppleManualToken()" style="margin-top:8px">保存手动 token</button>' +
+      '</div>';
+    if (qqCookieSaveBtn) {
+      qqCookieSaveBtn.disabled = appleBusy;
+      qqCookieSaveBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : '保存并连接');
+    }
+    if (qqCard) {
+      qqCard.style.display = '';
+      qqCard.disabled = appleBusy || !canOpenAppleLogin || !appleLoginStatus.privateKeyConfigured;
+      var amCardMark = qqCard.querySelector('b');
+      var amCardLabel = qqCard.querySelector('span');
+      if (amCardMark) amCardMark.textContent = 'AM';
+      if (amCardLabel) amCardLabel.textContent = appleOAuthBusy ? '等待 Apple Music 登录' : (appleLoginStatus.privateKeyConfigured ? '打开 Apple Music 登录' : '先保存开发者凭据');
+    }
+    if (st) {
+      st.className = 'preview';
+      st.textContent = appleLoginStatusText();
+    }
+    if (refreshBtn) {
+      refreshBtn.disabled = appleBusy || !canOpenAppleLogin;
+      refreshBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : (appleLoginStatus.privateKeyConfigured ? '连接 Apple Music' : '保存并连接'));
+      refreshBtn.onclick = appleLoginStatus.privateKeyConfigured ? openAppleWebLogin : submitAppleConfigLogin;
+    }
+    updateLoginNodeGraphUi();
+    return;
+  }
   if (qqPanel) qqPanel.classList.remove('spotify-guide-panel');
   if (spotifyBtn) spotifyBtn.classList.toggle('active', false);
+  if (appleBtn) appleBtn.classList.toggle('active', false);
   if (neteaseBtn) neteaseBtn.classList.toggle('active', loginProvider === 'netease');
   if (qqBtn) qqBtn.classList.toggle('active', isQQ);
   if (kugouBtn) kugouBtn.classList.toggle('active', isKugou);
@@ -858,6 +987,20 @@ async function refreshQr() {
     if (spotifyStatus) {
       spotifyStatus.textContent = spotifyLoginStatusText(spotifyInfo);
       spotifyStatus.className = 'preview';
+    }
+    return;
+  }
+  if (loginProvider === 'apple') {
+    qrKey = null;
+    var appleStatus = document.getElementById('qr-status');
+    var appleImg = document.getElementById('qr-img');
+    if (appleImg) appleImg.src = '';
+    var appleInfo = await refreshAppleLoginStatus();
+    if (!isLoginRefreshCurrent(refreshProvider, refreshSeq)) return;
+    updateLoginProviderUi();
+    if (appleStatus) {
+      appleStatus.textContent = appleLoginStatusText(appleInfo);
+      appleStatus.className = 'preview';
     }
     return;
   }
@@ -1048,7 +1191,7 @@ async function pollQishuiQr(generation) {
   }
 }
 function toggleQQCookiePanel() {
-  if (loginProvider === 'spotify') return;
+  if (loginProvider === 'spotify' || loginProvider === 'apple') return;
   setManualCookieOpenForProvider(loginProvider, !isManualCookieOpenForProvider(loginProvider));
   updateLoginProviderUi();
 }
@@ -1057,6 +1200,7 @@ function openProviderWebLogin() {
   if (loginProvider === 'kugou') return openKugouWebLogin();
   if (loginProvider === 'qishui') return openQishuiWebLogin();
   if (loginProvider === 'spotify') return openSpotifyWebLogin();
+  if (loginProvider === 'apple') return openAppleWebLogin();
   return openNeteaseWebLogin();
 }
 async function openSpotifyWebLogin() {
@@ -1148,6 +1292,132 @@ async function submitSpotifyConfigLogin() {
     updateLoginProviderUi();
   }
   if (shouldOpenOAuth) await openSpotifyWebLogin();
+}
+async function openAppleWebLogin() {
+  if (appleOAuthBusy) return;
+  var statusEl = document.getElementById('qr-status');
+  var api = window.desktopWindow;
+  if (!api || !api.isDesktop || typeof api.openAppleMusicLogin !== 'function') {
+    updateLoginProviderUi();
+    if (statusEl) { statusEl.textContent = '当前环境不支持 Apple Music 本地登录桥，请使用 Mineradio 桌面版。'; statusEl.className = 'fail'; }
+    return;
+  }
+  if (!appleLoginStatus.privateKeyConfigured && !appleLoginStatus.tokenConfigured) {
+    var latestStatus = await refreshAppleLoginStatus();
+    if (!latestStatus.privateKeyConfigured && !latestStatus.tokenConfigured) {
+      updateLoginProviderUi();
+      if (statusEl) { statusEl.textContent = '先粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥，然后点击“保存并连接”。'; statusEl.className = 'fail'; }
+      return;
+    }
+  }
+  appleOAuthBusy = true;
+  updateLoginProviderUi();
+  if (statusEl) { statusEl.textContent = '正在打开 Apple Music 官方登录窗口，请在窗口中登录 Apple ID…'; statusEl.className = 'preview'; }
+  var failText = '';
+  try {
+    var result = await api.openAppleMusicLogin();
+    if (!result || !result.ok) {
+      if (result && result.error === 'APPLE_MUSIC_CREDENTIALS_REQUIRED') {
+        throw new Error(result.message || '请先保存 Apple 开发者凭据');
+      }
+      throw new Error((result && (result.message || result.error)) || 'Apple Music 登录未完成');
+    }
+    if (statusEl) { statusEl.textContent = '正在同步 Apple Music 账号、资料库和歌单…'; statusEl.className = 'preview'; }
+    var info = await refreshAppleLoginStatus();
+    if (!info || !info.loggedIn) throw new Error((info && (info.message || info.error)) || 'Apple Music 登录态不可用');
+    activeAccountProvider = 'apple';
+    renderUserBtn();
+    await refreshUserPlaylists(true);
+    loadHomeDiscover(true);
+    if (statusEl) { statusEl.textContent = 'Apple Music 已连接'; statusEl.className = 'scan'; }
+    offerLoginCookieExport('apple', info);
+    setTimeout(function () {
+      closeLoginModal();
+      showToast('Apple Music 已连接: ' + (info.nickname || info.userId || ''));
+    }, 420);
+  } catch (e) {
+    failText = e && e.message ? e.message : 'Apple Music 登录失败';
+    if (statusEl) { statusEl.textContent = failText; statusEl.className = 'fail'; }
+  } finally {
+    appleOAuthBusy = false;
+    updateLoginProviderUi();
+    if (failText && statusEl) { statusEl.textContent = failText; statusEl.className = 'fail'; }
+  }
+}
+async function submitAppleConfigLogin() {
+  if (appleConfigBusy || appleOAuthBusy) return;
+  var input = document.getElementById('qq-cookie-input');
+  var statusEl = document.getElementById('qr-status');
+  var saveBtn = document.getElementById('qq-cookie-save-btn');
+  var config = parseAppleConfigInput(input ? input.value : '');
+  if (!config.teamId && !config.keyId && !config.privateKey && appleLoginStatus.privateKeyConfigured) return openAppleWebLogin();
+  if (!config.teamId || !config.keyId || !config.privateKey) {
+    if (statusEl) { statusEl.textContent = '请同时粘贴 Team ID、Key ID 与 P8 私钥'; statusEl.className = 'fail'; }
+    if (input) {
+      try { input.focus({ preventScroll: true }); } catch (e) { try { input.focus(); } catch (_) { } }
+    }
+    return;
+  }
+  appleConfigBusy = true;
+  if (saveBtn) saveBtn.classList.add('busy');
+  if (statusEl) { statusEl.textContent = '正在保存 Apple Music 开发者凭据…'; statusEl.className = 'preview'; }
+  updateLoginProviderUi();
+  var shouldOpenLogin = false;
+  try {
+    var info = await apiJson('/api/apple/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    if (!info || info.error || info.ok === false) throw new Error((info && (info.message || info.error)) || 'Apple Music 凭据保存失败');
+    appleLoginStatus = normalizeAppleLoginStatus(info);
+    if (input) input.value = '';
+    if (statusEl) { statusEl.textContent = 'Apple 开发者凭据已保存，正在打开官方登录窗口…'; statusEl.className = 'preview'; }
+    shouldOpenLogin = true;
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = e && e.message ? e.message : 'Apple Music 凭据保存失败'; statusEl.className = 'fail'; }
+  } finally {
+    appleConfigBusy = false;
+    if (saveBtn) saveBtn.classList.remove('busy');
+    updateLoginProviderUi();
+  }
+  if (shouldOpenLogin) await openAppleWebLogin();
+}
+async function submitAppleManualToken() {
+  var input = document.getElementById('apple-manual-token-input');
+  var statusEl = document.getElementById('qr-status');
+  var token = input ? String(input.value || '').trim() : '';
+  if (!token) {
+    if (statusEl) { statusEl.textContent = '先粘贴 music user token（media-user-token）'; statusEl.className = 'fail'; }
+    return;
+  }
+  appleConfigBusy = true;
+  if (statusEl) { statusEl.textContent = '正在校验并保存 Apple Music 登录态…'; statusEl.className = 'preview'; }
+  updateLoginProviderUi();
+  try {
+    var info = await apiJson('/api/apple/login/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ musicUserToken: token })
+    });
+    if (!info || info.error || info.ok === false) throw new Error((info && (info.message || info.error)) || 'Apple Music 登录态保存失败');
+    appleLoginStatus = normalizeAppleLoginStatus(info);
+    if (input) input.value = '';
+    if (statusEl) { statusEl.textContent = 'Apple Music 已连接'; statusEl.className = 'scan'; }
+    activeAccountProvider = 'apple';
+    renderUserBtn();
+    await refreshUserPlaylists(true);
+    loadHomeDiscover(true);
+    setTimeout(function () {
+      closeLoginModal();
+      showToast('Apple Music 已连接: ' + (info.nickname || info.userId || ''));
+    }, 420);
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = e && e.message ? e.message : 'Apple Music 登录态保存失败'; statusEl.className = 'fail'; }
+  } finally {
+    appleConfigBusy = false;
+    updateLoginProviderUi();
+  }
 }
 async function openNeteaseWebLogin() {
   if (neteaseWebLoginBusy) return;
@@ -1307,6 +1577,7 @@ async function openQishuiWebLogin() {
 }
 async function submitQQCookieLogin() {
   if (loginProvider === 'spotify') return submitSpotifyConfigLogin();
+  if (loginProvider === 'apple') return submitAppleConfigLogin();
   if (loginProvider === 'qishui') return openQishuiWebLogin();
   if (loginProvider === 'netease') return submitNeteaseCookieLogin();
   var isKugou = loginProvider === 'kugou';

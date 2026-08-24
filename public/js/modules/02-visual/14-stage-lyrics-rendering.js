@@ -1517,6 +1517,9 @@ function stageLyricPlaybackSeconds() {
   if (preview != null && isFinite(Number(preview))) return Math.max(0, Number(preview));
   var restoreSeconds = stageLyricRestoreWarmupSeconds();
   if (restoreSeconds != null) return restoreSeconds;
+  // 系统媒体（SMTC）外部歌词模式：时间源由外部歌词播放器提供。
+  var externalSeconds = typeof externalStageLyricSeconds === 'function' ? externalStageLyricSeconds() : null;
+  if (externalSeconds != null && isFinite(Number(externalSeconds))) return Math.max(0, Number(externalSeconds));
   return audio && isFinite(Number(audio.currentTime)) ? Math.max(0, Number(audio.currentTime)) : 0;
 }
 function stageLyricProgressSeekVisualReady(seconds) {
@@ -3087,12 +3090,17 @@ function tickLyricsParticles() {
   }
   var previewingSeek = stageLyricProgressPreviewActive();
   var holdLyricsOnPause = !fx || fx.lyricPauseHold !== false;
-  var pausedWithTrack = !!(holdLyricsOnPause && audio && audio.src && audio.paused && !audio.ended && lyricsLines && lyricsLines.length);
-  if (!audio || !lyricsLines.length || (audio && audio.ended)) {
+  var extLyricsActive = typeof externalStageLyricActive === 'function' ? externalStageLyricActive() : false;
+  var extLyricsPlaying = typeof smtcStageIsPlayingExternal === 'function' ? smtcStageIsPlayingExternal() : false;
+  var pausedWithTrack = !!(
+    (holdLyricsOnPause && audio && audio.src && audio.paused && !audio.ended && lyricsLines && lyricsLines.length) ||
+    (holdLyricsOnPause && extLyricsActive && !extLyricsPlaying && lyricsLines && lyricsLines.length)
+  );
+  if ((!audio && !extLyricsActive) || !lyricsLines.length || (audio && audio.ended)) {
     retireCurrentStageLyricForIdle();
     return;
   }
-  if (!playing && !previewingSeek) {
+  if ((!playing && !extLyricsActive) && !previewingSeek) {
     if (pausedWithTrack) {
       if (stageLyrics.current && stageLyrics.current.userData) {
         stageLyrics.current.userData.state = 'in';

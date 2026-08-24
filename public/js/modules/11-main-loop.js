@@ -243,6 +243,11 @@ function capMainLoopFpsForBudget(fps, minFps) {
 }
 function targetMainAudioFps(now) {
   if (isDeepBackgroundMode()) return 1;
+  // External Audio (AudioAdapter) 激活时按显示刷新率全速分析,
+  // 保证假/真实外部音频的包络平滑, 不会因 idle 24fps 门控出现台阶
+  if (typeof externalAudioActive === 'function' && externalAudioActive()) {
+    return capMainLoopFpsToDisplay(60);
+  }
   var scale = (typeof runtimeAudioAnalysisScale === 'function') ? runtimeAudioAnalysisScale() : 1;
   if (playing && audio && !audio.paused) {
     var base = mainLoopInteractionActive(now) ? 72 : 54;
@@ -292,6 +297,16 @@ function targetMainDesktopOverlayFps(now) {
     return Math.max(24, Math.min(120, Number(fx.desktopLyricsFps) || 60));
   }
   return 6;
+}
+// 安全时间源: 内部播放用 audio.currentTime; 外部音频模式(SMTC/Apple Music)用
+// SMTC position —— 严禁在 audio=null 时直接读 audio.currentTime (会每帧 TypeError)。
+function safeAudioTime() {
+  if (audio && audio.src && !audio.paused && isFinite(audio.currentTime)) return audio.currentTime;
+  if (typeof smtcPositionSecondsNow === 'function') {
+    var t = smtcPositionSecondsNow();
+    if (isFinite(t) && t >= 0) return t;
+  }
+  return 0;
 }
 function animate() {
   mainLoopAnimationRequested = false;
@@ -359,10 +374,27 @@ function animate() {
     ? getSonicAudioMonitorSnapshot().frame
     : null;
   if (audioStepDt > 0) {
-  if (analyser && playing && audio && !audio.paused) {
+  var externalAudioFrame = (typeof externalAudioActive === 'function' && externalAudioActive());
+  var internalAudioFrame = analyser && playing && audio && !audio.paused;
+  if (externalAudioFrame) {
+    if (typeof smtcAudioFillFrame === 'function') smtcAudioFillFrame();
+    // 一次性诊断: 证明外部音频门控真的打开、主循环真的在跑 (仅首次, 非每帧)
+    if (!window.__smtcDiagVisualizerLogged) {
+      window.__smtcDiagVisualizerLogged = true;
+      console.log('[VISUALIZER] externalAudioActive=' + externalAudioFrame +
+        ' playing=' + !!playing + ' audio=' + (audio ? 'yes' : 'null') +
+        ' analyser=' + (analyser ? 'yes' : 'null') +
+        ' frequencyData[0]=' + (frequencyData ? frequencyData[0] : 'n/a') +
+        ' frequencyData[100]=' + (frequencyData ? frequencyData[100] : 'n/a') +
+        ' frequencyData[500]=' + (frequencyData ? frequencyData[500] : 'n/a') +
+        ' timeDomainData[0]=' + (timeDomainData ? timeDomainData[0] : 'n/a'));
+    }
+  } else if (internalAudioFrame) {
     if (audioCtx && audioCtx.state === 'suspended') resumeAudioAnalysis();
     analyser.getByteFrequencyData(frequencyData);
     analyser.getByteTimeDomainData(timeDomainData);
+  }
+  if (externalAudioFrame || internalAudioFrame) {
     var len = frequencyData.length;
     // 精确频段
     var kickEnd = 7;                          // 60-150 Hz, 鼓 kick
@@ -471,7 +503,7 @@ function animate() {
         beat: beatPulse,
         sampleRate: analysisSampleRate,
         fftSize: analysisFftSize,
-        currentTime: audio.currentTime || 0
+        currentTime: safeAudioTime()
       });
       if (fx && fx.sonicAudioMonitorEnabled !== false) sonicAudioFrame = sonicMonitorFrame;
     }
@@ -531,6 +563,20 @@ function animate() {
     lyricSunAvg *= Math.pow(0.995, audioIdleDecay);
     lyricSunPeak = Math.max(0.48, lyricSunPeak * Math.pow(0.997, audioIdleDecay));
   }
+  // Phase 3 排查 debug: 500ms 限流, 输出粒子实际消费的音频驱动值
+  // (smooth* = 分析原始值; bass/mid/treble/audioEnergy = 上一帧最终 uniform 值, 含 fx.intensity)
+  if (now - (window.__smtcParticleDbgAt || 0) >= 500) {
+    window.__smtcParticleDbgAt = now;
+    console.log('[PARTICLE] animation bass=' + (typeof bass !== 'undefined' ? bass.toFixed(3) : 'n/a') +
+      ' mid=' + (typeof mid !== 'undefined' ? mid.toFixed(3) : 'n/a') +
+      ' treble=' + (typeof treble !== 'undefined' ? treble.toFixed(3) : 'n/a') +
+      ' energy=' + smoothEnergy.toFixed(3) +
+      ' beatPulse=' + beatPulse.toFixed(3) +
+      ' smoothBass=' + smoothBass.toFixed(3) +
+      ' frequencyData[8]=' + (frequencyData && frequencyData[8] != null ? frequencyData[8] : 'n/a') +
+      ' frequencyData[32]=' + (frequencyData && frequencyData[32] != null ? frequencyData[32] : 'n/a') +
+      ' externalAudioActive=' + externalAudioFrame);
+  }
   }
   if (perfProbe && perfProbe.markSince) perfProbe.markSince('audio.analysis', audioPerfStart);
   audioEnergy = Math.max(smoothEnergy, beatPulse * 0.30);
@@ -565,11 +611,31 @@ function animate() {
 
   var visualUniformPerfStart = performance.now();
   updateParticlePointerFrame();
+  // TRACE: 视觉系统读取的音频参数 (写入 uniforms 前, 500ms 限流)
+  if (now - (window.__smtcVisualTraceAt || 0) >= 500) {
+    window.__smtcVisualTraceAt = now;
+    console.log('[TRACE VISUAL AUDIO] bass=' + bass.toFixed(3) +
+      ' mid=' + mid.toFixed(3) + ' treble=' + treble.toFixed(3) +
+      ' energy=' + audioEnergy.toFixed(3) + ' beatPulse=' + beatPulse.toFixed(3) +
+      ' smoothBass=' + smoothBass.toFixed(3) +
+      ' fx.intensity=' + (fx && typeof fx.intensity === 'number' ? fx.intensity.toFixed(3) : 'n/a') +
+      ' frequencyData[8]=' + (frequencyData && frequencyData[8] != null ? frequencyData[8] : 'n/a') +
+      ' frequencyData[32]=' + (frequencyData && frequencyData[32] != null ? frequencyData[32] : 'n/a'));
+  }
   uniforms.uBass.value = bass;
   uniforms.uMid.value = mid;
   uniforms.uTreble.value = treble;
   uniforms.uBeat.value = beatPulse;
   uniforms.uEnergy.value = audioEnergy;
+  // TRACE: uniforms 实际值 (粒子 shader 真正读到的东西, 500ms 限流)
+  if (now - (window.__smtcVisualParamsAt || 0) >= 500) {
+    window.__smtcVisualParamsAt = now;
+    console.log('[TRACE VISUAL PARAMS] uBass=' + uniforms.uBass.value.toFixed(3) +
+      ' uMid=' + uniforms.uMid.value.toFixed(3) +
+      ' uTreble=' + uniforms.uTreble.value.toFixed(3) +
+      ' uBeat=' + uniforms.uBeat.value.toFixed(3) +
+      ' uEnergy=' + uniforms.uEnergy.value.toFixed(3));
+  }
   uniforms.uMouseXY.value.set(mouseWorld.x, mouseWorld.y);
   uniforms.uMouseActive.value = mouseActive ? 1 : 0;
   var sonicPresetActiveEarly = window.MineradioSonicTopography && MineradioSonicTopography.isActive(fx);

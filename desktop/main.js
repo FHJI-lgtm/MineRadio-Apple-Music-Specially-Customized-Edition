@@ -29,6 +29,12 @@ const {
   exchangeSpotifyOAuthCode,
   clearSpotifyToken,
 } = require('../spotify-api');
+const {
+  getAppleConfig,
+  getAppleCredentials,
+  saveAppleUserToken,
+  clearAppleToken,
+} = require('../apple-music-api');
 
 registerWallpaperEngineScheme(protocol);
 registerLocalMusicScheme(protocol);
@@ -128,6 +134,9 @@ const KUGOU_LOGIN_PARTITION = 'persist:mineradio-kugou-login';
 const KUGOU_LOGIN_URL = 'https://www.kugou.com/';
 const KUGOU_LOGIN_WARMUP_URL = 'https://www.kugou.com/newuc/user/uc/type=edit';
 const SPOTIFY_LOGIN_PARTITION = 'persist:mineradio-spotify-login';
+const APPLE_LOGIN_PARTITION = 'persist:mineradio-apple-login';
+const APPLE_MEDIA_USER_TOKEN_COOKIE = 'media-user-token';
+const appleMusicLoginUrl = (storefront) => 'https://music.apple.com/' + encodeURIComponent(String(storefront || 'us').toLowerCase());
 
 // Keep app-owned settings and provider credentials independent from the
 // user-selectable Chromium cache. app.setName() must run before the first
@@ -3169,6 +3178,173 @@ async function clearSpotifyMusicLoginSession() {
   return { ok: true, provider: 'spotify' };
 }
 
+// ------------------------------------------------------------
+// Apple Music login window
+//
+// Apple Music has no open full-track streaming API. The developer token
+// (Team ID + Key ID + P8 private key) is required for every request; the
+// music user token is obtained by signing into the Apple Music web app in
+// a dedicated window and reading the `media-user-token` cookie Apple sets
+// after a successful sign-in. The same cookie value is what the Apple
+// Music web player itself uses, so it is a valid Music-User-Token for the
+// Apple Music API.
+// ------------------------------------------------------------
+async function readAppleMediaUserToken(cookieSession) {
+  try {
+    const cookies = await cookieSession.cookies.get({ name: APPLE_MEDIA_USER_TOKEN_COOKIE });
+    const candidates = (cookies || []).filter((cookie) => {
+      const domain = String(cookie.domain || '').toLowerCase();
+      return domain.indexOf('apple.com') >= 0;
+    });
+    for (const cookie of candidates) {
+      const value = String(cookie.value || '').trim();
+      if (value && value.length > 40) return value;
+    }
+    return '';
+  } catch (err) {
+    console.warn('[AppleMusicLogin] media-user-token read failed:', err.message);
+    return '';
+  }
+}
+
+async function openAppleMusicLoginWindow(owner) {
+  const credentials = getAppleCredentials();
+  if (!credentials.configured) {
+    return {
+      ok: false,
+      provider: 'apple',
+      error: 'APPLE_MUSIC_CREDENTIALS_REQUIRED',
+      missing: credentials.missing,
+      message: 'Apple Music 登录需要先配置 Apple 开发者 Team ID、Key ID 与 P8 私钥。',
+    };
+  }
+  const cookieSession = session.fromPartition(APPLE_LOGIN_PARTITION);
+  const initialToken = await readAppleMediaUserToken(cookieSession);
+  if (initialToken) {
+    try {
+      await saveAppleUserToken({ musicUserToken: initialToken, storefront: credentials.storefront });
+      return { ok: true, provider: 'apple', reused: true, message: 'Apple Music 已连接（复用上次会话）。' };
+    } catch (err) {
+      console.warn('[AppleMusicLogin] reused token rejected, opening sign-in window:', err.message);
+    }
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let pollTimer = null;
+
+    const loginWindow = new BrowserWindow({
+      width: 1060,
+      height: 780,
+      minWidth: 860,
+      minHeight: 620,
+      parent: owner && !owner.isDestroyed() ? owner : undefined,
+      modal: false,
+      show: false,
+      autoHideMenuBar: true,
+      title: 'Apple Music 登录',
+      backgroundColor: '#101014',
+      icon: APP_ICON_ICO,
+      webPreferences: {
+        partition: APPLE_LOGIN_PARTITION,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const finish = async (result) => {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
+      resolve(result);
+    };
+
+    const trySaveToken = async (token) => {
+      if (settled || !token) return false;
+      try {
+        const saved = await saveAppleUserToken({ musicUserToken: token, storefront: credentials.storefront });
+        await finish(Object.assign({ ok: true, provider: 'apple', opened: true }, saved, {
+          message: 'Apple Music 登录成功，可同步用户歌单与资料库；播放仍会自动换源。',
+        }));
+        return true;
+      } catch (err) {
+        console.warn('[AppleMusicLogin] token rejected:', err.message);
+        return false;
+      }
+    };
+
+    const checkToken = async () => {
+      try {
+        const token = await readAppleMediaUserToken(cookieSession);
+        if (token) await trySaveToken(token);
+      } catch (e) {
+        console.warn('Apple Music login cookie check failed:', e.message);
+      }
+    };
+
+    // React as soon as Apple sets the media-user-token cookie, then keep a
+    // slow poll as a safety net (the cookie change event is reliable but a
+    // polling fallback costs nothing).
+    const cookieChangedHandler = (_event, cookie) => {
+      if (String(cookie.name || '') !== APPLE_MEDIA_USER_TOKEN_COOKIE) return;
+      if (String(cookie.domain || '').toLowerCase().indexOf('apple.com') < 0) return;
+      const value = String(cookie.value || '').trim();
+      if (value && value.length > 40) {
+        trySaveToken(value).catch(() => {});
+      }
+    };
+    cookieSession.cookies.on('changed', cookieChangedHandler);
+
+    loginWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\/([^/]*\.)?(apple\.com|appleid\.apple\.com|idmsa\.apple\.com)/i.test(url)) {
+        loginWindow.loadURL(url).catch((e) => console.warn('Apple Music login popup navigation failed:', e.message));
+      } else if (/^https?:\/\//i.test(url)) {
+        shell.openExternal(url).catch(() => {});
+      }
+      return { action: 'deny' };
+    });
+
+    loginWindow.webContents.on('will-navigate', (event, url) => {
+      if (/^https?:\/\/([^/]*\.)?apple\.com/i.test(String(url || ''))) return;
+      event.preventDefault();
+      if (/^https?:\/\//i.test(String(url || ''))) shell.openExternal(url).catch(() => {});
+    });
+
+    loginWindow.webContents.on('did-finish-load', () => checkToken());
+    loginWindow.on('ready-to-show', () => loginWindow.show());
+    loginWindow.on('closed', () => {
+      cookieSession.cookies.removeListener('changed', cookieChangedHandler);
+      if (settled) return;
+      if (pollTimer) clearInterval(pollTimer);
+      readAppleMediaUserToken(cookieSession).then((token) => {
+        if (token) {
+          trySaveToken(token).then((saved) => {
+            if (!saved) resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录未完成，请重新打开登录窗口。' });
+          });
+        } else {
+          resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭，未检测到登录态。' });
+        }
+      }).catch(() => {
+        resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭。' });
+      });
+    });
+
+    pollTimer = setInterval(checkToken, 2500);
+    loginWindow.loadURL(appleMusicLoginUrl(credentials.storefront)).catch((e) => finish({ ok: false, provider: 'apple', error: e.message || 'Apple Music 登录页打开失败' }));
+  });
+}
+
+async function clearAppleMusicLoginSession() {
+  const cookieSession = session.fromPartition(APPLE_LOGIN_PARTITION);
+  await cookieSession.clearStorageData({
+    storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage'],
+  });
+  clearAppleToken();
+  return { ok: true, provider: 'apple' };
+}
+
 function loginEasterEggLockedResult() {
   return {
     ok: false,
@@ -3203,6 +3379,7 @@ async function clearAllProviderLoginState(reason) {
     clearKugouMusicLoginSession(),
     clearQishuiMusicLoginSession(),
     clearSpotifyMusicLoginSession(),
+    clearAppleMusicLoginSession(),
   ]);
   const failed = results.find((result) => result.status === 'rejected');
   if (failed) throw failed.reason;
@@ -4494,6 +4671,7 @@ function loginCookieExportMeta(provider) {
     kugou: { label: '酷狗音乐', files: [process.env.KUGOU_COOKIE_FILE, path.join(userData, '.kugou-cookie')] },
     qishui: { label: '汽水音乐', files: [process.env.QISHUI_COOKIE_FILE, path.join(userData, '.qishui-cookie'), process.env.QISHUI_TOKEN_FILE, path.join(userData, '.qishui-token')] },
     spotify: { label: 'Spotify', files: [process.env.SPOTIFY_TOKEN_FILE, path.join(userData, '.spotify-token.json')] },
+    apple: { label: 'Apple Music', files: [process.env.APPLE_MUSIC_TOKEN_FILE, path.join(userData, '.apple-music-token.json')] },
   };
   return entries[key] || null;
 }
@@ -4617,6 +4795,832 @@ ipcMain.handle('spotify-music-open-login', async (event) => {
 ipcMain.handle('spotify-music-clear-login', async () => {
   return clearSpotifyMusicLoginSession();
 });
+
+ipcMain.handle('apple-music-open-login', async (event) => {
+  if (!loginEasterEggGate.isUnlocked()) return loginEasterEggLockedResult();
+  return openAppleMusicLoginWindow(getSenderWindow(event));
+});
+
+ipcMain.handle('apple-music-clear-login', async () => {
+  return clearAppleMusicLoginSession();
+});
+
+// ============================================================
+// Windows SMTC bridge (external media lyrics mode)
+//
+// A persistent powershell child process reads the Global System
+// Media Transport Controls session (Apple Music for Windows and
+// any other SMTC-capable player) and streams state as JSON lines.
+// The main process relays the latest snapshot to the renderer via
+// 'mineradio-smtc-state'. The renderer owns lyric matching/display.
+// ============================================================
+
+// 生产环境：桥脚本经 extraResources 放到 resources/smtc-bridge.ps1（ASAR 外，
+// PowerShell -File 需要真实文件路径）；开发环境使用项目目录 desktop/。
+function smtcResolveBridgeScript() {
+  const candidates = [];
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, 'smtc-bridge.ps1'));
+  }
+  candidates.push(path.join(__dirname, 'smtc-bridge.ps1'));
+  for (const candidate of candidates) {
+    try { if (fs.existsSync(candidate)) return candidate; } catch (_) {}
+  }
+  return candidates[0];
+}
+// 系统 PowerShell 显式路径，不依赖用户 PATH。
+function smtcResolvePowershellPath() {
+  const root = String(process.env.SystemRoot || process.env.windir || 'C:\\Windows');
+  const candidates = [
+    path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  ];
+  for (const candidate of candidates) {
+    try { if (fs.existsSync(candidate)) return candidate; } catch (_) {}
+  }
+  return 'powershell.exe';
+}
+// 有界文件日志（生产环境）：userData/logs/smtc.log，超 600KB 只保留尾部 200KB。
+function smtcLogFilePath() {
+  if (!app.isPackaged) return '';
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    return path.join(dir, 'smtc.log');
+  } catch (_) { return ''; }
+}
+function smtcAppendLog(line) {
+  const file = smtcLogFilePath();
+  if (!file) return;
+  try {
+    let existing = '';
+    try { existing = fs.readFileSync(file, 'utf8'); } catch (_) {}
+    existing += '[' + new Date().toISOString() + '] ' + String(line || '') + '\n';
+    if (existing.length > 600 * 1024) existing = existing.slice(-200 * 1024);
+    fs.writeFileSync(file, existing, 'utf8');
+  } catch (_) {}
+}
+
+const SMTC_BRIDGE_SCRIPT = smtcResolveBridgeScript();
+const SMTC_POWERSHELL_EXE = smtcResolvePowershellPath();
+let smtcBridgeProcess = null;
+let smtcBridgeBuffer = '';
+// Phase 4B: 播放控制未决请求队列 (bridge 串行处理 stdin 命令, 结果按序返回)
+let smtcControlQueue = [];   // [{seq, command, resolve, timer}]
+let smtcControlSeq = 0;
+let smtcBridgeState = {
+  active: false,
+  title: '',
+  artist: '',
+  album: '',
+  status: '',
+  isPlaying: false,
+  durationMs: 0,
+  positionMs: 0,
+  lastUpdatedMs: 0,
+  source: 'smtc',
+  updatedAt: 0,
+  bridgeReady: false,
+  error: '',
+  debug: '',
+  aumid: '',
+  thumbnail: null,   // Phase 4A: data URL 或 null (仅在 identity 变化时更新)
+};
+let smtcLastThumbnailSent = null;
+let smtcLastThumbIdentityKey = '';
+// Phase 4A.2: 会话内 artwork 基础设施 (不清盘/不持久化, 仅本进程内存)
+const smtcThumbnailCache = new Map();        // identityKey -> data:image/...;base64,...
+const smtcThumbnailInFlight = new Map();     // identityKey -> Promise (同一 identity 去重)
+const SMTC_THUMBNAIL_CACHE_MAX = 100;
+
+let smtcLastBroadcastKey = '';
+let smtcLastBroadcastAt = 0;
+let smtcLastT3LogAt = 0;
+function smtcBridgeBroadcast() {
+  const now = Date.now();
+  // 去重：title/artist/album/duration/status/isPlaying 或 position(0.5s 桶) 无
+  // 有意义变化时不重复发送完整 MediaState；1500ms 内同签名直接跳过。
+  const key = (smtcBridgeState.active ? 1 : 0) + '|' + smtcBridgeState.title + '|' + smtcBridgeState.artist + '|' +
+    smtcBridgeState.album + '|' + smtcBridgeState.status + '|' + (smtcBridgeState.isPlaying ? 1 : 0) + '|' +
+    Math.floor(smtcBridgeState.positionMs / 500) + '|' + smtcBridgeState.durationMs;
+  if (key === smtcLastBroadcastKey && now - smtcLastBroadcastAt < 1500) return;
+  smtcLastBroadcastKey = key;
+  smtcLastBroadcastAt = now;
+  const payload = Object.assign({}, smtcBridgeState, { updatedAt: now });
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+      try {
+        win.webContents.send('mineradio-smtc-state', payload);
+        console.log('[Main][' + now + '] IPC sent (T4): active=' + payload.active + ' title=' + (payload.title || '') + ' artist=' + (payload.artist || ''));
+      } catch (_) {}
+    }
+  });
+}
+
+function smtcBridgeHandleLine(line) {
+  line = String(line || '').trim();
+  if (!line) return;
+  let parsed = null;
+  try { parsed = JSON.parse(line); } catch (_) { return; }
+  if (!parsed || typeof parsed !== 'object') return;
+  if (parsed.type === 'ready') {
+    smtcBridgeState.bridgeReady = true;
+    console.log('[Main] SMTC bridge ready');
+    smtcBridgeBroadcast();
+    return;
+  }
+  if (parsed.type === 'error') {
+    smtcBridgeState.error = String(parsed.message || 'smtc bridge error').slice(0, 300);
+    smtcBridgeState.debug = smtcBridgeState.error;
+    smtcBridgeBroadcast();
+    console.warn('[Main] SMTC bridge error:', smtcBridgeState.error);
+    return;
+  }
+  // Phase 4B: bridge 播放控制结果 -> 解析未决请求
+  if (parsed.type === 'control-result') {
+    const cmd = String(parsed.command || '');
+    const ok = parsed.success === true;
+    const err = String(parsed.error || '');
+    console.log('[Main][' + Date.now() + '] smtc control result: ' + cmd + ' success=' + ok + (err ? ' error=' + err : ''));
+    // 按命令名匹配最早的未决请求 (bridge 串行处理, 同命令 FIFO; 已超时出队的条目跳过)
+    const ctrlIdx = smtcControlQueue.findIndex((e) => e.command === cmd);
+    if (ctrlIdx >= 0) {
+      const entry = smtcControlQueue.splice(ctrlIdx, 1)[0];
+      clearTimeout(entry.timer);
+      entry.resolve({ success: ok, command: entry.command, error: ok ? '' : (err || 'CONTROL_FAILED') });
+    }
+    return;
+  }
+  if (parsed.type !== 'state') return;
+  // T3 日志节流：bridge 每次轮询/事件都发一行，避免高频刷屏日志
+  const t3Now = Date.now();
+  if (t3Now - smtcLastT3LogAt >= 2000) {
+    smtcLastT3LogAt = t3Now;
+    console.log('[Main][' + t3Now + '] state parsed (T3): active=' + parsed.active + ' title=' + String(parsed.title || '') + ' artist=' + String(parsed.artist || '') + ' isPlaying=' + parsed.isPlaying);
+  }
+  smtcBridgeState = Object.assign({}, smtcBridgeState, {
+    active: parsed.active === true,
+    title: String(parsed.title || ''),
+    artist: String(parsed.artist || ''),
+    album: String(parsed.album || ''),
+    status: String(parsed.status || ''),
+    isPlaying: parsed.isPlaying === true,
+    durationMs: Math.max(0, Number(parsed.durationMs) || 0),
+    positionMs: Math.max(0, Number(parsed.positionMs) || 0),
+    lastUpdatedMs: Math.max(0, Number(parsed.lastUpdatedMs) || 0),
+    aumid: String(parsed.aumid || smtcBridgeState.aumid || ''),
+    error: '',
+  });
+  // Phase 4A: thumbnail 仅在歌曲 identity 变化时随 state 行到达;
+  // 变化时用专用低带宽事件发送给 renderer (不变时不重复传输)。
+  if ('thumbnail' in parsed) {
+    smtcBridgeState.thumbnail = (typeof parsed.thumbnail === 'string' && parsed.thumbnail) ? parsed.thumbnail : null;
+  }
+  // Phase 4A.2 封面解析:
+  //   - active=false (Apple Music 关闭/会话结束) -> 清除 UI 封面 (不清 cache)
+  //   - identity 变化 (切歌) -> 先 smtcSendThumbnail(null) 清旧封面, 再 SMTC/cache/iTunes 解析
+  if (!smtcBridgeState.active) {
+    if (smtcLastThumbIdentityKey && smtcLastThumbIdentityKey !== '|||') {
+      smtcLastThumbIdentityKey = '|||';
+      smtcSendThumbnail(null, 'cleared: inactive');
+    }
+  } else {
+    const thumbIdentityKey = smtcThumbIdentityKeyOf(smtcBridgeState);
+    if (thumbIdentityKey !== smtcLastThumbIdentityKey) {
+      smtcLastThumbIdentityKey = thumbIdentityKey;
+      console.log('[Main][' + Date.now() + '] thumbnail identity changed: ' + thumbIdentityKey);
+      smtcSendThumbnail(null);   // 切歌: 旧封面不冒充新歌
+      smtcResolveThumbnail(smtcBridgeState.thumbnail);  // SMTC 优先, 否则 cache/iTunes
+    }
+  }
+  // External audio lifecycle is driven by the SMTC session state:
+  // session active -> discover AMPLibraryAgent pid -> start capture.
+  // The 2s lifecycle poller re-reads smtcBridgeState.active itself,
+  // so no extra work is needed here.
+  if (SMTC_EXTERNAL_AUDIO_ENABLED) smtcAudioWanted = smtcBridgeState.active === true;
+  smtcBridgeBroadcast();
+}
+
+function smtcBridgeOnData(chunk) {
+  smtcBridgeBuffer += String(chunk || '');
+  let newlineIndex = -1;
+  while ((newlineIndex = smtcBridgeBuffer.indexOf('\n')) >= 0) {
+    const line = smtcBridgeBuffer.slice(0, newlineIndex);
+    smtcBridgeBuffer = smtcBridgeBuffer.slice(newlineIndex + 1);
+    if (line.trim()) smtcBridgeHandleLine(line);
+  }
+}
+
+// ---- Phase 4B: SMTC 播放控制 (通过既有 bridge 的 stdin, 不重启/不新建进程) ----
+const SMTC_CONTROL_COMMANDS = ['play', 'pause', 'toggle', 'next', 'previous'];
+function smtcControl(command) {
+  command = String(command || '').trim();
+  if (SMTC_CONTROL_COMMANDS.indexOf(command) < 0) {
+    return Promise.resolve({ success: false, command: command, error: 'INVALID_COMMAND' });
+  }
+  if (!smtcBridgeProcess || smtcBridgeProcess.killed || !smtcBridgeProcess.stdin) {
+    return Promise.resolve({ success: false, command: command, error: 'BRIDGE_NOT_RUNNING' });
+  }
+  const seq = ++smtcControlSeq;
+  return new Promise((resolve) => {
+    const entry = { seq: seq, command: command, resolve: resolve, timer: null };
+    entry.timer = setTimeout(() => {
+      const idx = smtcControlQueue.indexOf(entry);
+      if (idx >= 0) smtcControlQueue.splice(idx, 1);
+      resolve({ success: false, command: command, error: 'CONTROL_TIMEOUT' });
+    }, 8000);
+    smtcControlQueue.push(entry);
+    try {
+      smtcBridgeProcess.stdin.write(JSON.stringify({ command: command }) + '\n');
+      console.log('[Main][' + Date.now() + '] smtc control sent: ' + command);
+    } catch (err) {
+      const idx = smtcControlQueue.indexOf(entry);
+      if (idx >= 0) smtcControlQueue.splice(idx, 1);
+      clearTimeout(entry.timer);
+      resolve({ success: false, command: command, error: String(err && err.message || 'WRITE_FAILED') });
+    }
+  });
+}
+
+// ---- Phase 4A.2: 封面解析 (SMTC 优先, 会话内 cache, iTunes Search API 兜底) ----
+// 设计 (对应验收):
+//   identityKey = aumid|title|artist|album
+//   切歌/关闭时先 smtcSendThumbnail(null) 清 UI, 旧封面不冒充新歌
+//   解析顺序: SMTC thumbnail > 会话内 cache (Map, max 100) > iTunes 请求 (in-flight 去重)
+//   iTunes 结果: 始终写 cache; 仅当 requestIdentity === 当前 identity 才发送给 renderer
+function smtcSendThumbnail(thumb, label) {
+  if (thumb === smtcLastThumbnailSent) return;
+  smtcLastThumbnailSent = thumb;
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+      try { win.webContents.send('mineradio-smtc-thumbnail', thumb); } catch (_) {}
+    }
+  });
+  const text = label || (thumb ? 'sent (' + thumb.length + ' chars)' : 'cleared');
+  console.log('[Main][' + Date.now() + '] thumbnail ' + text);
+}
+
+function smtcThumbIdentityKeyOf(state) {
+  return String((state && state.aumid) || '') + '|' +
+    String((state && state.title) || '') + '|' +
+    String((state && state.artist) || '') + '|' +
+    String((state && state.album) || '');
+}
+
+function smtcThumbnailCacheGet(key) {
+  if (!key || !smtcThumbnailCache.has(key)) return undefined;
+  const value = smtcThumbnailCache.get(key);
+  // LRU touch: 命中项移到 Map 末尾, 淘汰时删除最旧项
+  smtcThumbnailCache.delete(key);
+  smtcThumbnailCache.set(key, value);
+  return value;
+}
+
+function smtcThumbnailCacheSet(key, value) {
+  if (!key || !value) return;
+  smtcThumbnailCache.set(key, value);
+  while (smtcThumbnailCache.size > SMTC_THUMBNAIL_CACHE_MAX) {
+    const oldest = smtcThumbnailCache.keys().next().value;
+    if (oldest === undefined) break;
+    smtcThumbnailCache.delete(oldest);
+  }
+}
+
+function smtcResolveThumbnail(smtcThumb) {
+  // 1) SMTC 封面优先: bridge 已提供有效 thumbnail 时不请求 iTunes
+  if (smtcThumb && typeof smtcThumb === 'string' && smtcThumb.length > 30) {
+    smtcSendThumbnail(smtcThumb);
+    return;
+  }
+  // 无歌曲信息 (radio/播客等无元数据) 不请求 iTunes
+  const term = String((smtcBridgeState.artist || '') + ' ' + (smtcBridgeState.title || '')).trim().slice(0, 100);
+  if (!term) return;
+  // 2) 会话内 cache
+  const identityKey = smtcThumbIdentityKeyOf(smtcBridgeState);
+  const cached = smtcThumbnailCacheGet(identityKey);
+  if (cached) {
+    console.log('[Main][' + Date.now() + '] thumbnail cache HIT: ' + identityKey);
+    smtcSendThumbnail(cached);
+    return;
+  }
+  console.log('[Main][' + Date.now() + '] thumbnail cache MISS: ' + identityKey);
+  // 3) in-flight 去重: 同一 identity 已有请求则复用, 不重复发网络请求
+  if (smtcThumbnailInFlight.has(identityKey)) {
+    console.log('[Main][' + Date.now() + '] thumbnail request already in flight: ' + identityKey);
+    return;
+  }
+  smtcFetchItunesThumbnail(identityKey, smtcBridgeState.title, smtcBridgeState.artist);
+}
+
+function smtcFetchItunesThumbnail(identityKey, title, artist) {
+  const term = String((artist || '') + ' ' + (title || '')).trim().slice(0, 100);
+  if (!term) return Promise.resolve(null);
+  console.log('[Main][' + Date.now() + '] iTunes thumbnail search: ' + (artist || '') + ' - ' + (title || ''));
+  const controller = new AbortController();
+  const timer = setTimeout(() => { try { controller.abort(); } catch (_) {} }, 8000);
+  const searchUrl = 'https://itunes.apple.com/search?term=' + encodeURIComponent(term) + '&entity=song&media=music&limit=1';
+  const promise = (async () => {
+    try {
+      // Search 与 artwork 下载共用同一个 AbortController 生命周期 (8s 超时)
+      const r = await fetch(searchUrl, { signal: controller.signal });
+      if (!r.ok) throw new Error('iTunes search HTTP ' + r.status);
+      const data = await r.json();
+      const results = data && Array.isArray(data.results) ? data.results : [];
+      if (!results.length) {
+        console.log('[Main][' + Date.now() + '] iTunes thumbnail no result');
+        throw new Error('no result');
+      }
+      const art = results[0] && results[0].artworkUrl100;
+      if (!art) {
+        console.log('[Main][' + Date.now() + '] iTunes thumbnail no artwork');
+        throw new Error('no artwork');
+      }
+      console.log('[Main][' + Date.now() + '] iTunes thumbnail found: ' + art);
+      // 提高分辨率: artworkUrl100 -> 300x300; 不假设 URL 一定包含 100x100 (不匹配时原样使用)
+      const hi = String(art).replace(/100x100/, '300x300') || String(art);
+      const r2 = await fetch(hi, { signal: controller.signal });
+      if (!r2.ok) throw new Error('iTunes artwork HTTP ' + r2.status);
+      const buf = await r2.arrayBuffer();
+      const bytes = Buffer.from(buf);
+      console.log('[Main][' + Date.now() + '] iTunes thumbnail downloaded: ' + bytes.length + ' bytes');
+      let mime = 'image/jpeg';
+      if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) mime = 'image/png';
+      const dataUrl = 'data:' + mime + ';base64,' + bytes.toString('base64');
+      // 无论当前是否仍是同一首歌都写入 cache (stale 结果也能被未来复用)
+      smtcThumbnailCacheSet(identityKey, dataUrl);
+      // 仅当 requestIdentity === 当前 identity 才发送给 renderer, 旧歌曲请求不覆盖新歌曲
+      if (identityKey === smtcThumbIdentityKeyOf(smtcBridgeState)) {
+        smtcSendThumbnail(dataUrl);
+      } else {
+        console.log('[Main][' + Date.now() + '] thumbnail result ignored for stale identity: ' + identityKey);
+      }
+      return dataUrl;
+    } catch (err) {
+      console.log('[Main][' + Date.now() + '] iTunes thumbnail failed: ' + (err && err.message || 'fetch'));
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  smtcThumbnailInFlight.set(identityKey, promise);
+  promise.finally(() => {
+    if (smtcThumbnailInFlight.get(identityKey) === promise) smtcThumbnailInFlight.delete(identityKey);
+  });
+  return promise;
+}
+
+function startSmtcBridge() {
+  if (smtcBridgeProcess && !smtcBridgeProcess.killed) return { ok: true, already: true };
+  if (!fs.existsSync(SMTC_BRIDGE_SCRIPT)) {
+    smtcBridgeState.error = 'SMTC bridge script missing';
+    return { ok: false, error: 'SMTC_BRIDGE_SCRIPT_MISSING' };
+  }
+  smtcBridgeBuffer = '';
+  smtcAppendLog('SMTC bridge start script=' + SMTC_BRIDGE_SCRIPT + ' ps=' + SMTC_POWERSHELL_EXE);
+  console.log('[Main] Starting SMTC bridge: ' + SMTC_POWERSHELL_EXE + ' -File ' + SMTC_BRIDGE_SCRIPT);
+  try {
+    smtcBridgeProcess = spawn(SMTC_POWERSHELL_EXE, [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', SMTC_BRIDGE_SCRIPT,
+    ], {
+      windowsHide: true,
+      // Phase 4B: stdin 需要 'pipe' 以接收播放控制命令 (play/pause/toggle/next/previous)
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    smtcBridgeState.error = String(err && err.message || 'smtc bridge spawn failed').slice(0, 300);
+    smtcBridgeProcess = null;
+    console.warn('[Main] SMTC bridge spawn failed:', smtcBridgeState.error);
+    smtcAppendLog('SMTC bridge spawn failed: ' + smtcBridgeState.error);
+    return { ok: false, error: 'SMTC_BRIDGE_SPAWN_FAILED', message: smtcBridgeState.error };
+  }
+  console.log('[Main] SMTC bridge spawned (pid ' + smtcBridgeProcess.pid + ')');
+  smtcAppendLog('SMTC bridge spawned pid=' + smtcBridgeProcess.pid);
+  // Phase 4B: bridge 退出后残留写入会触发异步 EPIPE error, 吞掉避免主进程崩溃
+  if (smtcBridgeProcess.stdin && typeof smtcBridgeProcess.stdin.on === 'function') {
+    smtcBridgeProcess.stdin.on('error', () => {});
+  }
+  smtcBridgeProcess.stdout.on('data', (chunk) => {
+    console.log('[Main][' + Date.now() + '] stdout received (T3):', String(chunk || '').trim().slice(0, 120));
+    smtcBridgeOnData(chunk);
+  });
+  smtcBridgeProcess.stderr.on('data', (chunk) => {
+    const lines = String(chunk || '').split(/\r?\n/).filter(Boolean);
+    lines.forEach((line) => {
+      const text = String(line).trim();
+      if (!text) return;
+      console.warn('[Main] SMTC bridge stderr:', text.slice(0, 300));
+      smtcAppendLog('bridge: ' + text.slice(0, 300));
+      const debugLine = text.replace(/^\[SMTC\]\s*/, '').slice(0, 160);
+      if (debugLine) smtcBridgeState.debug = debugLine;
+    });
+    smtcBridgeBroadcast();
+  });
+  smtcBridgeProcess.on('error', (err) => {
+    console.warn('[Main] SMTC bridge process error:', err && err.message || err);
+    smtcBridgeState.error = String(err && err.message || 'smtc bridge error').slice(0, 300);
+    smtcBridgeState.debug = smtcBridgeState.error;
+    smtcAppendLog('SMTC bridge process error: ' + smtcBridgeState.error);
+    smtcBridgeBroadcast();
+  });
+  smtcBridgeProcess.on('close', (code, signal) => {
+    console.warn('[Main] SMTC bridge exited: code=' + code + ' signal=' + signal);
+    smtcAppendLog('SMTC bridge exit code=' + code + ' signal=' + signal);
+    smtcBridgeProcess = null;
+    smtcBridgeState.active = false;
+    smtcBridgeState.bridgeReady = false;
+    smtcBridgeState.error = 'smtc bridge stopped (code ' + code + ')';
+    smtcBridgeState.debug = 'bridge exited code=' + code + ' signal=' + signal;
+    // Phase 4A.2: bridge 退出时同样清除 UI 封面 (不清 cache)
+    if (smtcLastThumbIdentityKey && smtcLastThumbIdentityKey !== '|||') {
+      smtcLastThumbIdentityKey = '|||';
+      smtcSendThumbnail(null, 'cleared: inactive');
+    }
+    smtcBridgeBroadcast();
+  });
+  return { ok: true };
+}
+
+function stopSmtcBridge() {
+  const proc = smtcBridgeProcess;
+  smtcBridgeProcess = null;
+  if (proc && !proc.killed) {
+    smtcAppendLog('SMTC bridge stop requested');
+    try { proc.kill(); } catch (_) {}
+    try {
+      const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} }, 1500);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    } catch (_) {}
+  }
+  return { ok: true };
+}
+
+ipcMain.handle('mineradio-smtc-start', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return startSmtcBridge();
+});
+
+ipcMain.handle('mineradio-smtc-stop', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return stopSmtcBridge();
+});
+
+ipcMain.handle('mineradio-smtc-get-state', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return Object.assign({}, smtcBridgeState, { updatedAt: Date.now() });
+});
+
+// Phase 4B: SMTC 播放控制 (play/pause/toggle/next/previous)
+ipcMain.handle('mineradio-smtc-control', async (event, command) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  const result = await smtcControl(command);
+  return {
+    ok: result.success === true,
+    success: result.success === true,
+    command: String(result.command || ''),
+    error: String(result.error || ''),
+  };
+});
+
+ipcMain.on('mineradio-smtc-log', (event, message) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  smtcAppendLog('renderer: ' + String(message || '').slice(0, 500));
+});
+
+// ============================================================
+// External audio capture (native process loopback -> AudioMetrics)
+// ============================================================
+// Phase 3: spawns the machine-verified native helper
+// MineRadioAudioCapture.exe (real render endpoint + process loopback
+// + AMPLibraryAgent PID). Lifecycle driven by SMTC session state:
+//   session active  -> discover audio pid -> start capture
+//   session gone    -> stop capture
+//   pid changed     -> restart with new pid
+//   failures        -> exponential backoff retry
+// Renderer safety: any failure broadcasts safe zero metrics; the
+// renderer never blocks on this path.
+const SMTC_EXTERNAL_AUDIO_ENABLED = true;
+const SMTC_AUDIO_EXE = (app && app.isPackaged)
+  ? path.join(process.resourcesPath, 'native', 'MineRadioAudioCapture.exe')
+  : path.join(__dirname, 'native', 'MineRadioAudioCapture.exe');
+let smtcAudioProcess = null;
+let smtcAudioBuffer = '';
+let smtcAudioRestartTimer = 0;
+let smtcAudioTargetPid = 0;
+let smtcAudioDiscoveredPid = 0;
+let smtcAudioRetryDelayMs = 2000;
+let smtcAudioMetricsConnected = false;
+let smtcAudioWanted = false;
+let smtcAudioLifecycleTimer = 0;
+let smtcAudioParseDbgAt = 0;   // [AUDIO] native/bridge 证据链日志限流
+let smtcAudioIpcDbgAt = 0;     // [AUDIO] IPC sent 证据链日志限流
+let smtcAudioState = {
+  active: false,
+  mode: 'none',
+  pid: 0,
+  sourceName: '',
+  rms: 0,
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  spectrum: null,
+  error: '',
+  hr: '',
+  updatedAt: 0,
+};
+
+function smtcAudioBroadcast() {
+  const payload = Object.assign({}, smtcAudioState, { updatedAt: Date.now() });
+  // 证据链: IPC metrics sent (1s 限流)
+  if (Date.now() - smtcAudioIpcDbgAt >= 1000) {
+    smtcAudioIpcDbgAt = Date.now();
+    console.log('[AUDIO] IPC metrics sent rms=' + payload.rms.toFixed(3) +
+      ' bass=' + payload.bass.toFixed(3) + ' mid=' + payload.mid.toFixed(3) +
+      ' treble=' + payload.treble.toFixed(3));
+  }
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+      try { win.webContents.send('mineradio-smtc-audio-metrics', payload); } catch (_) {}
+    }
+  });
+}
+
+function smtcAudioHandleLine(line) {
+  line = String(line || '').trim();
+  if (!line) return;
+  let parsed = null;
+  try { parsed = JSON.parse(line); } catch (_) { return; }
+  if (!parsed || typeof parsed !== 'object') return;
+  if (parsed.type === 'ready') {
+    smtcAudioRetryDelayMs = 2000; // success resets backoff
+    console.log('[Main] [AUDIO] external capture started');
+    smtcAppendLog('external capture started');
+    return;
+  }
+  if (parsed.type === 'metrics') {
+    const rmsV = Number(parsed.rms);
+    const bassV = Number(parsed.bass);
+    const midV = Number(parsed.mid);
+    const treV = Number(parsed.treble);
+    // 证据链: native metrics received + bridge metrics parsed (1s 限流)
+    if (Date.now() - smtcAudioParseDbgAt >= 1000) {
+      smtcAudioParseDbgAt = Date.now();
+      console.log('[AUDIO] native metrics received');
+      console.log('[AUDIO] bridge metrics parsed rms=' + rmsV + ' bass=' + bassV +
+        ' mid=' + midV + ' treble=' + treV + ' spectrum=' + (Array.isArray(parsed.spectrum) ? parsed.spectrum.length : 0));
+    }
+    if (!Number.isFinite(rmsV) || !Number.isFinite(bassV) || !Number.isFinite(midV) || !Number.isFinite(treV)) {
+      console.warn('[Main] [AUDIO] NON_FINITE_METRICS');
+      smtcAppendLog('NON_FINITE_METRICS');
+      return;
+    }
+    smtcAudioState.active = true;
+    smtcAudioState.mode = 'process-loopback';
+    smtcAudioState.pid = smtcAudioTargetPid || Math.max(0, Number(parsed.pid) || 0);
+    smtcAudioState.sourceName = 'AMPLibraryAgent';
+    smtcAudioState.rms = Math.max(0, Math.min(1, rmsV || 0));
+    smtcAudioState.bass = Math.max(0, Math.min(1, bassV || 0));
+    smtcAudioState.mid = Math.max(0, Math.min(1, midV || 0));
+    smtcAudioState.treble = Math.max(0, Math.min(1, treV || 0));
+    if (Array.isArray(parsed.spectrum)) {
+      smtcAudioState.spectrum = parsed.spectrum.slice(0, 64).map(v => Math.max(0, Math.min(1, Number(v) || 0)));
+    }
+    smtcAudioState.error = '';
+    smtcAudioState.hr = '';
+    if (!smtcAudioMetricsConnected) {
+      smtcAudioMetricsConnected = true;
+      console.log('[Main] [AUDIO] metrics connected');
+      smtcAppendLog('metrics connected');
+    }
+    smtcAudioBroadcast();
+    return;
+  }
+  if (parsed.type === 'error') {
+    smtcAudioState.active = false;
+    smtcAudioState.error = String(parsed.code || parsed.message || 'audio capture error').slice(0, 200);
+    smtcAudioState.hr = String(parsed.hr || '').slice(0, 16);
+    console.warn('[Main] [AUDIO] CAPTURE_START_FAILED:', smtcAudioState.error, smtcAudioState.hr);
+    smtcAppendLog('CAPTURE_START_FAILED: ' + smtcAudioState.error + ' hr=' + smtcAudioState.hr);
+    smtcAudioBroadcast();
+    if (smtcAudioWanted) smtcAudioScheduleRetry();
+    return;
+  }
+  if (parsed.type === 'pid-changed') {
+    const pid = Math.max(0, Number(parsed.pid) || 0);
+    if (pid > 0 && pid !== smtcAudioDiscoveredPid) {
+      smtcAudioDiscoveredPid = pid;
+      console.log('[Main] [AUDIO] discovered Apple Music audio process pid=' + pid + ' name=AMPLibraryAgent.exe');
+      smtcAppendLog('audio pid changed -> ' + pid);
+      smtcAudioScheduleRestart(pid);
+    }
+    return;
+  }
+}
+
+function smtcAudioScheduleRestart(pid) {
+  if (smtcAudioRestartTimer) clearTimeout(smtcAudioRestartTimer);
+  smtcAudioRestartTimer = setTimeout(() => {
+    smtcAudioRestartTimer = 0;
+    if (pid > 0) smtcAudioStartCapture(pid);
+  }, 800);
+}
+
+function smtcAudioScheduleRetry() {
+  if (smtcAudioRestartTimer) clearTimeout(smtcAudioRestartTimer);
+  const delay = smtcAudioRetryDelayMs;
+  smtcAudioRetryDelayMs = Math.min(30000, smtcAudioRetryDelayMs * 2);
+  smtcAppendLog('capture retry in ' + delay + 'ms (backoff)');
+  smtcAudioRestartTimer = setTimeout(() => {
+    smtcAudioRestartTimer = 0;
+    if (smtcAudioWanted && smtcAudioDiscoveredPid > 0) smtcAudioStartCapture(smtcAudioDiscoveredPid);
+  }, delay);
+}
+
+function smtcAudioOnData(chunk) {
+  smtcAudioBuffer += String(chunk || '');
+  let newlineIndex = -1;
+  while ((newlineIndex = smtcAudioBuffer.indexOf('\n')) >= 0) {
+    const line = smtcAudioBuffer.slice(0, newlineIndex);
+    smtcAudioBuffer = smtcAudioBuffer.slice(newlineIndex + 1);
+    if (line.trim()) smtcAudioHandleLine(line);
+  }
+}
+
+// ---- process discovery: prefer AMPLibraryAgent (holds the audio session) ----
+function smtcFindAppleMusicPid() {
+  return new Promise((resolve) => {
+    let child = null;
+    let done = false;
+    const finish = (pid) => {
+      if (done) return;
+      done = true;
+      try { if (child && !child.killed) child.kill(); } catch (_) {}
+      resolve(pid);
+    };
+    const cmd = 'Get-Process AMPLibraryAgent,AppleMusic -ErrorAction SilentlyContinue | Select-Object ProcessName,Id | ConvertTo-Json -Compress';
+    try {
+      child = spawn(SMTC_POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (_) { finish(0); return; }
+    let out = '';
+    child.stdout.on('data', (c) => { out += String(c); });
+    child.on('error', () => finish(0));
+    child.on('close', () => {
+      let pid = 0;
+      try {
+        const parsed = JSON.parse(out.trim());
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        const agent = list.find((e) => e && /AMPLibraryAgent/i.test(String(e.ProcessName || '')));
+        if (agent) pid = Math.max(0, Number(agent.Id) || 0);
+        if (!pid) {
+          const main = list.find((e) => e && /^AppleMusic$/i.test(String(e.ProcessName || '')));
+          if (main) pid = Math.max(0, Number(main.Id) || 0);
+        }
+      } catch (_) {}
+      finish(pid);
+    });
+    setTimeout(() => finish(0), 5000);
+  });
+}
+
+// ---- start the native helper for a specific pid ----
+function smtcAudioStartCapture(pid) {
+  if (!SMTC_EXTERNAL_AUDIO_ENABLED) return { ok: false, error: 'DISABLED' };
+  if (!pid || pid <= 0) return { ok: false, error: 'NO_PID' };
+  if (smtcAudioProcess && !smtcAudioProcess.killed) {
+    if (smtcAudioTargetPid === pid) return { ok: true, already: true };
+    stopSmtcAudio();
+  }
+  if (!fs.existsSync(SMTC_AUDIO_EXE)) {
+    smtcAudioState.error = 'capture exe missing: ' + SMTC_AUDIO_EXE;
+    smtcAudioBroadcast();
+    return { ok: false, error: 'SMTC_AUDIO_EXE_MISSING' };
+  }
+  smtcAudioBuffer = '';
+  smtcAudioMetricsConnected = false;
+  smtcAudioTargetPid = pid;
+  smtcAudioState.pid = pid;
+  smtcAudioState.sourceName = 'AMPLibraryAgent';
+  smtcAppendLog('external capture start pid=' + pid);
+  try {
+    smtcAudioProcess = spawn(SMTC_AUDIO_EXE, [String(pid)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    smtcAudioState.error = String(err && err.message || 'capture spawn failed').slice(0, 200);
+    smtcAudioState.mode = 'none';
+    smtcAudioBroadcast();
+    if (smtcAudioWanted) smtcAudioScheduleRetry();
+    return { ok: false, error: 'SMTC_AUDIO_SPAWN_FAILED' };
+  }
+  smtcAudioProcess.stdout.on('data', smtcAudioOnData);
+  smtcAudioProcess.stderr.on('data', (chunk) => {
+    const text = String(chunk || '').trim();
+    if (!text) return;
+    // skip the 2Hz [AUDIO] rms= summary to keep logs concise
+    if (/^\[AUDIO\] rms=/.test(text)) return;
+    smtcAppendLog('audio: ' + text.slice(0, 300));
+  });
+  smtcAudioProcess.on('error', (err) => {
+    smtcAudioState.active = false;
+    smtcAudioState.mode = 'none';
+    smtcAudioState.error = String(err && err.message || 'capture error').slice(0, 200);
+    smtcAudioBroadcast();
+    if (smtcAudioWanted) smtcAudioScheduleRetry();
+  });
+  smtcAudioProcess.on('close', (code) => {
+    smtcAudioProcess = null;
+    smtcAudioState.active = false;
+    smtcAudioState.mode = 'none';
+    smtcAppendLog('external capture exit code=' + code);
+    smtcAudioBroadcast();
+    if (smtcAudioWanted) smtcAudioScheduleRetry();
+  });
+  return { ok: true };
+}
+
+function stopSmtcAudio() {
+  const proc = smtcAudioProcess;
+  smtcAudioProcess = null;
+  if (smtcAudioRestartTimer) { clearTimeout(smtcAudioRestartTimer); smtcAudioRestartTimer = 0; }
+  if (proc && !proc.killed) {
+    smtcAppendLog('external capture stop requested');
+    try { proc.kill(); } catch (_) {}
+    try {
+      const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} }, 1500);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    } catch (_) {}
+  }
+  smtcAudioState.active = false;
+  smtcAudioState.mode = 'none';
+  return { ok: true };
+}
+
+// ---- lifecycle poller: SMTC session state drives start/stop ----
+let smtcAudioDiscoverTick = 0;
+let smtcAudioDiscoverFailLogAt = 0;
+function smtcAudioLifecycleTick() {
+  if (!SMTC_EXTERNAL_AUDIO_ENABLED) return;
+  smtcAudioWanted = smtcBridgeState.active === true;
+  if (smtcAudioWanted) {
+    const running = !!(smtcAudioProcess && !smtcAudioProcess.killed);
+    // 未运行: 每 2s 重试发现; 运行中: 每 8s 复查 PID (捕捉 Apple Music 重启)
+    smtcAudioDiscoverTick = (smtcAudioDiscoverTick + 1) % 4;
+    const needDiscovery = !running || smtcAudioDiscoverTick === 0;
+    if (needDiscovery) {
+      smtcFindAppleMusicPid().then((pid) => {
+        if (!smtcAudioWanted) return;
+        if (pid !== smtcAudioDiscoveredPid) {
+          smtcAudioDiscoveredPid = pid;
+          if (pid > 0) {
+            console.log('[Main] [AUDIO] discovered Apple Music audio process pid=' + pid + ' name=AMPLibraryAgent.exe');
+            smtcAppendLog('discovered Apple Music audio process pid=' + pid);
+            smtcAudioStartCapture(pid);
+          } else if (!running && Date.now() - smtcAudioDiscoverFailLogAt > 10000) {
+            smtcAudioDiscoverFailLogAt = Date.now();
+            console.warn('[Main] [AUDIO] PID_DISCOVERY_FAILED (no AMPLibraryAgent / AppleMusic process)');
+            smtcAppendLog('PID_DISCOVERY_FAILED');
+          }
+        }
+      });
+    }
+  } else if (runningCapture()) {
+    smtcAudioDiscoveredPid = 0;
+    stopSmtcAudio();
+  }
+}
+
+function runningCapture() {
+  return !!(smtcAudioProcess && !smtcAudioProcess.killed);
+}
+
+function startSmtcAudioLifecycle() {
+  if (smtcAudioLifecycleTimer) return;
+  smtcAudioLifecycleTimer = setInterval(smtcAudioLifecycleTick, 2000);
+  smtcAudioLifecycleTick();
+}
+
+// compat entry point used by the bridge hook + IPC
+function startSmtcAudio() {
+  smtcAudioWanted = SMTC_EXTERNAL_AUDIO_ENABLED && smtcBridgeState.active === true;
+  smtcAudioLifecycleTick();
+  return { ok: true };
+}
+
+ipcMain.handle('mineradio-smtc-audio-start', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return startSmtcAudio();
+});
+
+ipcMain.handle('mineradio-smtc-audio-stop', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  smtcAudioWanted = false;
+  return stopSmtcAudio();
+});
+
+ipcMain.handle('mineradio-smtc-audio-get-state', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return Object.assign({}, smtcAudioState, { updatedAt: Date.now() });
+});
+
+startSmtcAudioLifecycle();
 
 ipcMain.handle('mineradio-open-update-page', async (event, value) => {
   try {
@@ -4783,6 +5787,10 @@ function configureLocalServerEnvironment(port) {
   if (!process.env.SPOTIFY_CONFIG_FILE && !process.env.MINERADIO_SPOTIFY_CONFIG_FILE) {
     process.env.SPOTIFY_CONFIG_FILE = path.join(STABLE_USER_DATA_PATH, '.spotify-credentials.json');
   }
+  process.env.APPLE_MUSIC_TOKEN_FILE = path.join(STABLE_USER_DATA_PATH, '.apple-music-token.json');
+  if (!process.env.APPLE_MUSIC_CONFIG_FILE && !process.env.MINERADIO_APPLE_CONFIG_FILE) {
+    process.env.APPLE_MUSIC_CONFIG_FILE = path.join(STABLE_USER_DATA_PATH, '.apple-music-credentials.json');
+  }
 }
 
 const APP_OWNED_MIGRATION_FILES = [
@@ -4796,6 +5804,8 @@ const APP_OWNED_MIGRATION_FILES = [
   '.qishui-qr-login.json',
   '.spotify-token.json',
   '.spotify-credentials.json',
+  '.apple-music-token.json',
+  '.apple-music-credentials.json',
   'current-fx-autosave.json',
   'desktop-behavior.json',
   'cuefield-feedback.jsonl',
@@ -4978,6 +5988,26 @@ function migrateLegacyAuthStorage() {
     }
   } catch (e) {
     console.warn('Spotify config migration skipped:', e.message);
+  }
+  try {
+    const appleTokenTarget = process.env.APPLE_MUSIC_TOKEN_FILE;
+    const legacyAppleToken = path.join(__dirname, '..', '.apple-music-token.json');
+    if (appleTokenTarget && fs.existsSync(legacyAppleToken) && !fs.existsSync(appleTokenTarget)) {
+      fs.copyFileSync(legacyAppleToken, appleTokenTarget);
+    }
+    const appleConfigTarget = process.env.APPLE_MUSIC_CONFIG_FILE;
+    const legacyAppleConfigFiles = [
+      path.join(__dirname, '..', '.apple-music-credentials.json'),
+      path.join(__dirname, '..', 'apple-music-credentials.json'),
+    ];
+    for (const legacyAppleConfig of legacyAppleConfigFiles) {
+      if (appleConfigTarget && fs.existsSync(legacyAppleConfig) && !fs.existsSync(appleConfigTarget)) {
+        fs.copyFileSync(legacyAppleConfig, appleConfigTarget);
+        break;
+      }
+    }
+  } catch (e) {
+    console.warn('Apple Music config migration skipped:', e.message);
   }
 }
 
@@ -5686,6 +6716,8 @@ if (!gotSingleInstanceLock) {
     });
     appQuitCleanupPromise = Promise.race([runtimeCleanup, timeoutCleanup]).finally(() => {
       if (cleanupTimeout) clearTimeout(cleanupTimeout);
+      stopSmtcBridge();
+      stopSmtcAudio();
       appQuitCleanupComplete = true;
       app.quit();
     });

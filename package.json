@@ -11,7 +11,10 @@
     "start": "electron .",
     "build:win": "electron-builder --win nsis",
     "build:win:dir": "electron-builder --win dir",
-    "build:win:internal-beta": "electron-builder --config electron-builder.internal-beta.json --win nsis --publish never"
+    "build:win:internal-beta": "electron-builder --config electron-builder.internal-beta.json --win nsis --publish never",
+    "dist": "electron-builder --win nsis portable --publish never",
+    "dist:installer": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never"
   },
   "build": {
     "appId": "com.mineradio.desktop",
@@ -21,11 +24,27 @@
       "buildResources": "build"
     },
     "afterPack": "build/after-pack.js",
+    "npmRebuild": false,
     "toolsets": {
       "winCodeSign": "1.1.0"
     },
+    "extraResources": [
+      {
+        "from": "desktop/smtc-bridge.ps1",
+        "to": "smtc-bridge.ps1"
+      },
+      {
+        "from": "desktop/smtc-audio-capture.ps1",
+        "to": "smtc-audio-capture.ps1"
+      },
+      {
+        "from": "desktop/native/MineRadioAudioCapture.exe",
+        "to": "native/MineRadioAudioCapture.exe"
+      }
+    ],
     "files": [
       "desktop/**/*",
+      "desktop/native/**/*",
       "public/**/*",
       "build/**/*",
       "cuefield/**/*",

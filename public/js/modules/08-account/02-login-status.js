@@ -117,7 +117,7 @@ async function refreshLoginStatus(force) {
       syncLikeStatusForSongs(playQueue.concat(playlist || []));
     } else {
       neteasePlaylists = [];
-      userPlaylists = qqPlaylists.concat(kugouPlaylists || [], qishuiPlaylists || [], spotifyPlaylists || []);
+      userPlaylists = qqPlaylists.concat(kugouPlaylists || [], qishuiPlaylists || [], spotifyPlaylists || [], applePlaylists || []);
       playlistCatalogRevision += 1;
       myPodcastCollections = [];
       myPodcastItems = {};
@@ -507,6 +507,70 @@ function startSpotifyLoginStatusAutoRefresh() {
   if (spotifyLoginAutoRefreshTimer) clearInterval(spotifyLoginAutoRefreshTimer);
   spotifyLoginAutoRefreshTimer = setInterval(function () {
     refreshSpotifyLoginStatus().catch(function (e) { console.warn('Spotify login auto refresh failed:', e); });
+  }, 45000);
+}
+
+function normalizeAppleLoginStatus(info) {
+  var fallback = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', membershipKnown: false, vipType: 1, vipLevel: 'vip', isVip: true, isSvip: false, stale: false, reauthRequired: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false, searchReady: false };
+  var loggedIn = !!(info && info.loggedIn);
+  var capabilities = info && info.capabilities || {};
+  return Object.assign({}, fallback, info || {}, {
+    provider: 'apple',
+    loggedIn: loggedIn,
+    configured: !!(info && (info.configured || loggedIn)),
+    privateKeyConfigured: !!(info && info.privateKeyConfigured),
+    nickname: info && (info.nickname || info.displayName || info.display_name) || fallback.nickname,
+    userId: info && (info.userId || info.id) || '',
+    avatar: info && info.avatar || '',
+    membershipKnown: !!(info && (info.membershipKnown || loggedIn)),
+    vipType: loggedIn ? 1 : 0,
+    vipLevel: loggedIn ? 'vip' : 'none',
+    isVip: loggedIn,
+    isSvip: false,
+    tokenConfigured: !!(info && info.tokenConfigured),
+    tokenFileExists: !!(info && info.tokenFileExists),
+    credentialsFileExists: !!(info && info.credentialsFileExists),
+    localConfigMissing: !!(info && info.localConfigMissing),
+    playbackKeyReady: loggedIn,
+    playbackMode: 'recommend-match',
+    searchReady: !!(capabilities.search || info && info.searchReady),
+    stale: !!(info && info.stale),
+    reauthRequired: !!(info && info.reauthRequired)
+  });
+}
+async function refreshAppleLoginStatus() {
+  try {
+    var info = await apiJson('/api/apple/status?t=' + Date.now());
+    var prevLogged = !!appleLoginStatus.loggedIn;
+    appleLoginStatus = normalizeAppleLoginStatus(info);
+    auditProviderVipState('apple', appleLoginStatus);
+    if (!appleLoginStatus.loggedIn) {
+      if (prevLogged || appleLoginWasLoggedIn) showToast(appleLoginStatus.stale ? 'Apple Music 登录已失效' : 'Apple Music 已退出');
+      applePlaylists = [];
+      userPlaylists = userPlaylists.filter(function (pl) { return pl.provider !== 'apple'; });
+      playlistCatalogRevision += 1;
+      homeDiscoverState.loaded = false;
+    } else if (!userPlaylists.some(function (pl) { return pl && pl.provider === 'apple'; })) {
+      homeDiscoverState.loaded = false;
+      homeDiscoverState.loggedIn = true;
+      refreshUserPlaylists(true);
+      loadHomeDiscover(true);
+    }
+    appleLoginWasLoggedIn = !!appleLoginStatus.loggedIn;
+    if (!hasPlatformLogin(activeAccountProvider)) activeAccountProvider = firstLoggedProvider();
+    renderUserBtn();
+    return appleLoginStatus;
+  } catch (e) {
+    console.warn('Apple Music login status failed:', e);
+    appleLoginStatus = normalizeAppleLoginStatus(null);
+    renderUserBtn();
+    return appleLoginStatus;
+  }
+}
+function startAppleLoginStatusAutoRefresh() {
+  if (appleLoginAutoRefreshTimer) clearInterval(appleLoginAutoRefreshTimer);
+  appleLoginAutoRefreshTimer = setInterval(function () {
+    refreshAppleLoginStatus().catch(function (e) { console.warn('Apple Music login auto refresh failed:', e); });
   }, 45000);
 }
 

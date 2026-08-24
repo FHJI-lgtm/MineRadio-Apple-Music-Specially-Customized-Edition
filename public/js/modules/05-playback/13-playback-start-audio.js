@@ -10,6 +10,10 @@ function albumGaplessSongKey(song) {
     var spotifyAlbumId = song.albumId || song.spotifyAlbumId || '';
     return spotifyAlbumId ? 'spotify:' + spotifyAlbumId : '';
   }
+  if (provider === 'apple') {
+    var appleAlbumId = song.albumId || song.appleAlbumId || '';
+    return appleAlbumId ? 'apple:' + appleAlbumId : '';
+  }
   if (provider === 'netease') {
     var albumId = song.albumId || song.album_id || '';
     return albumId ? 'netease:' + albumId : '';
@@ -1106,6 +1110,7 @@ async function playQueueAt(idx, opts) {
       var isKugouPlayback = playbackProvider === 'kugou';
       var isQishuiPlayback = playbackProvider === 'qishui';
       var isSpotifyPlayback = playbackProvider === 'spotify';
+      var isApplePlayback = playbackProvider === 'apple';
       var requestedQuality = normalizePlaybackQualityForProvider(opts.qualityOverride || getProviderPlaybackQuality(playbackProvider), playbackProvider);
       if (playbackProvider === 'netease' && requestedQuality === 'jymaster' && !hasProviderSvip('netease', loginStatus)) requestedQuality = 'hires';
       var runtimeQualityCap = playbackQualityCapValue(song, playbackProvider);
@@ -1138,6 +1143,10 @@ async function playQueueAt(idx, opts) {
         data = await apiJson('/api/spotify/song/url?id=' + encodeURIComponent(song.id || song.providerSongId || song.spotifyId || '') +
           '&spotifyId=' + encodeURIComponent(song.spotifyId || '') +
           '&uri=' + encodeURIComponent(song.spotifyUri || song.uri || '') +
+          qualityParam, { timeoutMs: 9000 });
+      } else if (isApplePlayback) {
+        data = await apiJson('/api/apple/song/url?id=' + encodeURIComponent(song.id || song.providerSongId || song.appleId || '') +
+          '&appleId=' + encodeURIComponent(song.appleId || '') +
           qualityParam, { timeoutMs: 9000 });
       } else {
         data = await apiJson('/api/song/url?id=' + encodeURIComponent(song.id || '') + neteasePlaybackMatchQuery(song) + qualityParam, { timeoutMs: 14000 });

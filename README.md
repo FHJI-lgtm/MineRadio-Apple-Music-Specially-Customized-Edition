@@ -1,8 +1,60 @@
-# Mineradio
+# Mineradio (Apple Music Edition)
+
+> 本分支基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) 源码，新增 **Apple Music** 平台接入：搜索、用户歌单、资料库（喜欢）与官方登录窗口。其余功能与上游一致。
+
+## Apple Music 新增能力
+
+- 搜索框新增 `AM` 页签：搜索 Apple Music 官方曲库（需要先配置开发者凭据，不需要登录）
+- 登录面板新增 Apple Music 节点：
+  - 粘贴 **Team ID / Key ID / P8 私钥**（Apple 开发者后台 MusicKit 配置）保存
+  - 点击「连接 Apple Music」打开官方登录窗口，登录 Apple ID 后自动读取 `media-user-token`（music user token）
+  - 备用：直接粘贴浏览器中 `music.apple.com` 的 `media-user-token` Cookie 值保存登录态
+- 连接后可同步：
+  - 用户歌单（`Apple Music 资料库` 虚拟歌单 + 个人歌单）
+  - 喜欢/取消喜欢（写入 Apple Music 资料库）
+  - 专辑收藏
+- 播放说明：Apple Music 官方 API 不向第三方提供无 DRM 的完整音频直链，因此与 Spotify 一致采用「匹配源」策略——点击 Apple Music 歌曲会自动在其他可播平台（网易/QQ/酷狗/汽水）匹配同曲完整播放；搜索结果的 `AM` 标记会提示这一点。
+
+## 获取 Apple 开发者凭据
+
+1. 打开 [Apple Developer](https://developer.apple.com/account) 登录（需付费开发者账号）。
+2. `Certificates, Identifiers & Profiles` → 创建 MusicKit Key（ES256），下载 `.p8` 私钥文件并记录 **Key ID**。
+3. 页面右上角头像菜单里查看 **Team ID**（10 位字母数字）。
+4. 在 Mineradio 登录面板的 Apple Music 页签中按行粘贴三项（或粘贴 JSON），保存后点「连接 Apple Music」。
+
+也可用环境变量注入（适合脚本/无界面环境）：
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `APPLE_MUSIC_TEAM_ID` | Team ID |
+| `APPLE_MUSIC_KEY_ID` | MusicKit Key ID |
+| `APPLE_MUSIC_PRIVATE_KEY` | P8 私钥内容（或指向 .p8 文件路径） |
+| `APPLE_MUSIC_STOREFRONT` | 地区代码，默认 `us`（如 `cn`） |
+| `APPLE_MUSIC_TOKEN_FILE` | music user token 保存路径 |
+| `APPLE_MUSIC_CONFIG_FILE` | 凭据保存路径 |
+
+配置文件格式参见 [`.apple-music-credentials.example.json`](./.apple-music-credentials.example.json)。
+
+> 凭据与登录态只保存在本机用户数据目录（`.apple-music-credentials.json` / `.apple-music-token.json`），不会上传。music user token 属于敏感凭据，请勿分享。
+
 
 ![Mineradio 暗场启动页](./docs/assets/readme/cinema-beat-smoke.png)
 
 Mineradio 是一款 Windows 桌面沉浸式音乐播放器，把搜索播放、歌词舞台、粒子视觉、3D 歌单架和完整桌面模式组合成一个更接近现场感的私人音乐空间。
+
+## 系统媒体（SMTC）歌词同步
+
+> 本分支新增能力：读取 **Windows 系统媒体传输控制（SMTC）**，为正在播放的外部媒体（例如 Apple Music for Windows）自动匹配并同步歌词。MineRadio 只做「媒体状态监听 + 歌词匹配 + 歌词显示」，不控制外部播放器。
+
+- 打开 Apple Music（或任何支持 SMTC 的播放器）播放歌曲，MineRadio 自动检测：歌名 / 歌手 / 专辑 / 播放状态 / 播放进度
+- 自动匹配歌词（复用现有网易云歌词源与本地缓存），按播放进度实时滚动
+- 暂停 / 继续 / 切歌自动同步；本地时间轴平滑器处理 SMTC position 更新不稳定与长时间不更新的情况
+- 右上角显示系统媒体状态胶囊（点击可开关外部歌词同步）；内部播放器播放时自动让位
+- 实现：`desktop/smtc-bridge.ps1`（PowerShell + WinRT 读取 SMTC）→ 主进程 IPC → 渲染层 `public/js/modules/12-smtc/`
+
+## Apple Music 搜索接入（可选的开发者凭据方案）
+
+> 除 SMTC 歌词同步外，本分支还保留了基于 Apple Music API 的搜索/歌单接入。**该功能与 SMTC 歌词同步相互独立**：歌词同步 100% 走 Windows SMTC，不依赖 Apple Developer 凭据；搜索页签 `AM` 与登录面板则需要开发者凭据才可用（详见下文）。
 
 ## 立即下载 Windows 安装包
 

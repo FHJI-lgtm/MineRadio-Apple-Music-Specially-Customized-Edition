@@ -73,7 +73,7 @@ function listenReportProvider(snapshot) {
     (snapshot && (snapshot.provider || snapshot.sourceKey || snapshot.resolvedPlaybackProvider)) || ''
   ).trim().toLowerCase();
   if (provider === 'song' || provider === 'music') provider = 'netease';
-  if (/^(netease|qq|kugou|qishui|spotify)$/.test(provider) && typeof normalizePlaybackProvider === 'function') {
+  if (/^(netease|qq|kugou|qishui|spotify|apple)$/.test(provider) && typeof normalizePlaybackProvider === 'function') {
     provider = normalizePlaybackProvider(provider);
   }
   return provider;

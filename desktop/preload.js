@@ -76,6 +76,34 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   clearQishuiMusicLogin: () => ipcRenderer.invoke('qishui-music-clear-login'),
   openSpotifyMusicLogin: () => ipcRenderer.invoke('spotify-music-open-login'),
   clearSpotifyMusicLogin: () => ipcRenderer.invoke('spotify-music-clear-login'),
+  openAppleMusicLogin: () => ipcRenderer.invoke('apple-music-open-login'),
+  clearAppleMusicLogin: () => ipcRenderer.invoke('apple-music-clear-login'),
+  startSmtc: () => ipcRenderer.invoke('mineradio-smtc-start'),
+  stopSmtc: () => ipcRenderer.invoke('mineradio-smtc-stop'),
+  getSmtcState: () => ipcRenderer.invoke('mineradio-smtc-get-state'),
+  smtcControl: (command) => ipcRenderer.invoke('mineradio-smtc-control', String(command || '').slice(0, 32)),
+  logSmtc: (message) => ipcRenderer.send('mineradio-smtc-log', String(message || '').slice(0, 500)),
+  startSmtcAudio: (aumid) => ipcRenderer.invoke('mineradio-smtc-audio-start', String(aumid || '').slice(0, 300)),
+  stopSmtcAudio: () => ipcRenderer.invoke('mineradio-smtc-audio-stop'),
+  getSmtcAudioState: () => ipcRenderer.invoke('mineradio-smtc-audio-get-state'),
+  onSmtcAudioMetrics: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, state) => callback(state || {});
+    ipcRenderer.on('mineradio-smtc-audio-metrics', listener);
+    return () => ipcRenderer.removeListener('mineradio-smtc-audio-metrics', listener);
+  },
+  onSmtcState: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, state) => callback(state || {});
+    ipcRenderer.on('mineradio-smtc-state', listener);
+    return () => ipcRenderer.removeListener('mineradio-smtc-state', listener);
+  },
+  onSmtcThumbnail: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, thumb) => callback(typeof thumb === 'string' && thumb ? thumb : null);
+    ipcRenderer.on('mineradio-smtc-thumbnail', listener);
+    return () => ipcRenderer.removeListener('mineradio-smtc-thumbnail', listener);
+  },
   openUpdatePage: (url) => ipcRenderer.invoke('mineradio-open-update-page', String(url || '')),
   restartApp: () => ipcRenderer.invoke('mineradio-restart-app'),
   configureGlobalHotkeys: (bindings) => ipcRenderer.invoke('mineradio-hotkeys-configure-global', bindings || []),

@@ -129,6 +129,22 @@ const {
   handleSpotifyLyric,
 } = require('./spotify-api');
 const {
+  getAppleConfig,
+  saveAppleConfig,
+  saveAppleUserToken,
+  clearAppleToken,
+  getAppleDeveloperToken,
+  handleAppleStatus,
+  handleAppleSearch,
+  handleAppleUserPlaylists,
+  handleApplePlaylistTracks,
+  handleAppleAlbumDetail,
+  handleAppleLibraryCheck,
+  handleAppleLibrarySet,
+  handleAppleSongUrl,
+  handleAppleLyric,
+} = require('./apple-music-api');
+const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
 } = require('./cuefield/feedback-log');
@@ -148,6 +164,7 @@ const LOGIN_EASTER_EGG_PROTECTED_ROUTES = new Set([
   '/api/qishui/login/qrcode',
   '/api/qishui/login/check',
   '/api/spotify/config',
+  '/api/apple/config',
 ]);
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const DEFAULT_COOKIE_FILE = path.join(__dirname, '.cookie');
@@ -405,11 +422,13 @@ function clearAllRuntimeLoginCredentials(reason) {
   clearKugouSessionCaches();
   const qishui = clearQishuiAccessToken();
   const spotify = clearSpotifyToken();
+  const apple = clearAppleToken();
   return {
     ok: true,
     reason: String(reason || 'login-reset'),
     qishui: !qishui || qishui.ok !== false,
     spotify: !spotify || spotify.ok !== false,
+    apple: !apple || apple.ok !== false,
   };
 }
 
@@ -4496,7 +4515,7 @@ async function getPlaybackLoginInfo() {
 
 function normalizeListenReportProvider(value) {
   value = String(value || '').trim().toLowerCase();
-  if (value === 'qq' || value === 'kugou' || value === 'qishui' || value === 'spotify') return value;
+  if (value === 'qq' || value === 'kugou' || value === 'qishui' || value === 'spotify' || value === 'apple' || value === 'apple-music') return value === 'apple-music' ? 'apple' : value;
   return value === 'netease' || value === 'cloud' || value === 'song' ? 'netease' : '';
 }
 
@@ -4506,6 +4525,7 @@ function listenReportSongId(provider, song) {
   if (provider === 'kugou') return String(song.hash || song.mixSongId || song.providerSongId || song.id || '');
   if (provider === 'qishui') return String(song.providerSongId || song.trackId || song.id || '');
   if (provider === 'spotify') return String(song.spotifyId || song.providerSongId || song.id || '').replace(/^spotify:track:/i, '');
+  if (provider === 'apple') return String(song.appleId || song.providerSongId || song.id || '');
   return String(song.id || song.providerSongId || '');
 }
 
@@ -4714,6 +4734,14 @@ const server = http.createServer(async (req, res) => {
         albumCollect: !!(spotifyStatus.capabilities && spotifyStatus.capabilities.likeWrite),
         commentsRead: false, commentsWrite: false, listenReport: false,
         missingWriteScopes: spotifyStatus.missingWriteScopes || [],
+      },
+      apple: {
+        playlists: true, likeRead: true,
+        likeWrite: true,
+        playlistWrite: false,
+        albumRead: true,
+        albumCollect: true,
+        commentsRead: false, commentsWrite: false, listenReport: false,
       },
     });
     return;
@@ -5255,6 +5283,238 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[SpotifyLyric]', err);
       sendJSON(res, { provider: 'spotify', error: err.message, lyric: '', tlyric: '', yrc: '', ytlrc: '' }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/status') {
+    try {
+      sendJSON(res, await handleAppleStatus());
+    } catch (err) {
+      console.error('[AppleMusicStatus]', err);
+      sendJSON(res, { provider: 'apple', configured: false, loggedIn: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/config') {
+    try {
+      if (req.method !== 'POST') {
+        sendJSON(res, { provider: 'apple', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405);
+        return;
+      }
+      const body = await readRequestBody(req);
+      const saved = saveAppleConfig(body);
+      const status = await handleAppleStatus();
+      sendJSON(res, Object.assign({}, status, saved, {
+        ok: true,
+        configured: true,
+        message: status.loggedIn
+          ? status.message
+          : 'Apple Music 开发者凭据已保存，可打开官方登录窗口连接 Apple ID。'
+      }));
+    } catch (err) {
+      console.error('[AppleMusicConfig]', err);
+      const missing = err && err.missing || [];
+      sendJSON(res, {
+        provider: 'apple',
+        ok: false,
+        configured: getAppleConfig().configured,
+        loggedIn: false,
+        error: err.code || err.message,
+        message: err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' || err.message === 'APPLE_MUSIC_CREDENTIALS_REQUIRED'
+          ? '请先粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥。'
+          : err.message,
+        missing,
+      }, err && err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' ? 400 : 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/oauth/dev-token') {
+    try {
+      const token = await getAppleDeveloperToken();
+      sendJSON(res, { provider: 'apple', ok: true, developerToken: token, expiresIn: 300 });
+    } catch (err) {
+      console.error('[AppleMusicDevToken]', err);
+      sendJSON(res, { provider: 'apple', ok: false, error: err.code || err.message, message: err.message, missing: err.missing || [] }, err && err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' ? 400 : 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/login/token') {
+    try {
+      if (req.method !== 'POST') {
+        sendJSON(res, { provider: 'apple', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405);
+        return;
+      }
+      const body = await readRequestBody(req);
+      const saved = await saveAppleUserToken(body);
+      const status = await handleAppleStatus();
+      sendJSON(res, Object.assign({}, status, saved, {
+        ok: true,
+        loggedIn: true,
+        message: 'Apple Music 登录成功，可同步用户歌单与资料库；播放仍会自动换源。'
+      }));
+    } catch (err) {
+      console.error('[AppleMusicLoginToken]', err);
+      sendJSON(res, {
+        provider: 'apple',
+        ok: false,
+        loggedIn: false,
+        error: err.code || err.message,
+        message: err.message,
+      }, err && (err.code === 'APPLE_MUSIC_USER_TOKEN_INVALID' || err.code === 'APPLE_MUSIC_USER_TOKEN_REQUIRED') ? 400 : 502);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/logout') {
+    try {
+      sendJSON(res, clearAppleToken());
+    } catch (err) {
+      console.error('[AppleMusicLogout]', err);
+      sendJSON(res, { provider: 'apple', ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/user/playlists') {
+    try {
+      const limit = Math.max(1, Math.min(500, parseInt(url.searchParams.get('limit') || '300', 10) || 300));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+      sendJSON(res, await handleAppleUserPlaylists({ limit, offset }));
+    } catch (err) {
+      console.error('[AppleMusicUserPlaylists]', err);
+      sendJSON(res, { provider: 'apple', loggedIn: false, error: err.message, playlists: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/song/like/check') {
+    try {
+      const ids = String(url.searchParams.get('ids') || url.searchParams.get('id') || '')
+        .split(',').map(value => value.trim()).filter(Boolean);
+      sendJSON(res, await handleAppleLibraryCheck('track', ids));
+    } catch (err) {
+      console.error('[AppleMusicLikeCheck]', err);
+      sendJSON(res, { provider: 'apple', liked: {}, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/song/like') {
+    try {
+      const body = req.method === 'POST' ? await readRequestBody(req) : {};
+      const song = body.song || {
+        id: body.id || url.searchParams.get('id') || '',
+        appleId: body.appleId || url.searchParams.get('appleId') || '',
+        isrc: body.isrc || url.searchParams.get('isrc') || '',
+      };
+      const liked = String(body.like != null ? body.like : (url.searchParams.get('like') || 'true')) !== 'false';
+      sendJSON(res, await handleAppleLibrarySet('track', song, liked));
+    } catch (err) {
+      console.error('[AppleMusicLike]', err);
+      sendJSON(res, {
+        provider: 'apple',
+        success: false,
+        error: err.code || err.message,
+        message: err.code === 'APPLE_MUSIC_LOGIN_REQUIRED'
+          ? '请在账号面板重新连接 Apple Music。'
+          : err.message,
+      }, Number(err.statusCode) || 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/album/like/check') {
+    try {
+      const ids = String(url.searchParams.get('ids') || url.searchParams.get('id') || '')
+        .split(',').map(value => value.trim()).filter(Boolean);
+      sendJSON(res, await handleAppleLibraryCheck('album', ids));
+    } catch (err) {
+      console.error('[AppleMusicAlbumLikeCheck]', err);
+      sendJSON(res, { provider: 'apple', liked: {}, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/album/like') {
+    try {
+      const body = req.method === 'POST' ? await readRequestBody(req) : {};
+      const album = body.album || {
+        id: body.id || body.albumId || url.searchParams.get('id') || '',
+        albumId: body.albumId || '',
+        upc: body.upc || url.searchParams.get('upc') || '',
+      };
+      const liked = String(body.like != null ? body.like : (url.searchParams.get('like') || 'true')) !== 'false';
+      sendJSON(res, await handleAppleLibrarySet('album', album, liked));
+    } catch (err) {
+      console.error('[AppleMusicAlbumLike]', err);
+      sendJSON(res, { provider: 'apple', success: false, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/playlist/tracks') {
+    try {
+      const id = url.searchParams.get('id') || url.searchParams.get('playlistId') || '';
+      const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '48', 10) || 48));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+      sendJSON(res, await handleApplePlaylistTracks(id, { limit, offset }));
+    } catch (err) {
+      console.error('[AppleMusicPlaylistTracks]', err);
+      sendJSON(res, { provider: 'apple', error: err.message, tracks: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/album/detail') {
+    try {
+      const id = url.searchParams.get('id') || url.searchParams.get('albumId') || '';
+      const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '80', 10) || 80));
+      sendJSON(res, await handleAppleAlbumDetail(id, { limit }));
+    } catch (err) {
+      console.error('[AppleMusicAlbumDetail]', err);
+      sendJSON(res, { provider: 'apple', error: err.message, album: null, songs: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/search') {
+    try {
+      const kw = url.searchParams.get('keywords') || '';
+      const limit = Math.max(4, Math.min(25, parseInt(url.searchParams.get('limit') || '10', 10) || 10));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+      sendJSON(res, await handleAppleSearch(kw, limit, offset));
+    } catch (err) {
+      console.error('[AppleMusicSearch]', err);
+      sendJSON(res, { provider: 'apple', configured: getAppleConfig().configured, error: err.message, songs: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/song/url') {
+    try {
+      sendJSON(res, await handleAppleSongUrl({
+        id: url.searchParams.get('id') || '',
+        providerSongId: url.searchParams.get('providerSongId') || '',
+        appleId: url.searchParams.get('appleId') || '',
+      }));
+    } catch (err) {
+      console.error('[AppleMusicSongUrl]', err);
+      sendJSON(res, { provider: 'apple', url: '', playable: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/lyric') {
+    try {
+      const id = url.searchParams.get('id') || '';
+      sendJSON(res, await handleAppleLyric(id));
+    } catch (err) {
+      console.error('[AppleMusicLyric]', err);
+      sendJSON(res, { provider: 'apple', error: err.message, lyric: '', tlyric: '', yrc: '', ytlrc: '' }, 500);
     }
     return;
   }

@@ -32,6 +32,7 @@ function normalizePlaybackProvider(provider) {
   if (provider === 'kugou') return 'kugou';
   if (provider === 'qishui') return 'qishui';
   if (provider === 'spotify') return 'spotify';
+  if (provider === 'apple' || provider === 'apple-music' || provider === 'appleMusic') return 'apple';
   return 'netease';
 }
 function normalizePlaybackQualityForProvider(value, provider) {
@@ -68,6 +69,7 @@ function playbackQualityLabel(value, provider) {
   provider = normalizePlaybackProvider(provider || currentPlaybackQualityProvider());
   value = normalizePlaybackQualityForProvider(value, provider);
   if (provider === 'spotify') return 'Spotify 匹配源';
+  if (provider === 'apple') return 'Apple Music 匹配源';
   if (provider === 'qishui') return '汽水音质';
   if (provider === 'qq') {
     if (value === 'hires') return 'Hi-Res FLAC';
@@ -94,6 +96,7 @@ function playbackQualityShortLabel(value, provider) {
   provider = normalizePlaybackProvider(provider || currentPlaybackQualityProvider());
   value = normalizePlaybackQualityForProvider(value, provider);
   if (provider === 'spotify') return 'SP';
+  if (provider === 'apple') return 'AM';
   if (provider === 'qishui') return 'QS';
   if (provider === 'qq') {
     if (value === 'hires') return 'QQ Hires';
@@ -194,7 +197,8 @@ function readPlaybackQualityPreference() {
     qq: PLAYBACK_QUALITY_DEFAULTS.qq,
     kugou: PLAYBACK_QUALITY_DEFAULTS.kugou,
     qishui: PLAYBACK_QUALITY_DEFAULTS.qishui,
-    spotify: PLAYBACK_QUALITY_DEFAULTS.spotify
+    spotify: PLAYBACK_QUALITY_DEFAULTS.spotify,
+    apple: PLAYBACK_QUALITY_DEFAULTS.apple
   };
   try {
     var raw = localStorage.getItem(PLAYBACK_QUALITY_STORE_KEY) || '';
@@ -206,7 +210,8 @@ function readPlaybackQualityPreference() {
         qq: normalizePlaybackQualityForProvider(legacy, 'qq'),
         kugou: normalizePlaybackQualityForProvider(legacy, 'kugou'),
         qishui: normalizePlaybackQualityForProvider(fallback.qishui, 'qishui'),
-        spotify: normalizePlaybackQualityForProvider(fallback.spotify, 'spotify')
+        spotify: normalizePlaybackQualityForProvider(fallback.spotify, 'spotify'),
+        apple: normalizePlaybackQualityForProvider(fallback.apple, 'apple')
       };
     }
     var parsed = JSON.parse(raw);
@@ -216,7 +221,8 @@ function readPlaybackQualityPreference() {
       qq: normalizePlaybackQualityForProvider(parsed.qq || fallback.qq, 'qq'),
       kugou: normalizePlaybackQualityForProvider(parsed.kugou || fallback.kugou || 'lossless', 'kugou'),
       qishui: normalizePlaybackQualityForProvider(parsed.qishui || fallback.qishui || 'standard', 'qishui'),
-      spotify: normalizePlaybackQualityForProvider(parsed.spotify || fallback.spotify || 'standard', 'spotify')
+      spotify: normalizePlaybackQualityForProvider(parsed.spotify || fallback.spotify || 'standard', 'spotify'),
+      apple: normalizePlaybackQualityForProvider(parsed.apple || fallback.apple || 'standard', 'apple')
     };
   } catch (e) {
     return fallback;

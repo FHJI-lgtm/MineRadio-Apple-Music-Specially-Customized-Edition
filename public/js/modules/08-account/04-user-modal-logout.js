@@ -1,5 +1,5 @@
 function loggedProviderCount() {
-  return ['netease', 'qq', 'kugou', 'qishui', 'spotify'].filter(function (key) { return hasPlatformLogin(key); }).length;
+  return ['netease', 'qq', 'kugou', 'qishui', 'spotify', 'apple'].filter(function (key) { return hasPlatformLogin(key); }).length;
 }
 function updateUserModalUi() {
   activeAccountProvider = firstLoggedProvider();
@@ -16,6 +16,7 @@ function updateUserModalUi() {
   var addKugou = document.getElementById('account-add-kugou');
   var addQishui = document.getElementById('account-add-qishui');
   var addSpotify = document.getElementById('account-add-spotify');
+  var addApple = document.getElementById('account-add-apple');
   if (chip) {
     chip.className = 'account-provider-chip ' + activeAccountProvider;
     chip.innerHTML = '<span class="account-source-dot ' + meta.dot + '"></span><span>' + meta.label + '</span>';
@@ -42,6 +43,9 @@ function updateUserModalUi() {
       var spProduct = st && st.product === 'premium' ? 'Spotify Premium' : (st && st.product ? ('Spotify ' + String(st.product).toUpperCase()) : 'Spotify 方案未知');
       vipEl.textContent = 'ID: ' + ((st && st.userId) || '-') + '  /  ' + spProduct + '  /  可同步歌单和 Liked Songs';
       vipEl.style.color = hasProviderVip('spotify', st) ? 'rgba(30,215,96,0.86)' : 'rgba(30,215,96,0.60)';
+    } else if (activeAccountProvider === 'apple') {
+      vipEl.textContent = 'ID: ' + ((st && st.userId) || '-') + '  /  Apple Music 已连接  /  可同步用户歌单与资料库';
+      vipEl.style.color = 'rgba(255,120,130,0.86)';
     } else {
       var qqVipLevel = providerVipLevel('qq', st);
       var qqVipPending = qqLoginNeedsAuthorizationRefresh(st) || (typeof qqMembershipNeedsSync === 'function' && qqMembershipNeedsSync(st));
@@ -50,7 +54,7 @@ function updateUserModalUi() {
       vipEl.style.color = qqVipPending ? 'rgba(255,232,174,0.86)' : (hasProviderVip('qq', st) ? 'rgba(0,245,212,0.82)' : 'rgba(0,245,212,0.58)');
     }
   }
-  ['netease', 'qq', 'kugou', 'qishui', 'spotify', 'both'].forEach(function (key) {
+  ['netease', 'qq', 'kugou', 'qishui', 'spotify', 'apple', 'both'].forEach(function (key) {
     var btn = document.getElementById('user-provider-' + key);
     if (btn) btn.classList.toggle('active', key === 'both' ? dualAccountMode : (!dualAccountMode && activeAccountProvider === key));
   });
@@ -59,11 +63,13 @@ function updateUserModalUi() {
   if (addKugou) addKugou.textContent = hasPlatformLogin('kugou') ? '查看酷狗音乐' : '补登酷狗音乐';
   if (addQishui) addQishui.textContent = hasPlatformLogin('qishui') ? '重新登录汽水' : '登录汽水音乐';
   if (addSpotify) addSpotify.textContent = hasPlatformLogin('spotify') ? '查看 Spotify' : '连接 Spotify';
+  if (addApple) addApple.textContent = hasPlatformLogin('apple') ? '查看 Apple Music' : '连接 Apple Music';
   if (logoutBtn) logoutBtn.textContent =
     activeAccountProvider === 'qq' ? '退出 QQ 音乐' :
     (activeAccountProvider === 'kugou' ? '退出酷狗音乐' :
     (activeAccountProvider === 'qishui' ? '清除汽水登录态' :
-    (activeAccountProvider === 'spotify' ? '退出 Spotify' : '退出网易云')));
+    (activeAccountProvider === 'spotify' ? '退出 Spotify' :
+    (activeAccountProvider === 'apple' ? '退出 Apple Music' : '退出网易云'))));
   if (hint) hint.textContent = dualAccountMode
     ? '右上角已切换为多平台并排展示。'
     : '可切换右上角展示的平台；“我两个都要”会并排显示当前已登录的平台。';
@@ -80,7 +86,7 @@ function showUserModal() {
 }
 function closeUserModal() { closeGsapModal(document.getElementById('user-modal')); }
 function setActiveAccountProvider(provider) {
-  provider = provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : 'netease')));
+  provider = provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : (provider === 'apple' ? 'apple' : 'netease'))));
   if (!hasPlatformLogin(provider)) {
     openProviderLogin(provider);
     return;
@@ -104,7 +110,7 @@ function requestDualLoginMode() {
   enableDualAccountView();
 }
 function openProviderLogin(provider) {
-  provider = provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : 'netease')));
+  provider = provider === 'qq' ? 'qq' : (provider === 'kugou' ? 'kugou' : (provider === 'qishui' ? 'qishui' : (provider === 'spotify' ? 'spotify' : (provider === 'apple' ? 'apple' : 'netease'))));
   closeUserModal();
   loginProvider = provider;
   showLoginModal({ provider: provider });
@@ -145,6 +151,7 @@ function resetAllProviderRendererLoginState() {
   kugouLoginStatus = { provider: 'kugou', loggedIn: false, preview: false, nickname: '酷狗音乐', userId: '', avatar: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false };
   qishuiLoginStatus = { provider: 'qishui', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: '汽水音乐', userId: '', avatar: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match' };
   spotifyLoginStatus = { provider: 'spotify', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Spotify', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+  appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
   loginStatusChecked = true;
   loginStatusCheckFailed = false;
   neteasePlaylists = [];
@@ -152,6 +159,7 @@ function resetAllProviderRendererLoginState() {
   kugouPlaylists = [];
   qishuiPlaylists = [];
   spotifyPlaylists = [];
+  applePlaylists = [];
   userPlaylists = [];
   myPodcastCollections = [];
   myPodcastItems = {};
@@ -190,7 +198,8 @@ async function logoutAllAccountsAndResetEasterEgg() {
       apiJson('/api/qq/logout'),
       apiJson('/api/kugou/logout'),
       apiJson('/api/qishui/logout'),
-      apiJson('/api/spotify/logout')
+      apiJson('/api/spotify/logout'),
+      apiJson('/api/apple/logout')
     ]);
     var result = await requestLoginEasterEggReplayReset();
     if (!result || !result.ok || result.unlocked || result.resetComplete === false) {
@@ -225,6 +234,26 @@ async function logoutAllAccountsAndResetEasterEgg() {
 }
 
 async function logoutActiveAccount() {
+  if (activeAccountProvider === 'apple') {
+    try { await apiJson('/api/apple/logout'); } catch (e) { }
+    try {
+      if (window.desktopWindow && typeof window.desktopWindow.clearAppleMusicLogin === 'function') {
+        await window.desktopWindow.clearAppleMusicLogin();
+      }
+    } catch (e) { }
+    appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+    applePlaylists = [];
+    userPlaylists = userPlaylists.filter(function (pl) { return pl.provider !== 'apple'; });
+    playlistCatalogRevision += 1;
+    dualAccountMode = false;
+    activeAccountProvider = firstLoggedProvider();
+    renderUserBtn();
+    safeShelfRebuild('apple-logout');
+    if (hasAnyPlatformLogin()) updateUserModalUi();
+    else closeUserModal();
+    showToast('已退出 Apple Music');
+    return;
+  }
   if (activeAccountProvider === 'spotify') {
     try { await apiJson('/api/spotify/logout'); } catch (e) { }
     try {
@@ -317,7 +346,7 @@ async function doLogout() {
   neteasePlaylists = [];
   if (!hasPlatformLogin('netease') || loggedProviderCount() < 2) dualAccountMode = false;
   activeAccountProvider = firstLoggedProvider();
-  userPlaylists = qqPlaylists.concat(kugouPlaylists || [], qishuiPlaylists || [], spotifyPlaylists || []);
+  userPlaylists = qqPlaylists.concat(kugouPlaylists || [], qishuiPlaylists || [], spotifyPlaylists || [], applePlaylists || []);
   playlistCatalogRevision += 1;
   myPodcastCollections = [];
   myPodcastItems = {};
