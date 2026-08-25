@@ -272,29 +272,35 @@ function smtcLyricCacheEntryUsable(entry, title, artist) {
 
 // ---------- 主编排器 (严格按用户优先级 fallback) ----------
 // 返回 { response, source, synthetic, fromCache } 或 null (全部失败)
-async function smtcResolveLyricViaSources(title, artist, seq) {
+// skipCache=true 时强制绕过内存/持久缓存 (手动重新搜索), 不删除永久缓存。
+async function smtcResolveLyricViaSources(title, artist, seq, skipCache) {
   var normKey = smtcLyricNormKey(title, artist);
   if (!normKey) return null;
 
-  // 1) 会话内缓存
-  var mem = smtcLyricSourceMemoryCache[normKey];
-  var memHit = mem ? smtcLyricCacheEntryUsable(mem, title, artist) : null;
-  if (memHit) {
-    console.log('[LYRICS] cache HIT source=' + smtcLyricSourceName(mem.source));
-    return { response: mem.response, source: mem.source, synthetic: memHit.synthetic, fromCache: true };
+  console.log('[LYRIC SEARCH] order=' + smtcEnabledLyricSourceList().map(function (x) { return x.id; }).join(',') +
+    ' skipCache=' + (skipCache ? 'true' : 'false'));
+
+  if (!skipCache) {
+    // 1) 会话内缓存
+    var mem = smtcLyricSourceMemoryCache[normKey];
+    var memHit = mem ? smtcLyricCacheEntryUsable(mem, title, artist) : null;
+    if (memHit) {
+      console.log('[LYRICS] cache HIT source=' + smtcLyricSourceName(mem.source));
+      return { response: mem.response, source: mem.source, synthetic: memHit.synthetic, fromCache: true };
+    }
+
+    // 2) 持久缓存 (命中但内容为空/损坏 -> 继续 fallback, 不阻塞)
+    var persistent = await smtcLyricReadPersistentCache(normKey);
+    if (seq !== smtcLyricState.seq) return null;
+    var perHit = persistent ? smtcLyricCacheEntryUsable(persistent, title, artist) : null;
+    if (perHit) {
+      smtcLyricSourceMemoryCache[normKey] = persistent;
+      console.log('[LYRICS] persistent cache HIT source=' + smtcLyricSourceName(persistent.source));
+      return { response: persistent.response, source: persistent.source, synthetic: perHit.synthetic, fromCache: true };
+    }
   }
 
-  // 2) 持久缓存 (命中但内容为空/损坏 -> 继续 fallback, 不阻塞)
-  var persistent = await smtcLyricReadPersistentCache(normKey);
-  if (seq !== smtcLyricState.seq) return null;
-  var perHit = persistent ? smtcLyricCacheEntryUsable(persistent, title, artist) : null;
-  if (perHit) {
-    smtcLyricSourceMemoryCache[normKey] = persistent;
-    console.log('[LYRICS] persistent cache HIT source=' + smtcLyricSourceName(persistent.source));
-    return { response: persistent.response, source: persistent.source, synthetic: perHit.synthetic, fromCache: true };
-  }
-
-  // 3) 按优先级依次尝试 (任一失败 -> 下一源)
+  // 3) 按优先级依次尝试 (任一失败 -> 下一源; 翻译请求/解析与排序无关)
   var sources = smtcEnabledLyricSourceList();
   if (!sources.length) {
     console.log('[LYRICS] all sources disabled');
@@ -306,7 +312,7 @@ async function smtcResolveLyricViaSources(title, artist, seq) {
     var impl = smtcLyricSourceImpls[sources[i].id];
     if (!impl) continue;
     var sourceName = sources[i].name;
-    console.log('[LYRICS] trying source=' + sourceName);
+    console.log('[LYRIC SOURCE] source=' + sources[i].id);
     var candidate = null;
     for (var qi = 0; qi < queries.length; qi++) {
       if (seq !== smtcLyricState.seq) return null;
@@ -335,7 +341,9 @@ async function smtcResolveLyricViaSources(title, artist, seq) {
       console.log('[LYRICS] ' + sourceName + ' empty lyric');
       continue;
     }
-    console.log('[LYRICS] ' + sourceName + ' matched');
+    console.log('[LYRIC RESULT] source=' + sources[i].id +
+      ' lyric=' + (state.usableLyric ? 'true' : 'false') +
+      ' trans=' + (state.translationLines && state.translationLines.length ? 'true' : 'false'));
     var entry = {
       source: sources[i].id,
       matchedTitle: String(candidate.name || candidate.title || ''),
@@ -414,25 +422,52 @@ function smtcEnsureLyricSourceUi() {
   btn.id = 'smtc-lyric-source-btn';
   btn.textContent = '词源';
   btn.title = '歌词源优先级设置';
-  btn.style.cssText = [
-    'position:fixed', 'top:230px', 'right:16px', 'z-index:4797',
-    'padding:4px 10px', 'border-radius:8px', 'font-size:11px',
-    'color:rgba(255,255,255,0.78)', 'background:rgba(14,16,18,0.82)',
-    'border:1px solid rgba(255,255,255,0.10)', 'cursor:pointer', 'user-select:none',
-  ].join(';');
+  // UI 重构: 词源按钮移入 hover 展开面板第三层 (歌词源行右侧); fallback 保留原 fixed 位置
+  var srcRow = document.getElementById('smtc-hover-srcrow');
+  if (srcRow) {
+    btn.style.cssText = [
+      'padding:2px 8px', 'border-radius:6px', 'font-size:10px',
+      'color:rgba(255,255,255,0.78)', 'background:rgba(255,255,255,0.08)',
+      'border:1px solid rgba(255,255,255,0.14)', 'cursor:pointer', 'user-select:none',
+      'flex-shrink:0',
+    ].join(';');
+    srcRow.appendChild(btn);
+  } else {
+    btn.style.cssText = [
+      'position:fixed', 'top:230px', 'right:16px', 'z-index:4797',
+      'padding:4px 10px', 'border-radius:8px', 'font-size:11px',
+      'color:rgba(255,255,255,0.78)', 'background:rgba(14,16,18,0.82)',
+      'border:1px solid rgba(255,255,255,0.10)', 'cursor:pointer', 'user-select:none',
+    ].join(';');
+    document.body.appendChild(btn);
+  }
   btn.addEventListener('click', function () { smtcToggleLyricSourcePanel(); });
-  document.body.appendChild(btn);
 
   var panel = document.createElement('div');
   panel.id = 'smtc-lyric-source-panel';
-  panel.style.cssText = [
-    'position:fixed', 'top:264px', 'right:16px', 'z-index:4796',
-    'width:216px', 'padding:8px', 'border-radius:10px',
-    'color:rgba(255,255,255,0.85)', 'background:rgba(14,16,18,0.92)',
-    'border:1px solid rgba(255,255,255,0.12)', 'display:none',
-    'font-size:11px', 'line-height:1.5', 'user-select:none',
-  ].join(';');
-  document.body.appendChild(panel);
+  // UI 重构: 词源优先级面板移入 hover 容器 (absolute), 成为同一 hover container 的一部分。
+  // top:100% 贴边 (无 gap): 鼠标从面板主体移到词源区域不经过"容器外"空白, 不会误触发 mouseleave。
+  var hoverContainer = document.getElementById('smtc-hover-container');
+  if (hoverContainer) {
+    panel.style.cssText = [
+      'position:absolute', 'top:100%', 'right:0', 'z-index:5',
+      'width:216px', 'padding:8px', 'border-radius:10px',
+      'color:rgba(255,255,255,0.85)', 'background:rgba(14,16,18,0.92)',
+      'border:1px solid rgba(255,255,255,0.12)', 'display:none',
+      'font-size:11px', 'line-height:1.5', 'user-select:none',
+      'box-shadow:0 6px 18px rgba(0,0,0,0.35)',
+    ].join(';');
+    hoverContainer.appendChild(panel);
+  } else {
+    panel.style.cssText = [
+      'position:fixed', 'top:264px', 'right:16px', 'z-index:4796',
+      'width:216px', 'padding:8px', 'border-radius:10px',
+      'color:rgba(255,255,255,0.85)', 'background:rgba(14,16,18,0.92)',
+      'border:1px solid rgba(255,255,255,0.12)', 'display:none',
+      'font-size:11px', 'line-height:1.5', 'user-select:none',
+    ].join(';');
+    document.body.appendChild(panel);
+  }
   smtcRenderLyricSourcePanel();
 }
 
@@ -533,6 +568,173 @@ function smtcRenderLyricSourcePanel() {
     smtcScheduleLyricReloadAfterSettingsChange();
   });
   panel.appendChild(reset);
+  // UI 重构: Session Delay 区块已移交 hover 展开面板第四层 (由 03 首次展开时调用本函数渲染)
 }
 
-smtcEnsureLyricSourceUi();
+// ---------- SMTC 会话延迟设置（只作用于稳定器最终输出；修改立即生效）----------
+function smtcRenderSessionDelayBlock(panel) {
+  var sep = document.createElement('div');
+  sep.style.cssText = 'height:1px;background:rgba(255,255,255,0.12);margin:8px 0 6px;';
+  panel.appendChild(sep);
+  var dTitle = document.createElement('div');
+  dTitle.textContent = 'SMTC 会话延迟';
+  dTitle.style.cssText = 'font-weight:700;margin:0 0 2px 2px;opacity:0.9;';
+  panel.appendChild(dTitle);
+  var dHint = document.createElement('div');
+  dHint.textContent = '调整歌词时间轴相对于 Apple Music 播放进度的提前/延后量。负值提前，正值延后。';
+  dHint.style.cssText = 'margin:0 2px 6px;opacity:0.55;font-size:10px;line-height:1.4;';
+  panel.appendChild(dHint);
+  var dRow = document.createElement('div');
+  dRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin:0 2px;';
+  var dBtnStyle = [
+    'width:26px', 'height:24px', 'border-radius:6px', 'font-size:13px', 'line-height:1',
+    'color:rgba(255,255,255,0.85)', 'background:rgba(255,255,255,0.08)',
+    'border:1px solid rgba(255,255,255,0.14)', 'cursor:pointer', 'user-select:none',
+  ].join(';');
+  var minus = document.createElement('button');
+  minus.type = 'button';
+  minus.textContent = '−';
+  minus.title = '提前 50ms';
+  minus.style.cssText = dBtnStyle;
+  minus.addEventListener('click', function () {
+    smtcSetSessionDelayMs((typeof smtcSessionDelayMs === 'function' ? smtcSessionDelayMs() : 0) - 50);
+    smtcRenderSessionDelayValue();
+  });
+  var val = document.createElement('span');
+  val.id = 'smtc-session-delay-val';
+  val.style.cssText = 'flex:1;text-align:center;font-size:11px;font-variant-numeric:tabular-nums;opacity:0.95;';
+  var plus = document.createElement('button');
+  plus.type = 'button';
+  plus.textContent = '+';
+  plus.title = '延后 50ms';
+  plus.style.cssText = dBtnStyle;
+  plus.addEventListener('click', function () {
+    smtcSetSessionDelayMs((typeof smtcSessionDelayMs === 'function' ? smtcSessionDelayMs() : 0) + 50);
+    smtcRenderSessionDelayValue();
+  });
+  dRow.appendChild(minus);
+  dRow.appendChild(val);
+  dRow.appendChild(plus);
+  panel.appendChild(dRow);
+  var dReset = document.createElement('button');
+  dReset.type = 'button';
+  dReset.textContent = '恢复默认';
+  dReset.style.cssText = [
+    'width:100%', 'margin-top:6px', 'padding:4px 0', 'border-radius:6px', 'font-size:11px',
+    'color:rgba(255,255,255,0.8)', 'background:rgba(255,255,255,0.08)',
+    'border:1px solid rgba(255,255,255,0.14)', 'cursor:pointer',
+  ].join(';');
+  dReset.addEventListener('click', function () {
+    smtcSetSessionDelayMs(0);   // 立即生效，无需重启
+    smtcRenderSessionDelayValue();
+  });
+  panel.appendChild(dReset);
+  smtcRenderSessionDelayValue();
+  // 内置计时器模式联动: BUILT_IN 时禁用/置灰 (06-smtc-builtin-timer 提供)
+  if (typeof smtcUpdateSessionDelayEnabledState === 'function') smtcUpdateSessionDelayEnabledState();
+}
+
+function smtcRenderSessionDelayValue() {
+  var val = document.getElementById('smtc-session-delay-val');
+  if (!val) return;
+  var cur = typeof smtcSessionDelayMs === 'function' ? smtcSessionDelayMs() : 0;
+  val.textContent = (cur > 0 ? '+' : '') + cur + ' ms';
+}
+
+// ============================================================
+// 歌词源搜索顺序 (独立歌词源窗口拖拽排序后调用)
+// 唯一真实状态来源: smtcLyricSourceSettings().order (localStorage, 现有状态)。
+// 本函数只更新 order 顺序并保存; 搜索/fallback 由 smtcEnabledLyricSourceList()
+// + smtcResolveLyricViaSources 按新顺序依次尝试 (零改动)。
+// 顺序变化 -> 跳过内存缓存 + 失效当前歌曲持久缓存 -> 按新顺序重载当前歌曲。
+// 不复制歌词获取/匹配/解析逻辑, 不改翻译/时间轴。
+// ============================================================
+function smtcSetLyricSourceOrder(order) {
+  if (!Array.isArray(order)) return false;
+  var known = {};
+  Object.keys(SMTC_LYRIC_SOURCES).forEach(function (id) { known[id] = true; });
+  // 过滤未知 source; 缺失的默认 source 自动补全 (与 smtcLyricSourceSettings 修复逻辑一致)
+  var clean = order.filter(function (id) { return known[id] && SMTC_LYRIC_SOURCES[id]; });
+  SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id) {
+    if (clean.indexOf(id) < 0) clean.push(id);
+  });
+  var s = smtcLyricSourceSettings();
+  s.order = clean;
+  smtcSaveLyricSourceSettings(s);
+  // 清会话内缓存 (所有歌), 当前歌曲持久缓存写无效条目 -> 重载时按新顺序重新搜索
+  smtcLyricSourceMemoryCache = {};
+  smtcTranslationSupplementDone = {};   // 排序重载后允许重新补全翻译 (避免新主源无翻译时补全被跳过)
+  try {
+    var normKey = smtcLyricNormKey(smtcStore && smtcStore.title, smtcStore && smtcStore.artist);
+    if (normKey && window.desktopWindow && typeof window.desktopWindow.writeLyricCache === 'function') {
+      window.desktopWindow.writeLyricCache(smtcLyricPersistentKey(normKey), {
+        version: 1, source: '', matchedTitle: '', matchedArtist: '', timestamp: 0, response: null, synthetic: null,
+      }).catch(function () {});
+    }
+  } catch (e) { }
+  smtcScheduleLyricReloadAfterSettingsChange();   // 350ms 后现有 smtcLoadLyrics 按新顺序重试
+  return true;
+}
+
+// ============================================================
+// 手动重新搜索 (歌词源窗口 [重新搜索] 按钮)
+// - 强制绕过内存/持久缓存 (skipCache), 不删除永久缓存
+// - 读取当前 source order (最新排序)
+// - 成功: 原子替换 lyric + trans + source (一次性 setOriginalLyricsState)
+// - 失败: 保留当前歌词, 不清空 UI, 仅轻提示
+// ============================================================
+async function smtcReSearchLyrics() {
+  if (!smtcStore || smtcStore.active !== true) return { ok: false, error: 'inactive' };
+  if (!smtcStore.title) return { ok: false, error: 'no-title' };
+  var seq = ++smtcLyricState.seq;   // 取消进行中的旧搜索 (竞态保护)
+  smtcLyricState.loading = true;
+  // 不清空当前歌词: 失败时保留显示
+  console.log('[LYRIC][' + Date.now() + '] re-search started seq=' + seq + ' title=' + smtcStore.title + ' artist=' + smtcStore.artist);
+  if (typeof smtcRenderChip === 'function') smtcRenderChip();
+  var result = null;
+  try {
+    result = await smtcResolveLyricViaSources(smtcStore.title, smtcStore.artist, seq, true);   // skipCache=true
+  } catch (e) {
+    result = null;
+  }
+  if (seq !== smtcLyricState.seq) return { ok: false, error: 'superseded' };
+  smtcLyricState.loading = false;
+  if (!result) {
+    // 失败: 保留现有歌词, 轻提示 (不弹窗)
+    smtcLyricState.error = 'no-lyrics';
+    if (typeof smtcRenderChip === 'function') smtcRenderChip();
+    if (typeof showToast === 'function') showToast('重新搜索失败：未找到歌词');
+    console.log('[LYRIC][' + Date.now() + '] re-search failed (existing lyric kept)');
+    return { ok: false, error: 'no-lyrics' };
+  }
+  // 新结果 -> 允许重新补全翻译
+  smtcTranslationSupplementDone = {};
+  var synthetic = result.synthetic;
+  smtcLyricState.source = result.source;
+  try {
+    var state = parseLyricResponseToOriginalState(synthetic, result.response);
+    // 原子替换: 原文 + 翻译 + 元数据一次设置, 不会出现新旧混合
+    setOriginalLyricsState(state.lines, state.hasNativeKaraoke, state.timingSource, state.translationLines, state.translationSource);
+    applyOriginalLyricsState({ reason: 'smtc-research' });
+    smtcLyricState.hasLyrics = !!state.usableLyric;
+    smtcLyricState.loaded = true;
+    smtcLyricState.error = '';
+    // 主源无翻译且非网易云 -> 异步补全 (seq 保护)
+    if (state.usableLyric && !state.translationLines.length && result.source !== 'netease') {
+      if (typeof smtcSupplementNeteaseTranslation === 'function') {
+        smtcSupplementNeteaseTranslation(smtcStore.title, smtcStore.artist, seq);
+      }
+    }
+    if (typeof smtcRenderChip === 'function') smtcRenderChip();
+    console.log('[LYRIC][' + Date.now() + '] re-search applied source=' + result.source +
+      ' lyric=' + (state.usableLyric ? 'true' : 'false') +
+      ' trans=' + (state.translationLines && state.translationLines.length ? 'true' : 'false'));
+    return { ok: true, source: result.source, trans: !!(state.translationLines && state.translationLines.length) };
+  } catch (err) {
+    if (seq !== smtcLyricState.seq) return { ok: false, error: 'superseded' };
+    smtcLyricState.loading = false;
+    if (typeof showToast === 'function') showToast('重新搜索失败');
+    console.log('[LYRIC][' + Date.now() + '] re-search parse failed (existing lyric kept)');
+    return { ok: false, error: 'parse-failed' };
+  }
+}

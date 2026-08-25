@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   stopSmtc: () => ipcRenderer.invoke('mineradio-smtc-stop'),
   getSmtcState: () => ipcRenderer.invoke('mineradio-smtc-get-state'),
   smtcControl: (command) => ipcRenderer.invoke('mineradio-smtc-control', String(command || '').slice(0, 32)),
+  refreshSmtcSession: () => ipcRenderer.invoke('mineradio-smtc-refresh'),
   logSmtc: (message) => ipcRenderer.send('mineradio-smtc-log', String(message || '').slice(0, 500)),
   startSmtcAudio: (aumid) => ipcRenderer.invoke('mineradio-smtc-audio-start', String(aumid || '').slice(0, 300)),
   stopSmtcAudio: () => ipcRenderer.invoke('mineradio-smtc-audio-stop'),
@@ -104,6 +105,20 @@ contextBridge.exposeInMainWorld('desktopWindow', {
     ipcRenderer.on('mineradio-smtc-thumbnail', listener);
     return () => ipcRenderer.removeListener('mineradio-smtc-thumbnail', listener);
   },
+  openLyricsSourceWindow: (payload) => ipcRenderer.send('mineradio-open-lyrics-source-window', payload || {}),
+  onLyricsSourceOrderChanged: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload || {});
+    ipcRenderer.on('mineradio-lyrics-source-order-changed', listener);
+    return () => ipcRenderer.removeListener('mineradio-lyrics-source-order-changed', listener);
+  },
+  onLyricsSourceReSearch: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = () => callback();
+    ipcRenderer.on('mineradio-lyrics-source-research', listener);
+    return () => ipcRenderer.removeListener('mineradio-lyrics-source-research', listener);
+  },
+  lyricsSourceReSearchDone: () => ipcRenderer.send('mineradio-lyrics-source-research-done'),
   openUpdatePage: (url) => ipcRenderer.invoke('mineradio-open-update-page', String(url || '')),
   restartApp: () => ipcRenderer.invoke('mineradio-restart-app'),
   configureGlobalHotkeys: (bindings) => ipcRenderer.invoke('mineradio-hotkeys-configure-global', bindings || []),

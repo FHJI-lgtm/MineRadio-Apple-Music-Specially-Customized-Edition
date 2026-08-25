@@ -1,6 +1,6 @@
 // ============================================================
 // 12-smtc/00-smtc-store.js
-// 统一媒体状态存储 + 本地时间轴平滑器（v3：校准-修正模型）
+// 统一媒体状态存储 + 本地时间轴平滑器（v4：锚点外推模型）
 //
 // 只接收主进程转发的 SMTC 快照（mineradio-smtc-state），对外提供：
 //   smtcStore                —— 当前 MediaState（播放器无关）
@@ -9,13 +9,18 @@
 //   smtcSessionActive()      —— 是否有 SMTC 会话
 //   smtcConsumeSeekFlag()    —— 消费"发生跳变"标记（供歌词行选择重置）
 //
-// 时间轴策略（Apple Music SMTC position 只作为校准参考）：
-//   - 本地单调钟推进：base + elapsedMonotonicTime
-//   - SMTC 新 position 到达时：error = smtc - localExpected
-//     * error > 0（SMTC 超前，通常因 Apple Music 时间线更新滞后）
-//       → 400ms 窗口内平滑追平（正向插值，不跳变）
-//     * error < 0（SMTC 落后）→ 保持本地钟，不回退
-//     * |error| >= 1.5s（明确 seek / 切歌 / 播放结束重开）→ 直接校准
+// 时间轴策略（v4：锚点外推模型。Apple Music SMTC position 只作为"校准锚点"，
+// 不作为连续播放时钟）：
+//   - predicted（未钳制 1x 外推）= anchorPositionMs + (performance.now() - anchorAt)
+//   - stable（输出）= min(predicted, frozenAt)，frozenAt 单调不下降（绝不把时钟往回拉）
+//   - SMTC 新 position 到达时：error = rawAdjusted - predicted（用未钳制的 predicted）
+//     * error < 0（SMTC 陈旧 / 回拖）→ hold：不回退、不 snap、不 absorb，仅推进 frozenAt
+//     * 0 <= error < 4s → EMA 慢速吸收（anchor += error * 0.15），不重基不跳变
+//     * error >= 4s → 连续 2 个仍为大正误差的样本确认 → snap + seek flag（真实前向 seek）
+//     * 切歌（title/artist/album/AUMID 变化）→ 立即重置锚点 + seek flag
+//   - 最大预测窗口 8s：SMTC 长时间不更新时，稳定时间最多领先"最近样本位置"8s 后冻结
+//   - Session Delay（用户设置）只作用于稳定器【最终输出】，绝不进入稳定器 / seek 判定：
+//       outputPosition = stablePosition + sessionDelayMs   （负值 = 提前，正值 = 延后）
 // UI / 歌词模块一律通过这些接口读取，不直接接触 SMTC。
 // ============================================================
 var smtcStore = {
@@ -37,49 +42,64 @@ var smtcStore = {
 };
 var smtcStoreSubscribed = false;
 var smtcStoreFallbackTimer = 0;
-// 本地钟基准：smtcLocalBaseMs + (now - smtcLocalBaseAt) 即原始单调钟（ms）
-var smtcLocalBaseMs = 0;
-var smtcLocalBaseAt = 0;
-// 平滑修正（正向追平）：在窗口内从 from 插值到 to，收敛后重基到目标轨迹
-var smtcCorrectionActive = false;
-var smtcCorrectionStartAt = 0;
-var smtcCorrectionFrom = 0;
-var smtcCorrectionTo = 0;
-// 跳变标记：歌词行选择据此允许立即回退/跳转（真实 seek）
+// ---- 时间轴稳定器（v4：锚点外推模型）----
+var smtcAnchorPositionMs = 0;   // 锚点：SMTC 校准位置（ms）
+var smtcAnchorAt = 0;           // 锚点时刻：performance.now()（ms）
+var smtcFrozenAt = 0;           // 冻结点：最近一次有效样本位置 + SMTC_MAX_PREDICT_MS（ms）
+var smtcLastSampleAt = 0;       // 最近一次样本到达时刻（performance.now()）
+// 跳变标记：歌词行选择据此允许立即回退/跳转（切歌 / 确认 seek）
 var smtcSeekedFlag = false;
-var SMTC_CORRECTION_WINDOW_MS = 400;
-var SMTC_SNAP_ERROR_MS = 1500;
-var SMTC_MAX_CLOCK_SKEW_MS = 90000;
+// ---- 稳定器常量 ----
+// 判定为真实 seek / 切歌的误差阈值（需连续确认；Apple Music 正常 2~4s 采样间隔不会被误判）
+var SMTC_SNAP_ERROR_MS = 4000;
+// 大跳变连续确认次数：连续 N 个方向一致的大误差样本才 snap（Apple Music 偶发大跳不算 seek）
+var SMTC_SEEK_CONFIRM_SAMPLES = 2;
+// 正误差慢速吸收比例（EMA）：anchor += error * ratio，不重基、不跳变、不回退
+var SMTC_DRIFT_ABSORB_RATIO = 0.15;
+// 最大预测窗口：SMTC 完全失联时稳定时间最多超前"最近样本位置"8s 后冻结
+var SMTC_MAX_PREDICT_MS = 8000;
+// ---- 会话延迟（用户设置）----
+// 只作用于稳定器【最终输出】：outputPosition = stablePosition + smtcUserSessionDelayMs。
+// 绝不进入 rawAdjusted / error / seek 判定 / track reset / pause-resume / anchor。
+// 语义：负值 = 时间轴提前（如 -400ms 歌词提前 400ms）；正值 = 延后。
+// 范围 -1000~+1000ms，步进 50ms，localStorage 持久化（启动读取，非法/超范围恢复 0）。
+var smtcUserSessionDelayMs = 0;
+var SMTC_SESSION_DELAY_MIN_MS = -1000;
+var SMTC_SESSION_DELAY_MAX_MS = 1000;
+var SMTC_SESSION_DELAY_STEP_MS = 50;
+var SMTC_SESSION_DELAY_STORAGE_KEY = 'mineradio.smtc.sessionDelayMs';
+// 大跳变确认状态：{ count }（连续大正误差样本计数；达到 SMTC_SEEK_CONFIRM_SAMPLES 即 snap）
+var smtcSeekConfirm = null;
 
 function smtcDurationSeconds() {
   return smtcStore.durationMs > 0 ? smtcStore.durationMs / 1000 : 0;
 }
 
-function smtcRawClockMs() {
-  if (!(smtcStore.active && smtcStore.isPlaying && smtcLocalBaseAt > 0)) return smtcStore.positionMs;
-  var elapsed = Date.now() - smtcLocalBaseAt;
-  if (!isFinite(elapsed) || elapsed < 0) elapsed = 0;
-  if (elapsed > SMTC_MAX_CLOCK_SKEW_MS) elapsed = SMTC_MAX_CLOCK_SKEW_MS;
-  return smtcLocalBaseMs + elapsed;
+// 未钳制的 1x 外推（真实本地时钟；误差计算与 [TL] 日志的 predicted 都基于它）
+function smtcPredictedMs() {
+  if (smtcAnchorAt <= 0) return smtcAnchorPositionMs;
+  var predicted = smtcAnchorPositionMs + (performance.now() - smtcAnchorAt);
+  if (!isFinite(predicted)) predicted = smtcAnchorPositionMs;
+  return Math.max(0, predicted);
 }
 
-function smtcLocalEstimateMs() {
-  if (!smtcCorrectionActive) return smtcRawClockMs();
-  var k = (Date.now() - smtcCorrectionStartAt) / SMTC_CORRECTION_WINDOW_MS;
-  if (k >= 1) {
-    smtcCorrectionActive = false;
-    // 收敛完成：把本地钟重基到目标轨迹，后续按该轨迹连续推进
-    smtcLocalBaseMs = smtcCorrectionTo;
-    smtcLocalBaseAt = Date.now();
-    return smtcCorrectionTo;
-  }
-  if (k < 0) k = 0;
-  return smtcCorrectionFrom + (smtcCorrectionTo - smtcCorrectionFrom) * k;
+function smtcStableMs(active, isPlaying) {
+  var act = active == null ? smtcStore.active === true : active === true;
+  var play = isPlaying == null ? smtcStore.isPlaying === true : isPlaying === true;
+  // 暂停 / 未锚定：冻结在锚点位置，不外推
+  if (!(act && play && smtcAnchorAt > 0)) return smtcAnchorPositionMs;
+  var stable = smtcPredictedMs();
+  // 最大预测窗口：不超过冻结点（最近一次有效样本位置 + SMTC_MAX_PREDICT_MS）
+  var maxStable = smtcFrozenAt > smtcAnchorPositionMs ? smtcFrozenAt : smtcAnchorPositionMs;
+  if (stable > maxStable) stable = maxStable;
+  return Math.max(0, stable);
 }
 
 function smtcPositionSecondsNow() {
   if (!smtcStore.active) return -1;
-  var pos = smtcLocalEstimateMs() / 1000;
+  // Session Delay 只作用于稳定器最终输出：outputPosition = stablePosition + sessionDelayMs
+  // （负值提前 / 正值延后；稳定器内部 anchor/predicted/error/seek 完全不受影响）
+  var pos = (smtcStableMs() + smtcUserSessionDelayMs) / 1000;
   var duration = smtcDurationSeconds();
   if (duration > 0 && pos > duration + 2) pos = duration;
   return Math.max(0, pos);
@@ -99,54 +119,144 @@ function smtcConsumeSeekFlag() {
   return seeked;
 }
 
+// ---- 会话延迟（用户设置，只作用于最终输出）----
+// 语义：负值 = 时间轴提前（-400ms 即歌词提前 400ms）；正值 = 延后。
+// 修改立即生效（不重取歌词 / 不重请求 SMTC / 不触发 seek / 不重置 anchor）。
+// 保存强制 clamp [-1000, +1000] 并按 50ms 步进；localStorage 持久化。
+function smtcSetSessionDelayMs(ms) {
+  var v = Number(ms);
+  if (!isFinite(v)) v = 0;
+  v = Math.max(SMTC_SESSION_DELAY_MIN_MS, Math.min(SMTC_SESSION_DELAY_MAX_MS, v));
+  v = Math.round(v / SMTC_SESSION_DELAY_STEP_MS) * SMTC_SESSION_DELAY_STEP_MS;
+  smtcUserSessionDelayMs = v;
+  try { localStorage.setItem(SMTC_SESSION_DELAY_STORAGE_KEY, String(v)); } catch (e) { }
+  console.log('[Renderer][' + Date.now() + '] SMTC session delay set: ' + v + 'ms (output-only, stabilizer untouched)');
+  return v;
+}
+
+// 读取当前会话延迟（ms）
+function smtcSessionDelayMs() {
+  return smtcUserSessionDelayMs;
+}
+
+// 启动时从 localStorage 读取；不存在 / 非法 / NaN / 超出范围 -> 恢复 0
+function smtcLoadSessionDelayFromStorage() {
+  var v = 0;
+  try {
+    var raw = localStorage.getItem(SMTC_SESSION_DELAY_STORAGE_KEY);
+    if (raw !== null && raw !== undefined && raw !== '') {
+      var n = Number(raw);
+      if (isFinite(n) && n >= SMTC_SESSION_DELAY_MIN_MS && n <= SMTC_SESSION_DELAY_MAX_MS) {
+        v = Math.round(n / SMTC_SESSION_DELAY_STEP_MS) * SMTC_SESSION_DELAY_STEP_MS;
+      } else {
+        v = 0; // 非法 / 超范围 -> 恢复 0，并清掉脏值
+        try { localStorage.removeItem(SMTC_SESSION_DELAY_STORAGE_KEY); } catch (e2) { }
+      }
+    }
+  } catch (e) { v = 0; }
+  smtcUserSessionDelayMs = v;
+  console.log('[Renderer][' + Date.now() + '] SMTC session delay loaded: ' + v + 'ms');
+}
+
 function smtcApplyBridgeState(state) {
   state = state && typeof state === 'object' ? state : {};
   var prevActive = smtcStore.active === true;
   var prevPlaying = smtcStore.isPlaying === true;
   var wasPlaying = smtcStore.active === true && smtcStore.isPlaying === true;
+  var now = performance.now();
+  smtcLastSampleAt = now;
+  var newActive = state.active === true;
+  var newPlaying = state.isPlaying === true;
   var newBase = Math.max(0, Number(state.positionMs) || 0);
-  var expected = smtcLocalEstimateMs();
-  var error = newBase - expected;
+  // Session Delay 绝不进入稳定器：rawAdjusted 就是 SMTC 原始 position（无任何偏移），
+  // 保证 error / seek 判定 / track reset / pause-resume / anchor 与 v4 完全一致。
+  var rawAdjusted = Math.max(0, newBase);
+  // track identity：title / artist / album / AUMID
+  var trackChanged = String(state.title || '') !== String(smtcStore.title || '') ||
+    String(state.artist || '') !== String(smtcStore.artist || '') ||
+    String(state.album || '') !== String(smtcStore.album || '') ||
+    String(state.aumid || '') !== String(smtcStore.aumid || '');
+  // predicted = 未钳制的 1x 外推（真实本地时钟）；stable 才受 frozenAt 钳制
+  var predicted = smtcPredictedMs();
+  var error = rawAdjusted - predicted;
   var action = 'hold';
+  var seekThisSample = false;
 
-  if (state.active !== true) {
-    smtcCorrectionActive = false;
+  if (!newActive) {
+    // 会话结束：清除稳定器状态，保持 inactive
+    smtcAnchorPositionMs = 0;
+    smtcAnchorAt = 0;
+    smtcFrozenAt = 0;
+    smtcSeekConfirm = null;
     action = 'inactive';
-  } else if (!wasPlaying || state.isPlaying !== true) {
-    // 暂停 / 非播放态：不推进，直接采用快照位置
-    smtcCorrectionActive = false;
-    smtcLocalBaseMs = newBase;
-    smtcLocalBaseAt = Date.now();
-    action = state.isPlaying === true ? 'snap' : 'paused';
-  } else if (Math.abs(error) >= SMTC_SNAP_ERROR_MS) {
-    // 明确跳变（用户拖动 / 切歌 / 播放结束重开）：直接校准
-    smtcCorrectionActive = false;
-    smtcLocalBaseMs = newBase;
-    smtcLocalBaseAt = Date.now();
+  } else if (trackChanged) {
+    // 切歌：立即重置锚点 + seek flag（不等 2 样本确认）
+    smtcAnchorPositionMs = rawAdjusted;
+    smtcAnchorAt = now;
+    smtcFrozenAt = rawAdjusted + SMTC_MAX_PREDICT_MS;
+    smtcSeekConfirm = null;
     smtcSeekedFlag = true;
-    action = 'snap';
+    seekThisSample = true;
+    action = 'track-reset';
+    console.log('[TL] TRACK_RESET raw=' + Math.round(newBase));
+  } else if (!newPlaying) {
+    // 暂停：冻结到快照，不再外推
+    smtcAnchorPositionMs = rawAdjusted;
+    smtcAnchorAt = now;
+    smtcFrozenAt = rawAdjusted + SMTC_MAX_PREDICT_MS;
+    smtcSeekConfirm = null;
+    action = 'paused';
+  } else if (!wasPlaying) {
+    // 首次收到有效播放状态 / 恢复：重新锚定
+    smtcAnchorPositionMs = rawAdjusted;
+    smtcAnchorAt = now;
+    smtcFrozenAt = rawAdjusted + SMTC_MAX_PREDICT_MS;
+    smtcSeekConfirm = null;
+    action = 'first-play';
+  } else if (error >= SMTC_SNAP_ERROR_MS) {
+    // 真正前向 seek / 大正跳变：连续 SMTC_SEEK_CONFIRM_SAMPLES 个仍为大正误差的样本才确认 snap。
+    // 负误差（陈旧 / 回拖）永不进入此分支 —— Apple Music 陈旧 Position 不算 seek。
+    smtcSeekConfirm = smtcSeekConfirm || { count: 0 };
+    smtcSeekConfirm.count += 1;
+    if (smtcSeekConfirm.count >= SMTC_SEEK_CONFIRM_SAMPLES) {
+      // 确认 seek：重置锚点 + seek flag（歌词允许立即跳转）
+      smtcSeekConfirm = null;
+      smtcAnchorPositionMs = rawAdjusted;
+      smtcAnchorAt = now;
+      smtcFrozenAt = rawAdjusted + SMTC_MAX_PREDICT_MS;
+      smtcSeekedFlag = true;
+      seekThisSample = true;
+      action = 'snap';
+      console.log('[TL] SNAP raw=' + Math.round(newBase) + ' predicted=' + Math.round(predicted) + ' error=' + Math.round(error));
+    } else {
+      // 等待确认：保持时钟，不跳变
+      action = 'seek-pending';
+    }
   } else if (error > 0) {
-    // SMTC 超前：400ms 内平滑追平（正向，不回退）
-    smtcCorrectionActive = true;
-    smtcCorrectionStartAt = Date.now();
-    smtcCorrectionFrom = expected;
-    smtcCorrectionTo = newBase;
-    action = 'smooth+';
+    // 小幅/中等正误差：慢速 EMA 吸收（不重基、不回退、不跳变）
+    smtcSeekConfirm = null;
+    smtcAnchorPositionMs = smtcAnchorPositionMs + error * SMTC_DRIFT_ABSORB_RATIO;
+    smtcAnchorAt = now;
+    // frozenAt 单调不下降：陈旧/回拖样本不能把预测上限往回拉
+    smtcFrozenAt = Math.max(smtcFrozenAt, rawAdjusted + SMTC_MAX_PREDICT_MS);
+    action = 'absorb';
   } else {
-    // SMTC 落后或相等：保持本地钟，不回退
-    smtcCorrectionActive = false;
+    // 负误差 / 零误差：SMTC 陈旧，不回退时间轴、不 snap、不 absorb；仅推进冻结点
+    smtcSeekConfirm = null;
+    smtcFrozenAt = Math.max(smtcFrozenAt, rawAdjusted + SMTC_MAX_PREDICT_MS);
     action = 'hold';
   }
 
   smtcStore = Object.assign({}, smtcStore, {
-    active: state.active === true,
+    active: newActive,
     title: String(state.title || ''),
     artist: String(state.artist || ''),
     album: String(state.album || ''),
+    aumid: String(state.aumid || smtcStore.aumid || ''),
     status: String(state.status || ''),
-    isPlaying: state.isPlaying === true,
+    isPlaying: newPlaying,
     durationMs: Math.max(0, Number(state.durationMs) || 0),
-    positionMs: smtcLocalEstimateMs(),
+    positionMs: smtcStableMs(newActive, newPlaying),
     lastUpdatedMs: Math.max(0, Number(state.lastUpdatedMs) || 0),
     source: 'smtc',
     bridgeReady: state.bridgeReady === true,
@@ -154,7 +264,14 @@ function smtcApplyBridgeState(state) {
     debug: String(state.debug || smtcStore.debug || ''),
     updatedAt: Date.now(),
   });
-  console.log('[CLOCK][' + Date.now() + '] smtc=' + Math.round(newBase) + ' local=' + Math.round(expected) +
+  // 紧凑时间轴日志（每次 SMTC state 更新打印一次）
+  // raw/predicted/stable/error 保持 v4 原语义；delay/output 仅最终显示层信息
+  console.log('[TL] raw=' + Math.round(newBase) + ' predicted=' + Math.round(predicted) +
+    ' stable=' + Math.round(smtcStore.positionMs) + ' error=' + Math.round(error) +
+    ' delay=' + smtcUserSessionDelayMs + ' output=' + Math.round(smtcStore.positionMs + smtcUserSessionDelayMs) +
+    ' playing=' + newPlaying + ' trackChanged=' + trackChanged + ' seek=' + seekThisSample +
+    ' action=' + action);
+  console.log('[CLOCK][' + Date.now() + '] smtc=' + Math.round(newBase) + ' local=' + Math.round(predicted) +
     ' error=' + Math.round(error) + 'ms action=' + action);
   console.log('[STORE][' + Date.now() + '] state updated (T5/T6): active=' + smtcStore.active +
     ' title=' + (smtcStore.title || '') +
@@ -169,6 +286,7 @@ function smtcApplyBridgeState(state) {
 }
 
 function initSmtcStore() {
+  smtcLoadSessionDelayFromStorage();   // 启动时读取会话延迟（localStorage 持久化）
   if (smtcStoreSubscribed) return;
   smtcStoreSubscribed = true;
   var api = window.desktopWindow;

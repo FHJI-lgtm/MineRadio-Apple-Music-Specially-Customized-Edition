@@ -4896,14 +4896,15 @@ const SMTC_THUMBNAIL_CACHE_MAX = 100;
 let smtcLastBroadcastKey = '';
 let smtcLastBroadcastAt = 0;
 let smtcLastT3LogAt = 0;
-function smtcBridgeBroadcast() {
+function smtcBridgeBroadcast(force) {
   const now = Date.now();
   // 去重：title/artist/album/duration/status/isPlaying 或 position(0.5s 桶) 无
   // 有意义变化时不重复发送完整 MediaState；1500ms 内同签名直接跳过。
+  // force=true (会话刷新) 时绕过该去重, 保证 renderer 立即收到刷新结果。
   const key = (smtcBridgeState.active ? 1 : 0) + '|' + smtcBridgeState.title + '|' + smtcBridgeState.artist + '|' +
     smtcBridgeState.album + '|' + smtcBridgeState.status + '|' + (smtcBridgeState.isPlaying ? 1 : 0) + '|' +
     Math.floor(smtcBridgeState.positionMs / 500) + '|' + smtcBridgeState.durationMs;
-  if (key === smtcLastBroadcastKey && now - smtcLastBroadcastAt < 1500) return;
+  if (!force && key === smtcLastBroadcastKey && now - smtcLastBroadcastAt < 1500) return;
   smtcLastBroadcastKey = key;
   smtcLastBroadcastAt = now;
   const payload = Object.assign({}, smtcBridgeState, { updatedAt: now });
@@ -4998,7 +4999,9 @@ function smtcBridgeHandleLine(line) {
   // The 2s lifecycle poller re-reads smtcBridgeState.active itself,
   // so no extra work is needed here.
   if (SMTC_EXTERNAL_AUDIO_ENABLED) smtcAudioWanted = smtcBridgeState.active === true;
-  smtcBridgeBroadcast();
+  // 会话刷新期间: 强制广播 (绕过 1500ms 去重), 保证刷新结果立即到达 renderer
+  smtcBridgeBroadcast(smtcRefreshPending);
+  smtcRefreshPending = false;
 }
 
 function smtcBridgeOnData(chunk) {
@@ -5011,8 +5014,10 @@ function smtcBridgeOnData(chunk) {
   }
 }
 
-// ---- Phase 4B: SMTC 播放控制 (通过既有 bridge 的 stdin, 不重启/不新建进程) ----
-const SMTC_CONTROL_COMMANDS = ['play', 'pause', 'toggle', 'next', 'previous'];
+// ---- Phase 4B: SMTC 播放控制 / 会话刷新 (通过既有 bridge 的 stdin, 不重启/不新建进程) ----
+// refresh: 重新同步 CurrentSession 并强制推送最新状态 (见 smtcRefreshPending)
+const SMTC_CONTROL_COMMANDS = ['play', 'pause', 'toggle', 'next', 'previous', 'refresh'];
+let smtcRefreshPending = false;
 function smtcControl(command) {
   command = String(command || '').trim();
   if (SMTC_CONTROL_COMMANDS.indexOf(command) < 0) {
@@ -5031,6 +5036,7 @@ function smtcControl(command) {
     }, 8000);
     smtcControlQueue.push(entry);
     try {
+      if (command === 'refresh') smtcRefreshPending = true;   // 刷新: 强制推送新状态
       smtcBridgeProcess.stdin.write(JSON.stringify({ command: command }) + '\n');
       console.log('[Main][' + Date.now() + '] smtc control sent: ' + command);
     } catch (err) {
@@ -5282,9 +5288,164 @@ ipcMain.handle('mineradio-smtc-control', async (event, command) => {
   };
 });
 
+// SMTC 会话刷新: bridge 重新同步 CurrentSession 并立即推送 MediaProperties/PlaybackInfo/Timeline
+ipcMain.handle('mineradio-smtc-refresh', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, success: false, command: 'refresh', error: 'UNTRUSTED_SENDER' };
+  const result = await smtcControl('refresh');
+  return {
+    ok: result.success === true,
+    success: result.success === true,
+    command: 'refresh',
+    error: String(result.error || ''),
+  };
+});
+
 ipcMain.on('mineradio-smtc-log', (event, message) => {
   if (!isTrustedMainWindowIpc(event)) return;
   smtcAppendLog('renderer: ' + String(message || '').slice(0, 500));
+});
+
+// ============================================================
+// Lyrics Source Window (独立歌词源搜索顺序窗口)
+// 只传输"搜索顺序"; 不传输歌词内容/SMTC/音频/封面。
+// 真实排序状态始终在主窗口 renderer (smtcLyricSourceSettings().order)。
+// ============================================================
+let lyricsSourceWindow = null;
+const LYRICS_SOURCE_WINDOW_POSITION_FILE = 'lyrics-source-window-position.json';
+
+function lyricsSourceWindowPositionFile() {
+  return path.join(app.getPath('userData'), LYRICS_SOURCE_WINDOW_POSITION_FILE);
+}
+
+function readLyricsSourceWindowPosition() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(lyricsSourceWindowPositionFile(), 'utf8'));
+    if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' &&
+        isFinite(parsed.x) && isFinite(parsed.y)) {
+      return { x: parsed.x, y: parsed.y };
+    }
+  } catch (_) {}
+  return null;
+}
+
+function saveLyricsSourceWindowPosition(x, y) {
+  try {
+    fs.writeFileSync(lyricsSourceWindowPositionFile(), JSON.stringify({ x: Math.round(x), y: Math.round(y) }));
+  } catch (_) {}
+}
+
+// 把窗口位置 clamp 到最近显示器可见区域内 (越界自动修正)
+function clampLyricsSourceWindowPosition(x, y, w, h) {
+  let target = null;
+  const displays = screen.getAllDisplays();
+  for (const d of displays) {
+    const a = d.workArea;
+    if (x >= a.x - w / 2 && x <= a.x + a.width && y >= a.y - 20 && y <= a.y + a.height) { target = a; break; }
+  }
+  if (!target) target = screen.getPrimaryDisplay().workArea;
+  return {
+    x: Math.max(target.x, Math.min(target.x + target.width - w, x)),
+    y: Math.max(target.y, Math.min(target.y + target.height - h, y)),
+  };
+}
+
+function closeLyricsSourceWindow() {
+  if (lyricsSourceWindow && !lyricsSourceWindow.isDestroyed()) lyricsSourceWindow.close();
+  lyricsSourceWindow = null;
+}
+
+// 打开/聚焦歌词源窗口 (已存在则 focus/show, 不重复创建)
+function openLyricsSourceWindow(order) {
+  if (lyricsSourceWindow && !lyricsSourceWindow.isDestroyed()) {
+    lyricsSourceWindow.show();
+    lyricsSourceWindow.focus();
+    try { lyricsSourceWindow.webContents.send('mineradio-lyrics-source-state', { order }); } catch (_) {}
+    return;
+  }
+  const W = 320, H = 272;
+  const saved = readLyricsSourceWindowPosition();
+  const initial = saved ? clampLyricsSourceWindowPosition(saved.x, saved.y, W, H) : null;
+  const win = new BrowserWindow({
+    width: W,
+    height: H,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    frame: false,
+    show: false,
+    backgroundColor: '#121416',
+    title: '歌词源搜索顺序',
+    ...(initial ? { x: initial.x, y: initial.y } : {}),
+    webPreferences: {
+      preload: path.join(__dirname, 'lyrics-source-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
+    },
+  });
+  lyricsSourceWindow = win;
+  if (!initial && mainWindow && !mainWindow.isDestroyed()) {
+    const mb = mainWindow.getBounds();
+    win.setPosition(mb.x + mb.width - W - 40, mb.y + 100);
+  }
+  let posTimer = 0;
+  win.on('move', () => {
+    if (win.isDestroyed()) return;
+    const [x, y] = win.getPosition();
+    if (posTimer) clearTimeout(posTimer);
+    posTimer = setTimeout(() => saveLyricsSourceWindowPosition(x, y), 300);
+  });
+  win.on('closed', () => {
+    if (lyricsSourceWindow === win) lyricsSourceWindow = null;
+  });
+  win.webContents.once('did-finish-load', () => {
+    try { win.webContents.send('mineradio-lyrics-source-state', { order }); } catch (_) {}
+    if (!win.isDestroyed()) { win.show(); win.focus(); }
+  });
+  win.loadFile(path.join(__dirname, 'lyrics-source-window.html'))
+    .catch((e) => console.warn('Lyrics source window load failed:', e && e.message || e));
+}
+
+// 主窗口 renderer: 点击歌词源入口 -> 打开/聚焦窗口 (携带当前搜索顺序)
+ipcMain.on('mineradio-open-lyrics-source-window', (event, payload = {}) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  const order = Array.isArray(payload && payload.order)
+    ? payload.order.map((s) => String(s).slice(0, 24))
+    : [];
+  openLyricsSourceWindow(order);
+});
+
+// 歌词源窗口: 拖拽排序后的新顺序 -> 转发主窗口 renderer (由现有排序状态保存, 不复制状态)
+ipcMain.on('mineradio-lyrics-source-order-changed', (event, payload = {}) => {
+  if (!lyricsSourceWindow || lyricsSourceWindow.isDestroyed() || event.sender !== lyricsSourceWindow.webContents) return;
+  const order = Array.isArray(payload && payload.order)
+    ? payload.order.map((s) => String(s).slice(0, 24))
+    : [];
+  if (!order.length) return;
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('mineradio-lyrics-source-order-changed', { order });
+});
+
+// 歌词源窗口关闭按钮
+ipcMain.on('mineradio-lyrics-source-close', (event) => {
+  if (!lyricsSourceWindow || lyricsSourceWindow.isDestroyed() || event.sender !== lyricsSourceWindow.webContents) return;
+  closeLyricsSourceWindow();
+});
+
+// 歌词源窗口: [重新搜索] -> 主窗口 renderer 执行现有重搜 (skipCache, 读取最新排序)
+ipcMain.on('mineradio-lyrics-source-research', (event) => {
+  if (!lyricsSourceWindow || lyricsSourceWindow.isDestroyed() || event.sender !== lyricsSourceWindow.webContents) return;
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('mineradio-lyrics-source-research');
+});
+
+// 主窗口 renderer 重搜完成 -> 通知歌词源窗口恢复按钮状态
+ipcMain.on('mineradio-lyrics-source-research-done', (event) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  if (lyricsSourceWindow && !lyricsSourceWindow.isDestroyed()) {
+    try { lyricsSourceWindow.webContents.send('mineradio-lyrics-source-research-done', {}); } catch (_) {}
+  }
 });
 
 // ============================================================
@@ -6648,6 +6809,7 @@ if (!gotSingleInstanceLock) {
     unregisterFullDesktopEscapeShortcut();
     unregisterMineradioGlobalHotkeys();
     closeDesktopLyricsWindow();
+    closeLyricsSourceWindow();   // 歌词源窗口随主程序退出, 不留后台窗口
     if (localServer && localServer.close) localServer.close();
     if (tray) {
       try { tray.destroy(); } catch (e) {}

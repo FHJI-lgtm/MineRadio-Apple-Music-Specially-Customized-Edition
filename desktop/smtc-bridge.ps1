@@ -216,10 +216,11 @@ function global:EmitState([object]$eventInfo) {
   }
 }
 
-# --- Phase 4B: SMTC 播放控制 (stdin JSON 命令入口) ---
+# --- Phase 4B: SMTC 播放控制 / 会话刷新 (stdin JSON 命令入口) ---
 # 协议:
-#   stdin : {"command":"play"|"pause"|"toggle"|"next"|"previous"}
+#   stdin : {"command":"play"|"pause"|"toggle"|"next"|"previous"|"refresh"}
 #   stdout: {"type":"control-result","command":"...","success":true[, "error":"..."]}
+#   refresh: 重新同步 CurrentSession 并立即推送最新 MediaProperties/PlaybackInfo/Timeline
 # 控制目标 = 当前 active GlobalSystemMediaTransportControlsSession
 # (与音频采集的 AMPLibraryAgent PID 完全无关, 两条链路独立)
 
@@ -242,6 +243,14 @@ function global:HandleControlCommand([string]$command) {
       return
     }
     switch ($command) {
+      'refresh' {
+        # SMTC 会话刷新: 重新同步当前 Session (SyncSession 已在上方执行,
+        # session 变化时 SubscribeSession 会清理旧订阅并按 EventName 去重),
+        # 绕过 throttle 强制立即重新读取 MediaProperties/PlaybackInfo/Timeline 并推送。
+        $global:SmtcLastEmitMs = 0
+        global:EmitState $null
+        global:EmitControlResult 'refresh' $true $null
+      }
       'play' {
         $ok = global:Await ($s.TryPlayAsync()) ([bool])
         global:EmitControlResult 'play' ($ok -eq $true) $null

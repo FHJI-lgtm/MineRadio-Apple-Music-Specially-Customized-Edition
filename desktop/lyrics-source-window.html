@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'">
+<title>歌词源搜索顺序</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #121416;
+    color: rgba(255,255,255,0.90);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    user-select: none;
+    overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; height: 100vh; }
+  .titlebar {
+    -webkit-app-region: drag;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px 4px 14px;
+    font-size: 13px; font-weight: 600; opacity: 0.92;
+  }
+  .close-btn {
+    -webkit-app-region: no-drag;
+    width: 24px; height: 24px; border: none; border-radius: 6px;
+    background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
+    font-size: 12px; line-height: 1; cursor: pointer;
+  }
+  .close-btn:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.95); }
+  .body { flex: 1; padding: 8px 14px 12px; }
+  .sub {
+    font-size: 11px; opacity: 0.55;
+    padding: 0 4px 8px;
+  }
+  .list { display: flex; flex-direction: column; gap: 3px; }
+  .row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px; cursor: grab; font-size: 13px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .row:hover { background: rgba(255,255,255,0.09); }
+  .row.dragging { opacity: 0.45; border-color: rgba(255,255,255,0.28); }
+  .row.drag-over { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.12); }
+  .handle { opacity: 0.5; font-size: 13px; }
+  .hint { font-size: 11px; opacity: 0.45; padding: 10px 4px 0; }
+  .foot { padding: 4px 14px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .foot-btn {
+    padding: 6px 18px; border-radius: 8px; font-size: 12px;
+    color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16); cursor: pointer;
+  }
+  .foot-btn:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+  .foot-btn:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="titlebar">
+    <span>歌词源搜索顺序</span>
+    <button class="close-btn" id="close" title="关闭">✕</button>
+  </div>
+  <div class="body">
+    <div class="sub">拖动以调整搜索优先级</div>
+    <div class="list" id="list"></div>
+    <div class="hint">搜索歌词时将按此顺序依次尝试</div>
+  </div>
+  <div class="foot">
+    <button class="foot-btn" id="research" title="按当前排序重新搜索当前歌曲">重新搜索</button>
+    <button class="foot-btn" id="done">关闭</button>
+  </div>
+  <script src="lyrics-source-window.js"></script>
+</body>
+</html>
