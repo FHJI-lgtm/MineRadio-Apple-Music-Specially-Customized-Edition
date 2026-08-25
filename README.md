@@ -51,7 +51,7 @@ MineRadio 是一款 Windows 桌面沉浸式音乐播放器。本分支聚焦 **A
 - **专辑封面**：SMTC 优先，iTunes Search API 兜底 + 会话内缓存 + 快速切歌防串台
 - **原生音频可视化**：WASAPI Process Loopback 采集 `AMPLibraryAgent.exe` 音频（`desktop/native/MineRadioAudioCapture.cpp`，源码随仓库提供）
 - **FFT 频谱分析**：64 频段频谱 + bass / mid / treble，驱动粒子与视觉
-- **多源歌词**：QQ 音乐 → 酷狗音乐 → 网易云音乐，严格优先级 fallback，可拖动排序 / 启用禁用 / 持久化
+- **多源歌词**：QQ 音乐 → 酷狗音乐 → 网易云音乐，严格优先级 fallback，可拖动排序 / 持久化
 - **双语歌词**：原文 + 中文翻译双行显示；主源无翻译时自动从网易云 `tlyric` 补齐
 - **歌词竞态防护**：切歌时旧歌曲的晚到歌词/封面不会覆盖新歌曲
 
@@ -107,7 +107,6 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 - 粒子舞台与歌词舞台共用 WebGL 渲染管线
 - 封面纹理（来自当前播放歌曲）驱动粒子颜色、浮色与背景渐变
 - 音频指标驱动粒子运动、burst 与节奏镜头系统
-- 分辨率可调（256/384/512 纹理），内置 AI 深度封面增强（可选）
 
 ## 专辑封面
 
@@ -136,7 +135,7 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 - 每个源：`enabled / name / id / priority / search() / getLyrics()`，复用现有解析器（LRC/YRC/逐字）
 - 标题/艺术家规范化：去 `Remix / Live / Radio Edit` 等版本后缀、处理 `feat./ft./with`、大小写、全角/半角、异常 Unicode；候选按匹配度评分，不盲取第一条
 - 异步竞态：`generationId` 校验，切歌时旧歌曲的晚到结果不会覆盖新歌曲
-- 右上角「词源」按钮可打开优先级设置面板：拖动排序、启用/禁用、恢复默认（localStorage 持久化）
+- 右上角「词源」按钮可打开优先级设置面板：拖动排序、恢复默认（localStorage 持久化）
 - 歌词来源显示在状态胶囊：`歌词已同步 · 歌词来源：QQ 音乐`
 
 ## 双语歌词
@@ -182,7 +181,7 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 
 ### 预打包版本
 
-下载 `MineRadio-Apple-Music-Specially-Customized-Edition-1.0-Setup.exe`（NSIS 安装包）或 `MineRadio-Apple-Music-Specially-Customized-Edition 1.0.exe`（portable），运行即可。安装包会创建桌面快捷方式。
+下载 `MineRadio-Apple-Music-Specially-Customized-Edition-1.1-Setup.exe`（NSIS 安装包）或 `MineRadio-Apple-Music-Specially-Customized-Edition 1.1.exe`（portable），运行即可。安装包会创建桌面快捷方式。
 
 ### 源码运行
 
