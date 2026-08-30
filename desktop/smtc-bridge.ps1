@@ -48,7 +48,14 @@ function global:Await($WinRtTask, [Type]$ResultType) {
     $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
     $netTask = $asTask.Invoke($null, @($WinRtTask))
     if ($null -eq $netTask) { return $null }
-    $netTask.Wait(-1) | Out-Null
+    # [SMTC-LIFECYCLE-FIX] 有限超时: WinRT task 在切歌瞬间可能永久挂起.
+    # 无限 Wait(-1) 会永久阻塞 event action runspace -> runspace 池耗尽 -> SMTC 停更.
+    # Wait(3000) 超时返回 false, 本函数返回 null (所有调用方已处理 null),
+    # 不抛异常、不退出 bridge、不阻塞事件循环; 下一次 event/poll 仍可执行.
+    if (-not $netTask.Wait(3000)) {
+      global:Log 'async task timeout (3000ms): task did not complete'
+      return $null
+    }
     return $netTask.Result
   } catch {
     global:Log ('Await failed: ' + $_.Exception.Message)
@@ -76,7 +83,19 @@ function global:ReadThumbnailDataUrl($props) {
     } catch { }
     if ($null -eq $netStream) { return $null }
     $ms = New-Object System.IO.MemoryStream
-    $netStream.CopyTo($ms)
+    # [SMTC-LIFECYCLE-FIX] 封面流同步 CopyTo 可能永久阻塞 (WinRT 流在切歌瞬间挂起)
+    # -> 与 Await 同类问题: runspace 卡死 -> 事件池耗尽 -> SMTC 停更.
+    # 改用 CopyToAsync + 有限超时; 超时/异常返回 null (封面丢失可接受, 绝不阻塞 SMTC).
+    try {
+      $copyTask = $netStream.CopyToAsync($ms)
+      if ($null -ne $copyTask -and -not $copyTask.Wait(3000)) {
+        global:Log 'async task timeout (3000ms): thumbnail stream copy'
+        return $null
+      }
+    } catch {
+      global:Log ('thumbnail copy failed: ' + $_.Exception.Message)
+      return $null
+    }
     $bytes = $ms.ToArray()
     if ($bytes.Length -lt 4 -or $bytes.Length -gt 5242880) { return $null }
     if ([string]::IsNullOrEmpty($contentType)) {

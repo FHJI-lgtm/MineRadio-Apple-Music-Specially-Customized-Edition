@@ -741,7 +741,11 @@
         out[j] = clamp(Math.pow(clamp01(v), 1.35) * 0.30 + fallbackLift, 0, WORKSHOP_AUDIO_TARGET_MAX_SAMPLE) * inputGain;
       }
     }
-    if (!(global.playing && global.audio && !global.audio.paused)) {
+    // [PAUSE-FIX] 统一播放状态: 内部播放器正在播放 OR Apple Music/WASAPI 外部播放 → 正常增益;
+    //   两边都没播放 → 维持 WORKSHOP_AUDIO_PAUSED_GAIN (0.12) 降亮度, 不删除不提高.
+    var audioPlayingNow = (typeof externalAudioActive === 'function' && externalAudioActive()) ||
+      (global.playing && global.audio && !global.audio.paused);
+    if (!audioPlayingNow) {
       for (var k = 0; k < out.length; k++) out[k] = out[k] * WORKSHOP_AUDIO_PAUSED_GAIN;
     }
     state.samples = out;

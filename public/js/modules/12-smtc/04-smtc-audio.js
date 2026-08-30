@@ -131,12 +131,24 @@ function smtcDiagBurst() {
 }
 
 // ---- 合成渲染: metrics -> frequencyData / timeDomainData (仅 .set()) ----
+// [AUDIO-EXP] C/D 实验: 历史能量参考 + dB 压缩映射 (恢复被 native 瞬时峰值 AGC 抹掉的响度动态,
+//   并让外部频谱刻度接近内部 Web Audio dB 字节) — 实验后可整体回滚本段
+var smtcAudioRmsRef = 0.20;   // 历史 rms 峰值参考 (attack 快, release 慢, floor 防噪声放大)
 function audioAdapterRenderFrame(metrics) {
   metrics = (metrics && typeof metrics === 'object') ? metrics : {};
   var rms = audioAdapterSanitize(metrics.rms, 0);
   var bass = audioAdapterSanitize(metrics.bass, 0);
   var mid = audioAdapterSanitize(metrics.mid, 0);
   var treble = audioAdapterSanitize(metrics.treble, 0);
+  // [AUDIO-EXP-C] 历史能量参考: 不每帧瞬时归一化, 保留音乐动态范围
+  //   attack 快 (立即跟踪上升), release 慢 (60fps ~4s 半衰期), floor 0.02
+  if (rms > smtcAudioRmsRef) smtcAudioRmsRef = rms;
+  else smtcAudioRmsRef *= 0.9971;
+  if (smtcAudioRmsRef < 0.02) smtcAudioRmsRef = 0.02;
+  // 响度因子: rms 接近历史峰值 → ~1; 安静段 → 小 (不无限放大噪声, 不破坏动态)
+  var loudFactor = Math.min(1, rms / Math.max(0.015, smtcAudioRmsRef * 0.65));
+  loudFactor = Math.pow(loudFactor, 0.7);
+  var specScale = 0.22 + 0.78 * loudFactor;
   // 目标数组必须存在且同尺寸 — 不符即熔断, 绝不让异常进入视觉
   if (!frequencyData || frequencyData.length !== smtcAudioFreq.length ||
       !timeDomainData || timeDomainData.length !== smtcAudioTime.length) {
@@ -173,7 +185,21 @@ function audioAdapterRenderFrame(metrics) {
     var v = smtcAudioSpectrum[i0] * (1 - frac) + smtcAudioSpectrum[i1] * frac;
     // 合成频谱才加轻微起伏; 真实频谱不加
     if (!realSpec) v *= 0.82 + 0.18 * Math.sin(i * 0.35 + phase * 1.7);
-    var byte = Math.round(v * 255);
+    // [AUDIO-EXP-D] dB 压缩映射 (与内部 Web Audio dB 字节同构, 参考 minDecibels/maxDecibels):
+    //   相对峰值 -70dB..0dB → 0..255; 中高频由线性近零抬底到内部同量级
+    var vAbs = v * specScale;
+    var byte;
+    if (freq < 420) {
+      // [BEAT-DYNAMIC] 低频(kick/sub/body)动态保留: C+D dB 映射使 kick/sub 恒饱和 249-255
+      //   -> beatBandRms 的 kick/sub/low 恒高位(≈1.0) -> beat 引擎 rise/flux 消失 -> external beatPulse 稀疏.
+      //   低频改用幂压缩: 不硬饱和(峰值仍达 255), 保留帧间瞬态. 音域地形有自适应归一化(stats.floor/peakFloor
+      //   基于 mean), 绝对量级被吸收 -> 视觉强度保持; beat 引擎的 rise/flux 恢复.
+      var dyn = Math.min(1, Math.pow(vAbs, 0.55) * 1.06);
+      byte = Math.round(dyn * 255);
+    } else {
+      var db = 20 * Math.log10(Math.max(1e-6, vAbs));
+      byte = Math.round(Math.max(0, Math.min(1, (db + 70) / 70)) * 255);
+    }
     smtcAudioFreq[i] = byte < 0 ? 0 : (byte > 255 ? 255 : byte);
   }
   // 合成时域: 主循环 RMS/能量依赖它

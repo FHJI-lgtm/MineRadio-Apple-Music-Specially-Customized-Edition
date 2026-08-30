@@ -422,6 +422,31 @@ function animate() {
       tHigh = beatBandRms(frequencyData, analysisSampleRate, analysisFftSize, 6200, Math.min(16000, analysisSampleRate / 2));
     }
 
+    // [AUDIO-DIST] 只读实验: 对比 internal/external frequencyData 数值分布 (500ms 限频, 不改任何计算 — 实验后删除)
+    if (Date.now() - (window.__smtcAudioDistAt || 0) >= 500) {
+      window.__smtcAudioDistAt = Date.now();
+      var distSrc = (typeof externalAudioActive === 'function' && externalAudioActive()) ? 'external' : 'internal';
+      var distCopy = new Array(len);
+      var distSum = 0;
+      for (var di = 0; di < len; di++) { distCopy[di] = frequencyData[di]; distSum += frequencyData[di]; }
+      distCopy.sort(function (a, b) { return a - b; });
+      function distPct(p) {
+        return distCopy[Math.min(len - 1, Math.max(0, Math.floor(p * (len - 1))))];
+      }
+      var distOverall = 0;
+      for (var dk = 0; dk < len; dk++) { var dv = distCopy[dk] / 255; distOverall += dv * dv; }
+      distOverall = Math.sqrt(distOverall / Math.max(1, len));
+      var distBass = (typeof beatBandRms === 'function') ? beatBandRms(frequencyData, analysisSampleRate, analysisFftSize, 52, 165) : -1;
+      var distMid = (typeof beatBandRms === 'function') ? beatBandRms(frequencyData, analysisSampleRate, analysisFftSize, 2600, 6200) : -1;
+      var distTreb = (typeof beatBandRms === 'function') ? beatBandRms(frequencyData, analysisSampleRate, analysisFftSize, 6200, Math.min(16000, analysisSampleRate / 2)) : -1;
+      console.log('[AUDIO DIST] source=' + distSrc +
+        ' min=' + distCopy[0] + ' max=' + distCopy[len - 1] +
+        ' mean=' + (distSum / len).toFixed(1) +
+        ' median=' + distPct(0.5) + ' P90=' + distPct(0.90) + ' P95=' + distPct(0.95) + ' P99=' + distPct(0.99) +
+        ' bass=' + distBass.toFixed(3) + ' mid=' + distMid.toFixed(3) + ' treble=' + distTreb.toFixed(3) +
+        ' overall=' + distOverall.toFixed(3) + ' rms=' + rms.toFixed(3));
+    }
+
     // 动态峰值跟踪
     bassPeak = Math.max(bassPeak * 0.994, bKick, 0.030);
     midPeak = Math.max(midPeak * 0.993, mInst, 0.026);
@@ -442,8 +467,11 @@ function animate() {
       var dj = djMode.active;
       var djMapCoversCurrentTime = !dj || !currentDjBeatMap || !currentDjBeatMap.partialUntilSec || !audio || (audio.currentTime || 0) <= currentDjBeatMap.partialUntilSec - 1.25;
       var djBeatMapReadyForCamera = dj && currentDjBeatMap && currentDjBeatMap.cameraBeats && currentDjBeatMap.cameraBeats.length >= 4 && djMapCoversCurrentTime;
-      var beatMapReadyForCamera = dj ? djBeatMapReadyForCamera : (currentBeatMap && currentBeatMap.cameraBeats && currentBeatMap.cameraBeats.length >= 4);
-      var waitingForBeatMap = dj ? !djBeatMapReadyForCamera : (!beatMapReadyForCamera && (!!beatMapBusy || !!beatAnalysisTimer || ((audio && audio.currentTime) || 0) < 18));
+      // [GATE-FIX] 外部模式 (Apple Music/WASAPI): 内部 currentBeatMap 残留不得阻塞 realtime external beat 消费.
+      //   外部无 beatmap 概念 → beatMapReadyForCamera 强制 false, waitingForBeatMap 视为 true,
+      //   实时节拍直接作为主节拍来源. 内部/DJ 模式维持原逻辑.
+      var beatMapReadyForCamera = dj ? djBeatMapReadyForCamera : (externalAudioFrame ? false : (currentBeatMap && currentBeatMap.cameraBeats && currentBeatMap.cameraBeats.length >= 4));
+      var waitingForBeatMap = dj ? !djBeatMapReadyForCamera : (externalAudioFrame ? true : (!beatMapReadyForCamera && (!!beatMapBusy || !!beatAnalysisTimer || ((audio && audio.currentTime) || 0) < 18)));
       var liveKickFrame = dj
         ? (realtimeBeat.low > 0.42 && rb > 0.32 && bassOnset > 0.040 && energyOnset > 0.006 && (realtimeBeat.lowDominance || 0) > 0.72)
         : (realtimeBeat.low > 0.42 && rb > 0.34 && bassOnset > 0.048 && energyOnset > 0.008);
@@ -453,11 +481,19 @@ function animate() {
       var liveTempoHit = dj
         ? (realtimeBeat.tempoAssist && realtimeBeat.confidence > 0.50 && realtimeBeat.strength > 0.46 && realtimeBeat.low > 0.40 && (liveKickFrame || bassOnset > 0.034))
         : (realtimeBeat.tempoAssist && realtimeBeat.confidence > 0.62 && realtimeBeat.strength > 0.50 && realtimeBeat.low > 0.40 && bassOnset > 0.036);
+      // [EXT-CONSUME] External 消费条件适配: 外部模式下, beat 引擎自身已判定 hit
+      //   (drumGate/score/rhythmAccept), main loop 不再以 bassOnset>0.048 作硬门槛
+      //   (C+D 频谱校准后 rb≈smoothBass → bassOnset≈0, 会误拒有效 beat).
+      //   保留基本有效性判断 (rtBeatExternalActive + confidence/strength/low 下限),
+      //   避免持续 bass/能量被当成 beat; 内部/DJ 模式完全保持原逻辑.
       var liveFallbackOk = dj
         ? (liveStrongHit || liveTempoHit)
-        : (waitingForBeatMap
-          ? (liveStrongHit || liveTempoHit)
-          : (realtimeBeat.confidence > 0.68 && realtimeBeat.strength > 0.62 && realtimeBeat.low > 0.44 && (liveKickFrame || realtimeBeat.score > 0.52)));
+        : (externalAudioFrame
+          ? (typeof rtBeatExternalActive !== 'undefined' && rtBeatExternalActive === true &&
+             realtimeBeat.confidence > 0.30 && realtimeBeat.strength > 0.30 && realtimeBeat.low > 0.20)
+          : (waitingForBeatMap
+            ? (liveStrongHit || liveTempoHit)
+            : (realtimeBeat.confidence > 0.68 && realtimeBeat.strength > 0.62 && realtimeBeat.low > 0.44 && (liveKickFrame || realtimeBeat.score > 0.52))));
       if (!beatMapReadyForCamera && liveFallbackOk) {
         scheduleBeatCamera({
           time: realtimeBeat.time,

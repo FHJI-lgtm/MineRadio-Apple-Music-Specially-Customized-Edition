@@ -4865,6 +4865,15 @@ const SMTC_BRIDGE_SCRIPT = smtcResolveBridgeScript();
 const SMTC_POWERSHELL_EXE = smtcResolvePowershellPath();
 let smtcBridgeProcess = null;
 let smtcBridgeBuffer = '';
+// [WATCHDOG] 进程级数据新鲜度监督: bridge 偶发卡死 (WinRT Await 永久等待) 时
+// stdout 完全沉默但进程存活. 以"最近一次有效 state 输出"为心跳, 超时后强制重启.
+let smtcBridgeLastOutputAt = 0;          // 最近一次有效 SMTC state 输出时间戳 (Date.now ms)
+let smtcBridgeRestartTimes = [];         // 最近重启时间戳 (60s 窗口内 >=3 次进入 cooldown)
+let smtcBridgeWatchdogTimer = 0;         // 2s watchdog timer handle
+let smtcBridgeStopping = false;          // stopSmtcBridge 主动停止标记: close 时不自动拉起 (app 退出/主动停止)
+const SMTC_BRIDGE_STALE_MS = 10000;      // 10s 无有效输出判定 stale
+const SMTC_BRIDGE_RESTART_WINDOW_MS = 60000;
+const SMTC_BRIDGE_RESTART_MAX = 3;
 // Phase 4B: 播放控制未决请求队列 (bridge 串行处理 stdin 命令, 结果按序返回)
 let smtcControlQueue = [];   // [{seq, command, resolve, timer}]
 let smtcControlSeq = 0;
@@ -4953,6 +4962,8 @@ function smtcBridgeHandleLine(line) {
     return;
   }
   if (parsed.type !== 'state') return;
+  // [WATCHDOG] 有效 state 输出 = 心跳: bridge 卡死时 stdout 沉默 -> 心跳停 -> watchdog 判定 stale
+  smtcBridgeLastOutputAt = Date.now();
   // T3 日志节流：bridge 每次轮询/事件都发一行，避免高频刷屏日志
   const t3Now = Date.now();
   if (t3Now - smtcLastT3LogAt >= 2000) {
@@ -4977,6 +4988,11 @@ function smtcBridgeHandleLine(line) {
   if ('thumbnail' in parsed) {
     smtcBridgeState.thumbnail = (typeof parsed.thumbnail === 'string' && parsed.thumbnail) ? parsed.thumbnail : null;
   }
+  // [FIX 3] 先广播 state (renderer active=true), 再处理 thumbnail 事件:
+  // 消除 "thumbnail 在 inactive 状态下被消费后无法重放" 的 watchdog 重启竞态。
+  // smtcBridgeState / smtcRefreshPending / 1500ms 去重 / thumbnail cache / identity gate 全部不变, 只调整发送顺序。
+  smtcBridgeBroadcast(smtcRefreshPending);
+  smtcRefreshPending = false;
   // Phase 4A.2 封面解析:
   //   - active=false (Apple Music 关闭/会话结束) -> 清除 UI 封面 (不清 cache)
   //   - identity 变化 (切歌) -> 先 smtcSendThumbnail(null) 清旧封面, 再 SMTC/cache/iTunes 解析
@@ -4999,9 +5015,6 @@ function smtcBridgeHandleLine(line) {
   // The 2s lifecycle poller re-reads smtcBridgeState.active itself,
   // so no extra work is needed here.
   if (SMTC_EXTERNAL_AUDIO_ENABLED) smtcAudioWanted = smtcBridgeState.active === true;
-  // 会话刷新期间: 强制广播 (绕过 1500ms 去重), 保证刷新结果立即到达 renderer
-  smtcBridgeBroadcast(smtcRefreshPending);
-  smtcRefreshPending = false;
 }
 
 function smtcBridgeOnData(chunk) {
@@ -5177,6 +5190,7 @@ function smtcFetchItunesThumbnail(identityKey, title, artist) {
 
 function startSmtcBridge() {
   if (smtcBridgeProcess && !smtcBridgeProcess.killed) return { ok: true, already: true };
+  smtcBridgeStopping = false;   // [WATCHDOG] 新 bridge 正常接管: 异常退出时允许自动拉起
   if (!fs.existsSync(SMTC_BRIDGE_SCRIPT)) {
     smtcBridgeState.error = 'SMTC bridge script missing';
     return { ok: false, error: 'SMTC_BRIDGE_SCRIPT_MISSING' };
@@ -5202,15 +5216,18 @@ function startSmtcBridge() {
   }
   console.log('[Main] SMTC bridge spawned (pid ' + smtcBridgeProcess.pid + ')');
   smtcAppendLog('SMTC bridge spawned pid=' + smtcBridgeProcess.pid);
+  // [WATCHDOG] 捕获本进程引用: 事件回调统一用 proc, 避免旧进程 close 误清新 bridge (watchdog 重启竞态)
+  const proc = smtcBridgeProcess;
+  smtcBridgeLastOutputAt = 0;   // 新 bridge 重新计时 (启动 grace, 首次有效 state 输出前不判 stale)
   // Phase 4B: bridge 退出后残留写入会触发异步 EPIPE error, 吞掉避免主进程崩溃
-  if (smtcBridgeProcess.stdin && typeof smtcBridgeProcess.stdin.on === 'function') {
-    smtcBridgeProcess.stdin.on('error', () => {});
+  if (proc.stdin && typeof proc.stdin.on === 'function') {
+    proc.stdin.on('error', () => {});
   }
-  smtcBridgeProcess.stdout.on('data', (chunk) => {
+  proc.stdout.on('data', (chunk) => {
     console.log('[Main][' + Date.now() + '] stdout received (T3):', String(chunk || '').trim().slice(0, 120));
     smtcBridgeOnData(chunk);
   });
-  smtcBridgeProcess.stderr.on('data', (chunk) => {
+  proc.stderr.on('data', (chunk) => {
     const lines = String(chunk || '').split(/\r?\n/).filter(Boolean);
     lines.forEach((line) => {
       const text = String(line).trim();
@@ -5222,17 +5239,29 @@ function startSmtcBridge() {
     });
     smtcBridgeBroadcast();
   });
-  smtcBridgeProcess.on('error', (err) => {
+  proc.on('error', (err) => {
     console.warn('[Main] SMTC bridge process error:', err && err.message || err);
     smtcBridgeState.error = String(err && err.message || 'smtc bridge error').slice(0, 300);
     smtcBridgeState.debug = smtcBridgeState.error;
     smtcAppendLog('SMTC bridge process error: ' + smtcBridgeState.error);
     smtcBridgeBroadcast();
   });
-  smtcBridgeProcess.on('close', (code, signal) => {
+  proc.on('close', (code, signal) => {
     console.warn('[Main] SMTC bridge exited: code=' + code + ' signal=' + signal);
     smtcAppendLog('SMTC bridge exit code=' + code + ' signal=' + signal);
-    smtcBridgeProcess = null;
+    // [WATCHDOG] 只清理当前进程自身的引用 (proc === smtcBridgeProcess 时才清空)
+    if (smtcBridgeProcess === proc) smtcBridgeProcess = null;
+    // [WATCHDOG] 异常退出 (非 stopSmtcBridge 主动停止) -> 延迟自动拉起, 保证 bridge 始终唯一存在
+    if (!smtcBridgeStopping) {
+      const timer = setTimeout(() => {
+        if (!smtcBridgeProcess && !smtcBridgeStopping) {
+          console.warn('[SMTC WATCHDOG] bridge exited unexpectedly, auto-restarting');
+          smtcAppendLog('SMTC WATCHDOG: bridge exited unexpectedly, auto-restarting');
+          startSmtcBridge();
+        }
+      }, 1500);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    }
     smtcBridgeState.active = false;
     smtcBridgeState.bridgeReady = false;
     smtcBridgeState.error = 'smtc bridge stopped (code ' + code + ')';
@@ -5248,6 +5277,7 @@ function startSmtcBridge() {
 }
 
 function stopSmtcBridge() {
+  smtcBridgeStopping = true;   // [WATCHDOG] 主动停止: close 时不自动拉起 (app 退出/显式停止)
   const proc = smtcBridgeProcess;
   smtcBridgeProcess = null;
   if (proc && !proc.killed) {
@@ -5260,6 +5290,55 @@ function stopSmtcBridge() {
   }
   return { ok: true };
 }
+
+// ---- [WATCHDOG] bridge 数据新鲜度监督: 解决 bridge 偶发卡死 (WinRT Await 永久等待) 后 stdout 完全沉默 ----
+// 心跳 = 最近一次有效 state 输出 (smtcBridgeLastOutputAt). 暂停播放时 bridge 仍每 5s poll 输出
+// (active=true, isPlaying=false), 因此基于"有效输出"而非"播放中"判定, 不会误判暂停.
+// stale (>=10s 无有效输出) -> 正常停止 + 强制杀 + 重启 + 立即 refresh.
+// cooldown: 60s 窗口内 >=3 次重启 -> 停止自动重启, 避免死循环刷屏.
+function smtcBridgeWatchdogTick() {
+  if (!smtcBridgeProcess || smtcBridgeProcess.killed) return;   // 无 bridge 运行: 由 startSmtc 拉起, watchdog 不负责拉起
+  if (smtcBridgeLastOutputAt <= 0) return;                      // 从未输出 (启动 grace)
+  const now = Date.now();
+  if (now - smtcBridgeLastOutputAt < SMTC_BRIDGE_STALE_MS) return;  // 新鲜, 正常
+  // stale
+  console.warn('[SMTC WATCHDOG] stale bridge detected (last output ' + Math.round((now - smtcBridgeLastOutputAt) / 1000) + 's ago, pid=' + smtcBridgeProcess.pid + ')');
+  smtcAppendLog('SMTC WATCHDOG: stale bridge detected (last output ' + Math.round((now - smtcBridgeLastOutputAt) / 1000) + 's ago)');
+  // cooldown: 60s 内 >=3 次重启 -> 不无限重启
+  const recent = smtcBridgeRestartTimes.filter((t) => now - t < SMTC_BRIDGE_RESTART_WINDOW_MS);
+  if (recent.length >= SMTC_BRIDGE_RESTART_MAX) {
+    console.warn('[SMTC WATCHDOG] restart cooldown');
+    smtcAppendLog('SMTC WATCHDOG: restart cooldown');
+    return;
+  }
+  smtcBridgeRestartTimes.push(now);
+  restartSmtcBridge('watchdog-stale');
+}
+
+function restartSmtcBridge(reason) {
+  const oldPid = smtcBridgeProcess ? smtcBridgeProcess.pid : null;
+  console.warn('[SMTC WATCHDOG] restarting bridge pid=' + (oldPid == null ? 'none' : oldPid) + ' reason=' + reason);
+  smtcAppendLog('SMTC WATCHDOG: restarting bridge pid=' + (oldPid == null ? 'none' : oldPid) + ' reason=' + reason);
+  stopSmtcBridge();      // 正常停止 (kill + 1.5s SIGKILL 兜底)
+  const result = startSmtcBridge();
+  if (result && result.ok) {
+    console.warn('[SMTC WATCHDOG] bridge restarted pid=' + (smtcBridgeProcess ? smtcBridgeProcess.pid : 'none'));
+    smtcAppendLog('SMTC WATCHDOG: bridge restarted pid=' + (smtcBridgeProcess ? smtcBridgeProcess.pid : 'none'));
+    // 新 bridge 启动后立即 refresh: 强制推送最新 SMTC 状态 (渲染层无需刷新)
+    setTimeout(() => { smtcControl('refresh').catch(() => {}); }, 400);
+  } else {
+    console.warn('[SMTC WATCHDOG] bridge restart failed');
+    smtcAppendLog('SMTC WATCHDOG: bridge restart failed');
+  }
+}
+
+function ensureSmtcBridgeWatchdog() {
+  if (smtcBridgeWatchdogTimer) return;
+  smtcBridgeWatchdogTimer = setInterval(smtcBridgeWatchdogTick, 2000);
+  if (smtcBridgeWatchdogTimer && smtcBridgeWatchdogTimer.unref) smtcBridgeWatchdogTimer.unref();
+  console.log('[Main] SMTC bridge watchdog started (interval 2s, stale ' + SMTC_BRIDGE_STALE_MS + 'ms)');
+}
+ensureSmtcBridgeWatchdog();
 
 ipcMain.handle('mineradio-smtc-start', async (event) => {
   if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };

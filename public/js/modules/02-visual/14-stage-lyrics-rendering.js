@@ -2476,17 +2476,23 @@ function updateStageLyrics3D(dt) {
         mesh.rotation.z = previewMotionBlend < 1 ? mesh.rotation.z + (mouthRotationTarget - mesh.rotation.z) * 0.18 : mouthRotationTarget;
       } else {
         mesh.userData.skullMouthMeshLocked = false;
-        var rootScaleTarget = 0.96 + a * 0.055 + breathe + bass * 0.038 + beatPulse * 0.014;
+        // [STAGE-BEAT] Beat 前凸: 复用现有 stageLyrics.beatGlow (由 beatPulse/beatCam 驱动, 平滑 attack/release),
+        // 所有动效风格生效 (此前仅 glitch 风格有 Beat 位移). 只改视觉 transform, 不影响歌词时间轴.
+        // beatGlow 弱(≈0)时几乎不动, 强时轻微前凸+放大, ease 由现有 position/scale 平滑.
+        var stageBeatPushZ = stageLyrics && isFinite(stageLyrics.beatGlow)
+          ? Math.min(0.12, stageLyrics.beatGlow * 0.065 + beatPulse * 0.020)
+          : 0;
+        var rootScaleTarget = 0.96 + a * 0.055 + breathe + bass * 0.038 + beatPulse * 0.014 + stageBeatPushZ * 1.15;
         mesh.scale.setScalar(previewMotionBlend < 1 ? mesh.scale.x + (rootScaleTarget - mesh.scale.x) * 0.06 : rootScaleTarget);
         if (singleLineSwap) {
           mesh.position.y += ((0.18 + (verticalFloatOn ? (Math.sin(t * 0.55 + seed) * 0.055 + Math.sin(t * 1.35 + seed) * 0.014) * previewMotionBlend : 0)) - mesh.position.y) * 0.075;
-          mesh.position.z += ((1.48 + (verticalFloatOn ? Math.cos(t * 0.48 + seed) * 0.080 * previewMotionBlend : 0)) - mesh.position.z) * 0.080;
+          mesh.position.z += ((1.48 + stageBeatPushZ + (verticalFloatOn ? Math.cos(t * 0.48 + seed) * 0.080 * previewMotionBlend : 0)) - mesh.position.z) * 0.080;
         } else {
           var enterDir = mesh.userData.enterDirection || 0;
           var enterOffsetY = enterDir * lineStepWorld * (1 - a);
           var progressLift = -shownProgress * 0.026;
           mesh.position.y += ((0.20 + enterOffsetY + progressLift + (verticalFloatOn ? (Math.sin(t * 0.55 + seed) * 0.046 + Math.sin(t * 1.35 + seed) * 0.012) * previewMotionBlend : 0)) - mesh.position.y) * (enterDir ? 0.115 : 0.080);
-          mesh.position.z += ((1.48 - Math.abs(enterDir) * 0.045 * (1 - a) + (verticalFloatOn ? Math.cos(t * 0.48 + seed) * 0.070 * previewMotionBlend : 0)) - mesh.position.z) * 0.090;
+          mesh.position.z += ((1.48 - Math.abs(enterDir) * 0.045 * (1 - a) + stageBeatPushZ + (verticalFloatOn ? Math.cos(t * 0.48 + seed) * 0.070 * previewMotionBlend : 0)) - mesh.position.z) * 0.090;
         }
         var rootRotationTarget = (Math.sin(t * 0.34 + seed) * (style === 'smooth' ? 0.006 : (style === 'float' ? 0.026 : 0.018)) + textJitterX * 0.18 + glitchCameraDrive * glitchAmount * 0.014) * previewMotionBlend;
         mesh.rotation.z = previewMotionBlend < 1 ? mesh.rotation.z + (rootRotationTarget - mesh.rotation.z) * 0.18 : rootRotationTarget;

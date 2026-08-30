@@ -280,6 +280,14 @@ function smtcApplyBridgeState(state) {
     ' position=' + Math.round(smtcStore.positionMs) +
     ' duration=' + smtcStore.durationMs +
     ' debug=' + (smtcStore.debug || ''));
+  // [FIX 2] active 恢复后冲刷 pending cover:
+  // watchdog 重启时 thumbnail 事件先于 active state 到达, 03-smtc-ui.js 已把封面挂起;
+  // 此处等 state 把 smtcStore.active 置回 true 后再补放, 顺序为: state(active=true) -> flush -> applyCover。
+  if (smtcStore.active && typeof smtcApplyVisualizerCover === 'function' && smtcVisualCoverPending) {
+    var pendingCover = smtcVisualCoverPending;
+    smtcVisualCoverPending = null;
+    smtcApplyVisualizerCover(pendingCover);
+  }
   if (typeof onSmtcStateChanged === 'function') {
     onSmtcStateChanged(prevActive, prevPlaying);
   }

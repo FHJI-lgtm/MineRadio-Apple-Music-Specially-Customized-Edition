@@ -1053,7 +1053,14 @@ function desktopLyricsPayload(forceBeatMap, includeCustomFontData) {
     progressSpan: lyric.progressSpan,
     title: meta.title,
     artist: meta.artist,
-    playing: !!playing,
+    playing: (function () {
+      // 统一播放状态: 内部播放器 OR Apple Music/WASAPI 外部播放 OR SMTC isPlaying.
+      // try-catch 防护: 启动时序下 12-smtc 模块(smtcPlayerCfg/smtcStore)可能尚未加载,
+      // externalAudioActive() 会抛 undefined.enabled; 此时回退内部 playing 变量, 模块就绪后恢复.
+      try {
+        return !!(playing || (typeof externalAudioActive === 'function' && externalAudioActive()) || (typeof smtcStore !== 'undefined' && smtcStore && smtcStore.isPlaying === true));
+      } catch (_) { return !!playing; }
+    })(),
     size: clampRange(Number(fx.desktopLyricsSize) || fxDefaults.desktopLyricsSize, 0.72, 1.55),
     opacity: clampRange(fx.desktopLyricsOpacity == null ? fxDefaults.desktopLyricsOpacity : Number(fx.desktopLyricsOpacity), 0.28, 1),
     y: clampRange(fx.desktopLyricsY == null ? fxDefaults.desktopLyricsY : Number(fx.desktopLyricsY), 0.08, 0.92),
@@ -1445,8 +1452,12 @@ function applyWallpaperModeState(force) {
 function syncDesktopOverlayState() {
   if (fx.desktopLyrics) pushDesktopLyricsState(false);
 }
+// [LYRIC-BEAT] 歌词 payload 推送提速 (320ms -> 120ms): 鼓点瞬态 ~50-150ms, 320ms 采样会错过 beat 峰值,
+// 导致桌面歌词 Beat 凸起/高亮响应偏弱. 分离 wallpaper health-watch 保持原 320ms 频率.
 setInterval(function () {
   if (fx && fx.desktopLyrics) syncDesktopOverlayState();
+}, 120);
+setInterval(function () {
   if (fx && fx.wallpaperMode) ensureDesktopWallpaperFunctionalUi('health-watch');
 }, 320);
 

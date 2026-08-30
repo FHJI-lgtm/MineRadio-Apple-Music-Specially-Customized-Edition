@@ -148,11 +148,20 @@ function smtcUpdateCover() {
 //   - coverApplyStillCurrent({trackToken: trackSwitchToken}): 期间内部切歌则失效
 //   - applyCoverCanvas 内部 coverProcessToken: 新旧封面异步重活互斥
 var smtcVisualCoverSeq = 0;
+// [FIX 1] watchdog 重启后 thumbnail 事件先于 active state 到达 (inactive 状态) 时的挂起位:
+// 只缓存一次尚未应用的 thumbnail, active 恢复后由 00-smtc-store.js 冲刷。不引入任何定时器/轮询/新 IPC。
+var smtcVisualCoverPending = null;
 function smtcApplyVisualizerCover(thumb) {
   // 内部播放器正在播放时让位 (视觉所有权归内部播放器)
   if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow()) return;
   if (thumb && typeof thumb === 'string') {
-    if (typeof applyCoverCanvas !== 'function' || !smtcStore || !smtcStore.active) return;
+    if (typeof applyCoverCanvas !== 'function' || !smtcStore) return;
+    // [FIX 1] inactive 时封面事件被"消费掉"后无法重放 (watchdog 重启竞态):
+    // 不丢弃, 挂起等待 active 恢复后冲刷。
+    if (!smtcStore.active) {
+      smtcVisualCoverPending = thumb;
+      return;
+    }
     var seq = ++smtcVisualCoverSeq;
     // 与内部播放器一致: 请求时点捕获 trackToken (而非 onload 时点), 期间内部切歌则失效
     var requestToken = trackSwitchToken;
@@ -174,12 +183,14 @@ function smtcApplyVisualizerCover(thumb) {
         timeout: 900,
       });
       console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover applied (' + thumb.length + ' chars)');
+      smtcVisualCoverPending = null;   // [FIX 1] 正常应用后清挂起位
     };
     img.onerror = function () {}; // 解码失败: 保持当前视觉 (与内部失败路径一致静默)
     img.src = thumb;
     return;
   }
   // thumbnail 为 null (Apple Music 关闭/会话结束): 回到 MineRadio 默认 fallback (idle 视觉)
+  smtcVisualCoverPending = null;   // [FIX 1] null = 无封面: 挂起值不再有意义, 清掉避免 active 恢复后补放过期封面
   if (typeof loadCoverFromUrl === 'function') {
     loadCoverFromUrl('');
     console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover cleared (inactive)');

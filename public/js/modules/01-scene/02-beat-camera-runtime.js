@@ -389,18 +389,43 @@ function beatBandRms(data, sampleRate, fftSize, hz0, hz1) {
   return count ? Math.sqrt(sum / count) : 0;
 }
 
+// [BEAT-FIX] 外部模式节拍引擎激活标记: 内部↔外部切换时重置 rtBeat 状态,
+// 避免继承错误的 nowT 时间基线 (内部 audio.currentTime 与外部 SMTC 位置不同源).
+var rtBeatExternalActive = false;
+
 function processRealtimeBeatEngine(dt) {
-  if (!beatAnalyser || !audioCtx || !audio || audio.paused) return null;
+  // [BEAT-FIX] 统一 playback state 门控:
+  //   内部播放: 维持原条件 (beatAnalyser/audioCtx/audio 就绪且未暂停).
+  //   外部播放 (Apple Music/WASAPI): externalAudioActive() 为 true 时放行,
+  //   不再依赖内部 HTMLAudioElement 的 paused 状态 (外部无此元素).
+  var extBeatAudio = (typeof externalAudioActive === 'function') && externalAudioActive();
+  if (!extBeatAudio && (!beatAnalyser || !audioCtx || !audio || audio.paused)) return null;
   dt = Math.max(0.001, Math.min(0.080, dt || 0.016));
   var dj = djMode.active;
-  beatAnalyser.getByteFrequencyData(beatFrequencyData);
-  beatAnalyser.getByteTimeDomainData(beatTimeDomainData);
-  var sr = audioCtx.sampleRate || 44100;
-  var sub = beatBandRms(beatFrequencyData, sr, beatAnalyser.fftSize, 38, 74);
-  var kick = beatBandRms(beatFrequencyData, sr, beatAnalyser.fftSize, 52, 165);
-  var body = beatBandRms(beatFrequencyData, sr, beatAnalyser.fftSize, 165, 420);
-  var vocal = beatBandRms(beatFrequencyData, sr, beatAnalyser.fftSize, 420, 2600);
-  var snap = beatBandRms(beatFrequencyData, sr, beatAnalyser.fftSize, 1800, 9200);
+  var beatFftSize, beatSr;
+  if (extBeatAudio) {
+    // [BEAT-FIX] 外部模式: 消费已存在的全局 frequencyData/timeDomainData
+    // (04-smtc-audio.js 频谱对齐后与内部同量级, 同尺寸 1024/2048, 映射按 44100/2048)
+    if (frequencyData && frequencyData.length && beatFrequencyData && beatFrequencyData.length === frequencyData.length) {
+      beatFrequencyData.set(frequencyData);
+    }
+    if (timeDomainData && timeDomainData.length && beatTimeDomainData && beatTimeDomainData.length === timeDomainData.length) {
+      beatTimeDomainData.set(timeDomainData);
+    }
+    beatSr = 44100;
+    beatFftSize = 2048;
+  } else {
+    beatAnalyser.getByteFrequencyData(beatFrequencyData);
+    beatAnalyser.getByteTimeDomainData(beatTimeDomainData);
+    beatSr = audioCtx.sampleRate || 44100;
+    beatFftSize = beatAnalyser.fftSize;
+  }
+  var sr = beatSr;
+  var sub = beatBandRms(beatFrequencyData, sr, beatFftSize, 38, 74);
+  var kick = beatBandRms(beatFrequencyData, sr, beatFftSize, 52, 165);
+  var body = beatBandRms(beatFrequencyData, sr, beatFftSize, 165, 420);
+  var vocal = beatBandRms(beatFrequencyData, sr, beatFftSize, 420, 2600);
+  var snap = beatBandRms(beatFrequencyData, sr, beatFftSize, 1800, 9200);
   var low = Math.min(1, kick * 0.86 + sub * 0.42);
   var rms = 0;
   var timeStride = (typeof runtimeAnalysisStride === 'function') ? runtimeAnalysisStride('time', beatTimeDomainData.length) : 1;
@@ -462,7 +487,23 @@ function processRealtimeBeatEngine(dt) {
   var bodyNorm = clamp01(body / Math.max(0.045, rtBeat.bodyPeak * (dj ? 0.74 : 0.72)));
   var vocalNorm = clamp01(vocal / Math.max(0.045, rtBeat.vocalPeak * 0.72));
   var snapNorm = clamp01(snap / Math.max(0.040, rtBeat.snapPeak * (dj ? 0.78 : 0.72)));
-  var nowT = audio.currentTime || 0;
+  // [BEAT-FIX] 节拍时间源: 内部用 audio.currentTime; 外部用 SMTC 播放位置
+  // (00-smtc-store 的 smtcPositionSecondsNow), 无 SMTC 时回退单调时钟.
+  var nowT = extBeatAudio
+    ? (typeof smtcPositionSecondsNow === 'function'
+        ? smtcPositionSecondsNow()
+        : (typeof performance !== 'undefined' ? performance.now() / 1000 : 0))
+    : (audio.currentTime || 0);
+  // [BEAT-FIX] 外部模式首次激活: 重置节拍状态并用外部 nowT 重设 warmup 基线
+  if (extBeatAudio && !rtBeatExternalActive) {
+    rtBeatExternalActive = true;
+    if (typeof resetRealtimeBeatEngine === 'function') {
+      resetRealtimeBeatEngine();
+      rtBeat.warmupUntil = nowT + 0.48;
+    }
+  } else if (!extBeatAudio && rtBeatExternalActive) {
+    rtBeatExternalActive = false;
+  }
   rtBeat.primedFrames++;
   var warmingUp = nowT < rtBeat.warmupUntil || rtBeat.primedFrames < (dj ? 5 : 10);
   var gapFromLast = nowT - rtBeat.lastHitAt;

@@ -38,16 +38,16 @@
 !include WinMessages.nsh
 
 !ifndef MINERADIO_INSTALL_DIR_NAME
-  !define MINERADIO_INSTALL_DIR_NAME "Mineradio"
+  !define MINERADIO_INSTALL_DIR_NAME "AppleMusic-MineRadio-Edition"
 !endif
 !ifndef MINERADIO_INSTALL_DIR_NAME_LOWER
-  !define MINERADIO_INSTALL_DIR_NAME_LOWER "mineradio"
+  !define MINERADIO_INSTALL_DIR_NAME_LOWER "applemusic-mineradio-edition"
 !endif
 !ifndef MINERADIO_INSTALL_MARKER
   !define MINERADIO_INSTALL_MARKER ".mineradio-install-root"
 !endif
 !ifndef MINERADIO_MARKER_APP_ID
-  !define MINERADIO_MARKER_APP_ID "com.mineradio.desktop"
+  !define MINERADIO_MARKER_APP_ID "com.fhji.minradio.applemusic"
 !endif
 !ifndef MINERADIO_INSTALL_BRAND
   !define MINERADIO_INSTALL_BRAND "MINERADIO"
@@ -764,7 +764,7 @@ Function MineradioValidateInstallDir
       ${If} $2 == "1"
       ${AndIf} $3 != "1"
       ${AndIf} $4 != "1"
-        MessageBox MB_ICONSTOP|MB_OK "检测到这台电脑还有 D-Z 盘，Mineradio 不安装到 C 盘。请改选 D 盘或其它非 C 盘的 Mineradio 文件夹。$\r$\n$\r$\n如果电脑只有 C 盘，安装器会自动放行 C:\Mineradio。"
+        MessageBox MB_ICONSTOP|MB_OK "检测到这台电脑还有 D-Z 盘，MineRadio Apple Music Edition 不安装到 C 盘。请改选 D 盘或其它非 C 盘的 AppleMusic-MineRadio-Edition 文件夹。$\r$\n$\r$\n如果电脑只有 C 盘，安装器会自动放行 C:\AppleMusic-MineRadio-Edition。"
         Abort
       ${EndIf}
     ${EndIf}
@@ -777,7 +777,7 @@ Function MineradioValidateInstallDir
   ${If} $0 < $2
   ${OrIf} $1 != "\${MINERADIO_INSTALL_DIR_NAME}"
   ${AndIf} $1 != "\${MINERADIO_INSTALL_DIR_NAME_LOWER}"
-    MessageBox MB_ICONSTOP|MB_OK "安装目录必须是独立的 Mineradio 文件夹。请选择一个上级目录，安装器会自动创建 Mineradio 子文件夹。"
+    MessageBox MB_ICONSTOP|MB_OK "安装目录必须是独立的 AppleMusic-MineRadio-Edition 文件夹。请选择一个上级目录，安装器会自动创建 AppleMusic-MineRadio-Edition 子文件夹。"
     Abort
   ${EndIf}
 
@@ -805,7 +805,7 @@ Function MineradioValidateInstallDir
     Goto valid
   ${EndIf}
 
-  MessageBox MB_ICONSTOP|MB_OK "为避免卸载时误删其它文件，Mineradio 不能安装到已有文件的非专属目录。请新建或选择一个空的 Mineradio 文件夹。$\r$\n$\r$\n当前路径：$INSTDIR"
+  MessageBox MB_ICONSTOP|MB_OK "为避免卸载时误删其它文件，MineRadio Apple Music Edition 不能安装到已有文件的非专属目录。请新建或选择一个空的 AppleMusic-MineRadio-Edition 文件夹。$\r$\n$\r$\n当前路径：$INSTDIR"
   Abort
 
   valid:
@@ -1006,7 +1006,7 @@ Function un.MineradioValidateUninstallDir
   Call un.MineradioNormalizeInstallDir
   Pop $1
   ${If} $0 != $1
-    MessageBox MB_OK|MB_ICONSTOP "当前卸载路径不是 Mineradio 专属目录，已阻止卸载以避免误删其它文件。$\r$\n$\r$\n当前路径：$INSTDIR$\r$\n安全路径应为：$0"
+    MessageBox MB_OK|MB_ICONSTOP "当前卸载路径不是 AppleMusic-MineRadio-Edition 专属目录，已阻止卸载以避免误删其它文件。$\r$\n$\r$\n当前路径：$INSTDIR$\r$\n安全路径应为：$0"
     SetErrorLevel 2
     Quit
   ${EndIf}
@@ -1016,7 +1016,7 @@ Function un.MineradioValidateUninstallDir
   Call un.MineradioInstallDirLooksOwned
   Pop $0
   ${If} $0 != "1"
-    MessageBox MB_OK|MB_ICONSTOP "无法确认当前目录属于 Mineradio，已阻止卸载以避免误删其它文件。$\r$\n$\r$\n当前路径：$INSTDIR"
+    MessageBox MB_OK|MB_ICONSTOP "无法确认当前目录属于 MineRadio Apple Music Edition，已阻止卸载以避免误删其它文件。$\r$\n$\r$\n当前路径：$INSTDIR"
     SetErrorLevel 2
     Quit
   ${EndIf}

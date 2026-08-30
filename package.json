@@ -1,7 +1,7 @@
 {
-  "name": "mineradio",
-  "productName": "Mineradio",
-  "version": "2.1.0",
+  "name": "mineradio-apple-music-edition",
+  "productName": "MineRadio Apple Music Edition",
+  "version": "1.2.0",
   "description": "Windows 沉浸式音乐播放器，融合桌面模式、歌词舞台、粒子视觉和 3D 歌单架。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -17,8 +17,8 @@
     "dist:portable": "electron-builder --win portable --publish never"
   },
   "build": {
-    "appId": "com.mineradio.desktop",
-    "productName": "Mineradio",
+    "appId": "com.fhji.minradio.applemusic",
+    "productName": "MineRadio Apple Music Edition",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -66,7 +66,7 @@
     ],
     "asar": false,
     "win": {
-      "executableName": "Mineradio",
+      "executableName": "MineRadio-Apple-Music-Edition",
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
@@ -84,28 +84,33 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Mineradio",
+      "shortcutName": "MineRadio Apple Music Edition",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/installerSidebar.bmp",
       "installerHeader": "build/installerHeader.bmp",
       "include": "build/installer.nsh",
-      "artifactName": "Mineradio-${version}-Setup.${ext}"
+      "artifactName": "MineRadio-Apple-Music-Specially-Customized-Edition-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "MineRadio-Apple-Music-Specially-Customized-Edition-${version}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "XxHuberrr",
-        "repo": "Mineradio"
+        "owner": "FHJI-lgtm",
+        "repo": "MineRadio-Apple-Music-Specially-Customized-Edition"
       }
     ]
   },
   "mineradio": {
+    "runtimeName": "MineRadio Apple Music Edition",
+    "appUserModelId": "com.fhji.minradio.applemusic",
     "update": {
       "provider": "github",
-      "owner": "XxHuberrr",
-      "repo": "Mineradio",
+      "owner": "FHJI-lgtm",
+      "repo": "MineRadio-Apple-Music-Specially-Customized-Edition",
       "preview": false,
       "preferMirrors": true,
       "mirrors": [
