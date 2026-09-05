@@ -189,8 +189,17 @@ function smtcApplyVisualizerCover(thumb) {
     img.src = thumb;
     return;
   }
-  // thumbnail 为 null (Apple Music 关闭/会话结束): 回到 MineRadio 默认 fallback (idle 视觉)
+  // [M1] thumbnail=null 必须区分两种语义:
+  //   (A) SMTC 会话仍 active (切歌过渡 / watchdog 恢复中): main 的 null 只是"新封面尚未 ready",
+  //       绝不能解释为"没有封面" — 保持当前舞台封面完全不变 (uHasCover/coverTex/currentCoverSource
+  //       /album background 一律不动), 等真正 dataURL 到达后走现有 applyCoverCanvas crossfade。
+  //   (B) SMTC 会话真正结束: 由 00-smtc-store.js 的 state 事件 (active true->false + bridgeReady=true)
+  //       负责真清空; 此处 inactive 分支仅作兜底。
   smtcVisualCoverPending = null;   // [FIX 1] null = 无封面: 挂起值不再有意义, 清掉避免 active 恢复后补放过期封面
+  if (typeof smtcStore !== 'undefined' && smtcStore.active === true) {
+    console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover HELD (thumbnail=null while active, await next cover)');
+    return;
+  }
   if (typeof loadCoverFromUrl === 'function') {
     loadCoverFromUrl('');
     console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover cleared (inactive)');

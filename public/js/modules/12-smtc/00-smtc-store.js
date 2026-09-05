@@ -189,6 +189,19 @@ function smtcApplyBridgeState(state) {
     smtcFrozenAt = 0;
     smtcSeekConfirm = null;
     action = 'inactive';
+    // [M2] SMTC 封面清空由"会话状态真正结束"决定, 而非 thumbnail=null:
+    //   prevActive(true->false) + state.bridgeReady===true → Apple Music 会话确实结束 → 清空 SMTC 封面。
+    //   bridgeReady===false (watchdog 重启 / bridge 暂时死亡) → 保持旧封面, 等待新 bridge state + thumbnail 恢复,
+    //   绝不制造 "旧封面 → 空封面"。
+    //   内部播放器正在播放时不干预 (舞台封面归内部播放器, 避免误清内部封面)。
+    if (prevActive && state.bridgeReady === true &&
+        (!(typeof internalAudioPlayingNow === 'function') || !internalAudioPlayingNow())) {
+      if (typeof smtcVisualCoverPending !== 'undefined') smtcVisualCoverPending = null;
+      if (typeof loadCoverFromUrl === 'function') loadCoverFromUrl('');
+      console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover cleared (session truly ended: active true->false, bridgeReady=true)');
+    } else if (prevActive) {
+      console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover HELD (inactive state, bridge not ready / internal playing)');
+    }
   } else if (trackChanged) {
     // 切歌：立即重置锚点 + seek flag（不等 2 样本确认）
     smtcAnchorPositionMs = rawAdjusted;
