@@ -1,10 +1,17 @@
 // ============================================================
 // lyrics-source-window.js — 歌词源搜索顺序窗口 renderer (独立窗口专用)
-// 只负责: 显示搜索顺序 / 拖拽排序 / 上报新顺序。真实状态在主窗口 renderer。
-// 拖拽完成后立即保存 (无保存按钮)。
+// 只负责: 显示搜索顺序 / 拖拽排序 / 上报新顺序 / 触发重新搜索。
+// 真实状态在主窗口 renderer; 拖拽完成后立即保存 (无保存按钮)。
+//
+// 本窗口不含任何 Apple Music 凭证 UI:
+//   Apple Music 歌词源读取本机 Apple Music 应用自己维护的官方歌词缓存
+//   (…\Packages\AppleInc.AppleMusicWin_*\AC\INetCache\*\ttmlLyrics*.json),
+//   不需要 Developer Token / Music User Token / Cookie / 账号密码。
 // ============================================================
 (function () {
+  // 四个歌词源同级 (顺序完全由用户拖拽决定; 数组顺序仅用于"缺失源"的插入位置)
   var OPTIONS = [
+    { id: 'apple', name: 'Apple Music' },
     { id: 'qq', name: 'QQ音乐' },
     { id: 'kugou', name: '酷狗音乐' },
     { id: 'netease', name: '网易云音乐' },
@@ -83,7 +90,16 @@
     window.lyricsSource.onState(function (state) {
       var order = state && Array.isArray(state.order) ? state.order : [];
       var known = order.filter(function (id) { return OPTIONS_BY_ID[id]; });
-      OPTIONS.forEach(function (o) { if (known.indexOf(o.id) < 0) known.push(o.id); });
+      // 缺失的源按 OPTIONS 中的相对位置插入 (而不是一律追加末尾), 保证四源同级
+      OPTIONS.forEach(function (o, idx) {
+        if (known.indexOf(o.id) >= 0) return;
+        var insertAt = known.length;
+        for (var n = idx + 1; n < OPTIONS.length; n++) {
+          var pos = known.indexOf(OPTIONS[n].id);
+          if (pos >= 0 && pos < insertAt) insertAt = pos;
+        }
+        known.splice(insertAt, 0, o.id);
+      });
       currentOrder = known;
       render();
     });
@@ -99,7 +115,7 @@
     var researchTimer = 0;
     function researchReset() {
       researchBtn.disabled = false;
-      researchBtn.textContent = '重新搜索';
+      researchBtn.textContent = '重新搜索歌词';
     }
     researchBtn.addEventListener('click', function () {
       if (researchBtn.disabled) return;
@@ -120,5 +136,6 @@
       });
     }
   }
+
   render();
 })();

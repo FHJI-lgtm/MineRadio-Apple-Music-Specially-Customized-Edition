@@ -8,31 +8,50 @@
   html, body {
     margin: 0;
     padding: 0;
+    height: 100%;
     background: #121416;
     color: rgba(255,255,255,0.90);
     font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
     user-select: none;
     overflow: hidden;
   }
+  /* 外层: 固定 header + 可滚动主体 + 固定底部操作区
+     (中间区域 min-height:0 + overflow-y:auto, 窗口变矮时只有它收缩滚动,
+      标题/关闭按钮/底部按钮永远留在可视区域内) */
   body { display: flex; flex-direction: column; height: 100vh; }
+
   .titlebar {
+    flex: 0 0 auto;
     -webkit-app-region: drag;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 12px 4px 14px;
+    gap: 8px;
+    padding: 10px 12px 6px 14px;
     font-size: 13px; font-weight: 600; opacity: 0.92;
+    background: #121416;
   }
+  .titlebar .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .close-btn {
+    flex: 0 0 auto;
     -webkit-app-region: no-drag;
     width: 24px; height: 24px; border: none; border-radius: 6px;
     background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
     font-size: 12px; line-height: 1; cursor: pointer;
   }
   .close-btn:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.95); }
-  .body { flex: 1; padding: 8px 14px 12px; }
-  .sub {
-    font-size: 11px; opacity: 0.55;
-    padding: 0 4px 8px;
+
+  /* 中间: 唯一可滚动区域 */
+  .body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 14px 10px;
   }
+  .body::-webkit-scrollbar { width: 8px; }
+  .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+  .body::-webkit-scrollbar-track { background: transparent; }
+
+  .sub { font-size: 11px; opacity: 0.55; padding: 0 4px 8px; }
   .list { display: flex; flex-direction: column; gap: 3px; }
   .row {
     display: flex; align-items: center; gap: 10px;
@@ -45,8 +64,28 @@
   .row.dragging { opacity: 0.45; border-color: rgba(255,255,255,0.28); }
   .row.drag-over { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.12); }
   .handle { opacity: 0.5; font-size: 13px; }
+
+  /* Apple Music 说明块: 独立于排序列表, 不参与拖拽排序, 无任何凭证输入 */
+  .apple-block {
+    margin: 12px 2px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .apple-note { font-size: 10.5px; opacity: 0.55; line-height: 1.55; }
+  .apple-note b { font-weight: 600; opacity: 0.9; }
+
   .hint { font-size: 11px; opacity: 0.45; padding: 10px 4px 0; }
-  .foot { padding: 4px 14px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+  /* 底部: 固定操作区 (不随中间内容滚动) */
+  .foot {
+    flex: 0 0 auto;
+    padding: 8px 14px 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: #121416;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
   .foot-btn {
     padding: 6px 18px; border-radius: 8px; font-size: 12px;
     color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08);
@@ -58,16 +97,18 @@
 </head>
 <body>
   <div class="titlebar">
-    <span>歌词源搜索顺序</span>
+    <span class="title">歌词源搜索顺序</span>
     <button class="close-btn" id="close" title="关闭">✕</button>
   </div>
   <div class="body">
-    <div class="sub">拖动以调整搜索优先级</div>
+    <div class="sub">拖动以调整搜索优先级 · 搜索歌词时按此顺序依次尝试</div>
     <div class="list" id="list"></div>
-    <div class="hint">搜索歌词时将按此顺序依次尝试</div>
+    <div class="apple-block">
+      <div class="apple-note">Apple Music 歌词直接读取本机 Apple Music 的官方歌词缓存：Apple Music 应用已登录并播放过该曲目后即可自动使用，<b>无需配置任何凭证</b>。</div>
+    </div>
   </div>
   <div class="foot">
-    <button class="foot-btn" id="research" title="按当前排序重新搜索当前歌曲">重新搜索</button>
+    <button class="foot-btn" id="research" title="按当前排序重新搜索当前歌曲">重新搜索歌词</button>
     <button class="foot-btn" id="done">关闭</button>
   </div>
   <script src="lyrics-source-window.js"></script>

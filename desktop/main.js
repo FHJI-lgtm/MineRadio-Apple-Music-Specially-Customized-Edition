@@ -5105,6 +5105,80 @@ function smtcThumbnailCacheSet(key, value) {
   }
 }
 
+// ---- [COVER-RESOLVER] Apple Music 本地封面兜底 (只读一次性 CLI, 无网络/无提权) ----
+// 封面优先级: SMTC thumbnail > 本地 Resolver > iTunes Search API > 保持当前封面
+// Resolver 失败/超时/缺失一律返回空字符串, 由调用方回落到原有 iTunes 路径。
+const smtcCoverResolverAttempted = new Set();   // identityKey -> 已尝试本地 Resolver
+const SMTC_COVER_RESOLVER_TIMEOUT_MS = 1500;
+const SMTC_COVER_RESOLVER_MAX_BYTES = 8 * 1024 * 1024;
+
+function smtcCoverResolverExePath() {
+  const candidates = [
+    path.join(__dirname, 'native', 'MineRadioCoverResolver.exe'),
+    path.join(process.resourcesPath || '', 'app', 'desktop', 'native', 'MineRadioCoverResolver.exe'),
+  ];
+  for (const candidate of candidates) {
+    try { if (candidate && fs.existsSync(candidate)) return candidate; } catch (_) {}
+  }
+  return '';
+}
+
+function smtcCoverResolverArgs(title, artist, album) {
+  const args = ['resolve', '--title', String(title || '').slice(0, 300), '--json'];
+  if (artist) args.push('--artist', String(artist).slice(0, 300));
+  if (album) args.push('--album', String(album).slice(0, 300));
+  return args;
+}
+
+// 调用 C++ Resolver 并把本地 JPEG 转成 data URL; 命中时写入会话 cache 并发送给渲染层。
+function smtcResolveThumbnailViaLocalCover(identityKey) {
+  return new Promise((resolve) => {
+    const exe = smtcCoverResolverExePath();
+    if (!exe) return resolve('');
+    const title = String(smtcBridgeState.title || '').trim();
+    if (!title) return resolve('');
+    const artist = String(smtcBridgeState.artist || '').trim();
+    const album = String(smtcBridgeState.album || '').trim();
+    let settled = false;
+    const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
+    let child = null;
+    const timer = setTimeout(() => { try { if (child) child.kill(); } catch (_) {} finish(''); }, SMTC_COVER_RESOLVER_TIMEOUT_MS);
+    try {
+      child = execFile(exe, smtcCoverResolverArgs(title, artist, album), {
+        windowsHide: true,
+        timeout: SMTC_COVER_RESOLVER_TIMEOUT_MS,
+        maxBuffer: 256 * 1024,
+      }, (err, stdout) => {
+        clearTimeout(timer);
+        let parsed = null;
+        try { parsed = JSON.parse(String(stdout || '').trim().split('\n').pop() || '{}'); } catch (_) { parsed = null; }
+        if (!parsed || parsed.ok !== true || !parsed.path) {
+          console.log('[Main][' + Date.now() + '] cover resolver miss: ' + ((parsed && parsed.reason) || (err && err.message) || 'no-json'));
+          return finish('');
+        }
+        let dataUrl = '';
+        try {
+          const stat = fs.statSync(parsed.path);
+          if (!stat.isFile() || stat.size <= 0 || stat.size > SMTC_COVER_RESOLVER_MAX_BYTES) return finish('');
+          dataUrl = 'data:image/jpeg;base64,' + fs.readFileSync(parsed.path).toString('base64');
+        } catch (_) { return finish(''); }
+        if (identityKey !== smtcThumbIdentityKeyOf(smtcBridgeState)) {
+          console.log('[Main][' + Date.now() + '] cover resolver result ignored (stale identity)');
+          return finish('');
+        }
+        smtcThumbnailCacheSet(identityKey, dataUrl);
+        smtcSendThumbnail(dataUrl);
+        console.log('[Main][' + Date.now() + '] cover resolver HIT: ' + parsed.artworkId + ' via ' + parsed.source +
+          ' (' + parsed.width + 'x' + parsed.height + ')');
+        finish(dataUrl);
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      return finish('');
+    }
+  });
+}
+
 function smtcResolveThumbnail(smtcThumb) {
   // 1) SMTC 封面优先: bridge 已提供有效 thumbnail 时不请求 iTunes
   if (smtcThumb && typeof smtcThumb === 'string' && smtcThumb.length > 30) {
@@ -5123,6 +5197,22 @@ function smtcResolveThumbnail(smtcThumb) {
     return;
   }
   console.log('[Main][' + Date.now() + '] thumbnail cache MISS: ' + identityKey);
+  // [COVER-RESOLVER] iTunes 之前先尝试 Apple Music 本地 artwork (C++ Resolver, 只读一次性 CLI)。
+  //   Apple Music 原生/本地封面 > 第三方 API 封面: 同一 identity 只尝试一次, 未命中才落到 iTunes。
+  //   Resolver 失败不影响任何既有状态 (SMTC thumbnail 与 cache 路径均未改动)。
+  if (!smtcCoverResolverAttempted.has(identityKey)) {
+    if (smtcCoverResolverAttempted.size > 128) smtcCoverResolverAttempted.clear();
+    smtcCoverResolverAttempted.add(identityKey);
+    smtcResolveThumbnailViaLocalCover(identityKey).then((hit) => {
+      if (hit) return;   // 本地封面已发送 (identity 变化时函数内部自行丢弃)
+      if (smtcThumbnailInFlight.has(identityKey)) return;
+      smtcFetchItunesThumbnail(identityKey, smtcBridgeState.title, smtcBridgeState.artist);
+    }).catch(() => {
+      if (smtcThumbnailInFlight.has(identityKey)) return;
+      smtcFetchItunesThumbnail(identityKey, smtcBridgeState.title, smtcBridgeState.artist);
+    });
+    return;
+  }
   // 3) in-flight 去重: 同一 identity 已有请求则复用, 不重复发网络请求
   if (smtcThumbnailInFlight.has(identityKey)) {
     console.log('[Main][' + Date.now() + '] thumbnail request already in flight: ' + identityKey);
@@ -5353,6 +5443,43 @@ ipcMain.handle('mineradio-smtc-stop', async (event) => {
 ipcMain.handle('mineradio-smtc-get-state', async (event) => {
   if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
   return Object.assign({}, smtcBridgeState, { updatedAt: Date.now() });
+});
+
+// [COVER-RESOLVER] 独立最小入口: 按 title/artist/album 从 Apple Music 本地缓存解析封面。
+// 不改变任何 SMTC 状态机/IPC 顺序; 仅用于本地封面兜底与诊断。
+ipcMain.handle('mineradio-cover-resolve', async (event, payload) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  const req = payload && typeof payload === 'object' ? payload : {};
+  const title = String(req.title || '').trim().slice(0, 300);
+  if (!title) return { ok: false, error: 'MISSING_TITLE' };
+  const exe = smtcCoverResolverExePath();
+  if (!exe) return { ok: false, error: 'RESOLVER_NOT_PACKAGED' };
+  const args = smtcCoverResolverArgs(title, String(req.artist || '').trim(), String(req.album || '').trim());
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+    let child = null;
+    const timer = setTimeout(() => { try { if (child) child.kill(); } catch (_) {} done({ ok: false, error: 'TIMEOUT' }); }, SMTC_COVER_RESOLVER_TIMEOUT_MS);
+    try {
+      child = execFile(exe, args, { windowsHide: true, timeout: SMTC_COVER_RESOLVER_TIMEOUT_MS, maxBuffer: 256 * 1024 }, (err, stdout) => {
+        clearTimeout(timer);
+        let parsed = null;
+        try { parsed = JSON.parse(String(stdout || '').trim().split('\n').pop() || '{}'); } catch (_) { parsed = null; }
+        if (!parsed) return done({ ok: false, error: (err && err.message) || 'NO_JSON' });
+        if (parsed.ok !== true) return done({ ok: false, error: parsed.reason || 'MISS', reason: parsed.reason, stage: parsed.stage });
+        let dataUrl = '';
+        try {
+          const stat = fs.statSync(parsed.path);
+          if (!stat.isFile() || stat.size <= 0 || stat.size > SMTC_COVER_RESOLVER_MAX_BYTES) return done({ ok: false, error: 'FILE_UNUSABLE' });
+          dataUrl = 'data:image/jpeg;base64,' + fs.readFileSync(parsed.path).toString('base64');
+        } catch (_) { return done({ ok: false, error: 'FILE_READ_FAILED' }); }
+        done({ ok: true, artworkId: parsed.artworkId, source: parsed.source, width: parsed.width, height: parsed.height, bytes: parsed.bytes, sha256: parsed.sha256, dataUrl: dataUrl });
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      done({ ok: false, error: String((e && e.message) || 'SPAWN_FAILED') });
+    }
+  });
 });
 
 // Phase 4B: SMTC 播放控制 (play/pause/toggle/next/previous)

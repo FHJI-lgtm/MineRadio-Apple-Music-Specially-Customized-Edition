@@ -36,7 +36,12 @@ function smtcChipText() {
     else if (smtcLyricState.error === 'no-lyrics' || (!smtcLyricState.hasLyrics && smtcLyricState.loaded)) parts.push('未找到歌词');
     else if (smtcLyricState.error === 'lyric-fetch-failed') parts.push('歌词获取失败');
     else if (smtcLyricState.error === 'no-title') parts.push('缺少歌曲信息');
-    else if (smtcLyricState.hasLyrics) parts.push('歌词已同步' + (smtcLyricState.source && typeof smtcLyricSourceName === 'function' ? ' · 歌词来源：' + smtcLyricSourceName(smtcLyricState.source) : ''));
+    else if (smtcLyricState.hasLyrics) parts.push('歌词已同步' + (function () {
+      // 复用统一来源展示: 原文/翻译来自不同源时显示 "原文：X · 翻译：Y"
+      var credit = (typeof lyricSourceCreditText === 'function') ? String(lyricSourceCreditText() || '') : '';
+      if (!credit && smtcLyricState.source && typeof smtcLyricSourceName === 'function') credit = '来源：' + smtcLyricSourceName(smtcLyricState.source);
+      return credit ? ' · ' + credit : '';
+    })());
     if (smtcPlayerCfg.enabled === false) parts.push('外部歌词已关闭');
   }
   // Audio（外部音频捕获）状态 — 经 AudioAdapter
@@ -379,6 +384,20 @@ function smtcEnsureHoverContainer() {
   var a = document.createElement('div');
   a.id = 'smtc-hover-artist';
   a.style.cssText = 'opacity:0.6;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  // 歌曲信息下方: 实际歌词来源 (小号灰色 metadata; 无歌词/无来源时隐藏)
+  // 与底部控制栏共用同一份状态 (lyricSourceCreditParts), 只做展示, 不影响任何歌词逻辑。
+  var srcCredit = document.createElement('div');
+  srcCredit.id = 'smtc-hover-lyric-source';
+  srcCredit.style.cssText = 'display:flex;justify-content:space-between;gap:8px;margin-top:3px;font-size:10px;color:rgba(255,255,255,0.42);line-height:1.25;';
+  var srcCreditMain = document.createElement('span');
+  srcCreditMain.className = 'smtc-hover-lyric-source-main';
+  srcCreditMain.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  var srcCreditTrans = document.createElement('span');
+  srcCreditTrans.className = 'smtc-hover-lyric-source-translation';
+  srcCreditTrans.style.cssText = 'flex:0 0 auto;opacity:0.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  srcCredit.appendChild(srcCreditMain);
+  srcCredit.appendChild(srcCreditTrans);
+  srcCredit.hidden = true;
   var sep1 = document.createElement('div');
   sep1.style.cssText = 'height:1px;background:rgba(255,255,255,0.12);margin:8px 0 6px;';
   // 第二层: 播放控制挂载点 (smtcEnsureControls 挂入)
@@ -452,6 +471,7 @@ function smtcEnsureHoverContainer() {
 
   panel.appendChild(t);
   panel.appendChild(a);
+  panel.appendChild(srcCredit);
   panel.appendChild(sep1);
   panel.appendChild(controlsSlot);
   panel.appendChild(srcRow);
@@ -649,8 +669,8 @@ function smtcEnsureHoverSessionDelay() {
   smtcHoverSessionDelayRendered = true;
 }
 
-// hover 面板信息同步 (由 300ms ticker 调用): 歌名 / 歌手
-// 歌词源入口固定显示"歌词源" (不显示当前歌词源: 当前源由搜索结果决定)
+// hover 面板信息同步 (由 300ms ticker 调用): 歌名 / 歌手 / 实际歌词来源
+// 歌词源入口固定显示"歌词源" (入口按钮); 实际来源单独一行显示在歌手下方。
 function smtcRenderHoverPanelInfo() {
   var t = document.getElementById('smtc-hover-title');
   if (!t) return;
@@ -659,7 +679,28 @@ function smtcRenderHoverPanelInfo() {
   if (a) a.textContent = smtcStore.artist || '';
   var src = document.getElementById('smtc-hover-src');
   if (src && src.textContent !== '歌词源') src.textContent = '歌词源';
+  smtcRenderHoverLyricSource();
   smtcRenderSmtcSessionRow();
+}
+
+// 实际歌词来源 (只读 existing 状态: 与底部控制栏共用 lyricSourceCreditParts)
+function smtcRenderHoverLyricSource() {
+  var el = document.getElementById('smtc-hover-lyric-source');
+  if (!el) return;
+  var parts = (typeof lyricSourceCreditParts === 'function') ? lyricSourceCreditParts() : null;
+  if (!parts) {
+    if (!el.hidden) el.hidden = true;
+    return;
+  }
+  var mainEl = el.querySelector('.smtc-hover-lyric-source-main');
+  var transEl = el.querySelector('.smtc-hover-lyric-source-translation');
+  if (mainEl && mainEl.textContent !== parts.main) mainEl.textContent = parts.main;
+  if (transEl) {
+    var transText = parts.translation || '';
+    if (transEl.textContent !== transText) transEl.textContent = transText;
+    if (transEl.hidden !== !transText) transEl.hidden = !transText;
+  }
+  if (el.hidden) el.hidden = false;
 }
 
 // ---- SMTC 会话刷新 (状态显示 + 按钮) ----

@@ -990,6 +990,61 @@ function updateCustomLyricControls() {
     customBtn.classList.toggle('has-custom', hasCustom);
     customBtn.title = hasCustom ? '打开并编辑自定义歌词' : '新增自定义歌词';
   }
+  updateLyricSourceCredit();
+}
+
+// 歌词来源展示: 纯读取现有状态 (smtcLyricState.source / originalLyricsState.translationSource),
+// 显示"实际最终采用的来源"; 无歌词或无来源时隐藏, 不显示"未知来源"。
+// 不参与任何搜索/解析/排序/翻译决策。
+// 位置: 控制栏歌曲 metadata 区 (歌曲名 / 艺人 之下), 归属 #control-artist 的父容器。
+// 结构: <div id="control-lyric-source" class="control-lyric-source">
+//         <span class="lyric-source-main">歌词源：Apple Music</span>
+//         <span class="lyric-source-translation">翻译：QQ音乐</span>   ← 同源时隐藏
+//       </div>
+function ensureLyricSourceCreditEl() {
+  var el = document.getElementById('control-lyric-source');
+  if (el) return el;
+  var anchor = document.getElementById('control-artist');
+  if (!anchor || !anchor.parentElement) return null;
+  el = document.createElement('div');
+  el.id = 'control-lyric-source';
+  el.className = 'control-lyric-source';
+  el.hidden = true;
+  var mainEl = document.createElement('span');
+  mainEl.className = 'lyric-source-main';
+  var transEl = document.createElement('span');
+  transEl.className = 'lyric-source-translation';
+  transEl.hidden = true;
+  el.appendChild(mainEl);
+  el.appendChild(transEl);
+  anchor.parentElement.insertBefore(el, anchor.nextSibling);
+  return el;
+}
+
+function updateLyricSourceCredit() {
+  var parts = (typeof lyricSourceCreditParts === 'function') ? lyricSourceCreditParts() : null;
+  var existing = document.getElementById('control-lyric-source');
+  if (!parts) {
+    if (existing) {
+      if (!existing.hidden) existing.hidden = true;
+      var m = existing.querySelector('.lyric-source-main');
+      var t = existing.querySelector('.lyric-source-translation');
+      if (m) m.textContent = '';
+      if (t) { t.textContent = ''; t.hidden = true; }
+    }
+    return;
+  }
+  var el = ensureLyricSourceCreditEl();
+  if (!el) return;
+  var mainEl = el.querySelector('.lyric-source-main') || el;
+  var transEl = el.querySelector('.lyric-source-translation');
+  if (mainEl.textContent !== parts.main) mainEl.textContent = parts.main;
+  if (transEl) {
+    var transText = parts.translation || '';
+    if (transEl.textContent !== transText) transEl.textContent = transText;
+    if (transEl.hidden !== !transText) transEl.hidden = !transText;
+  }
+  if (el.hidden) el.hidden = false;
 }
 function updateLyricDisplayModeControls() {
   var mode = normalizeLyricDisplayMode(fx && fx.lyricDisplayMode);

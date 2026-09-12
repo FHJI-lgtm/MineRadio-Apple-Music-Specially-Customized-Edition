@@ -15,7 +15,10 @@
 // 歌词模块与 Apple Music 播放 / SMTC / 音频捕获 / 封面 / 播放控制完全解耦。
 // ============================================================
 
-var SMTC_LYRIC_SOURCES_DEFAULT_ORDER = ['qq', 'kugou', 'netease'];
+// 四个歌词源同级: 顺序完全由用户在"歌词源"设置面板中自由调整 (拖动排序 / 启用禁用)。
+// 默认顺序把 Apple Music 官方歌词放在首位 (Apple Music 特化版的原生歌词源, 本地只读、无网络依赖),
+// 但这只是初始值 — 不存在任何"某源固定在最后"的隐藏逻辑, 编排器一律按用户当前顺序遍历。
+var SMTC_LYRIC_SOURCES_DEFAULT_ORDER = ['apple', 'qq', 'kugou', 'netease'];
 var SMTC_LYRIC_SOURCE_SETTINGS_KEY = 'mineradio-lyric-source-priority-v1';
 var SMTC_LYRIC_SOURCE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 持久缓存 7 天
 
@@ -23,6 +26,7 @@ var SMTC_LYRIC_SOURCES = {
   qq: { id: 'qq', name: 'QQ 音乐' },
   kugou: { id: 'kugou', name: '酷狗音乐' },
   netease: { id: 'netease', name: '网易云音乐' },
+  apple: { id: 'apple', name: 'Apple Music' },
 };
 
 // 会话内缓存: normKey -> { source, matchedTitle, matchedArtist, timestamp, response, synthetic }
@@ -39,8 +43,16 @@ function smtcLyricSourceSettings() {
   var known = {};
   Object.keys(SMTC_LYRIC_SOURCES).forEach(function (id) { known[id] = true; });
   var order = settings.order.filter(function (id) { return known[id]; });
-  SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id) {
-    if (order.indexOf(id) < 0) order.push(id);
+  // 旧设置里缺失的源 (例如后加入的 Apple Music) 按"默认顺序中的相对位置"插入,
+  // 而不是一律追加末尾 —— 四个源始终同级, 不存在被悄悄固定在最后的源。
+  SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id, defaultIndex) {
+    if (order.indexOf(id) >= 0) return;
+    var insertAt = order.length;
+    for (var next = defaultIndex + 1; next < SMTC_LYRIC_SOURCES_DEFAULT_ORDER.length; next++) {
+      var pos = order.indexOf(SMTC_LYRIC_SOURCES_DEFAULT_ORDER[next]);
+      if (pos >= 0 && pos < insertAt) insertAt = pos;
+    }
+    order.splice(insertAt, 0, id);
   });
   var enabled = {};
   SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id) {
@@ -59,7 +71,7 @@ function smtcSaveLyricSourceSettings(settings) {
 }
 
 function smtcResetLyricSourceSettings() {
-  var defaults = { order: SMTC_LYRIC_SOURCES_DEFAULT_ORDER.slice(), enabled: { qq: true, kugou: true, netease: true } };
+  var defaults = { order: SMTC_LYRIC_SOURCES_DEFAULT_ORDER.slice(), enabled: { qq: true, kugou: true, netease: true, apple: true } };
   smtcSaveLyricSourceSettings(defaults);
   return defaults;
 }
@@ -76,6 +88,84 @@ function smtcEnabledLyricSourceList() {
 
 function smtcLyricSourceName(id) {
   return (SMTC_LYRIC_SOURCES[id] && SMTC_LYRIC_SOURCES[id].name) || String(id || '');
+}
+
+// ============================================================
+// 歌词来源展示 (纯 UI/状态读取, 不影响任何搜索/解析/排序逻辑)
+//   显示的是"实际最终采用的歌词数据来源", 而不是用户设置的搜索优先级。
+//   内部 source id (含 apple-ttml-local / netease-supplement 等) 一律
+//   映射为用户可读名称, 未知来源返回空字符串 (UI 侧直接隐藏, 不显示"未知来源")。
+// ============================================================
+var LYRIC_SOURCE_DISPLAY_NAMES = {
+  apple: 'Apple Music',
+  'apple-ttml-local': 'Apple Music',
+  'apple-local': 'Apple Music',
+  qq: 'QQ音乐',
+  kugou: '酷狗音乐',
+  netease: '网易云音乐',
+  spotify: 'Spotify',
+  qishui: '汽水音乐',
+  local: '本地歌词',
+  custom: '自定义歌词',
+};
+
+function lyricSourceDisplayName(id) {
+  var key = String(id || '').trim().toLowerCase();
+  if (!key) return '';
+  if (LYRIC_SOURCE_DISPLAY_NAMES[key]) return LYRIC_SOURCE_DISPLAY_NAMES[key];
+  // 去掉内部来源后缀: netease-supplement / apple-ttml-local / xx-translation ...
+  var base = key.replace(/-(supplement|translation|ttml-local|local|native|fallback)$/g, '');
+  if (LYRIC_SOURCE_DISPLAY_NAMES[base]) return LYRIC_SOURCE_DISPLAY_NAMES[base];
+  if (base.indexOf('apple') === 0) return 'Apple Music';
+  return '';
+}
+
+// 原文实际采用的来源: 外部 SMTC 播放由歌词链记录; 内部播放取当前歌曲平台。
+// 纯只读回退链 (不改任何搜索/解析逻辑), 仅用于展示。
+function lyricSourceIdForOriginal() {
+  try {
+    if (typeof smtcLyricState === 'object' && smtcLyricState && smtcLyricState.source) return smtcLyricState.source;
+  } catch (e) { }
+  try {
+    if (typeof lyricSourceMode !== 'undefined' && lyricSourceMode === 'custom') return 'custom';
+  } catch (e) { }
+  try {
+    var song = (typeof currentLyricSong === 'function') ? currentLyricSong() : null;
+    if (!song && typeof playQueue !== 'undefined' && playQueue && currentIdx >= 0) song = playQueue[currentIdx] || null;
+    if (!song && typeof currentLocalSong !== 'undefined' && currentLocalSong) song = currentLocalSong;
+    if (song && typeof songProviderKey === 'function') return songProviderKey(song);
+  } catch (e) { }
+  return '';
+}
+
+// 返回展示片段 (供控制栏左右分列渲染):
+//   { main: '歌词源：Apple Music', translation: '翻译：QQ音乐' | '' } 或 null (整体隐藏)
+//   同源或翻译为歌曲自带 -> translation 为空, 只显示歌词源
+function lyricSourceCreditParts() {
+  try {
+    if (typeof originalLyricsState !== 'object' || !originalLyricsState) return null;
+    var lines = originalLyricsState.lines || [];
+    if (!lines.length) return null;
+    if (typeof lyricSourceMode !== 'undefined' && lyricSourceMode === 'custom') return null;
+    var originalName = lyricSourceDisplayName(lyricSourceIdForOriginal());
+    var hasTranslation = !!(originalLyricsState.translationLines && originalLyricsState.translationLines.length);
+    var translationName = hasTranslation ? lyricSourceDisplayName(originalLyricsState.translationSource) : '';
+    if (translationName === originalName) translationName = '';   // 同源翻译 -> 只显示歌词源
+    if (!originalName && !translationName) return null;
+    return {
+      main: '歌词源：' + (originalName || translationName),
+      translation: (originalName && translationName) ? ('翻译：' + translationName) : '',
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 纯文本版本 (SMTC 状态行等单行场景复用)
+function lyricSourceCreditText() {
+  var parts = lyricSourceCreditParts();
+  if (!parts) return '';
+  return parts.translation ? (parts.main + ' · ' + parts.translation) : parts.main;
 }
 
 // ---------- 标题/艺术家规范化 ----------
@@ -163,6 +253,11 @@ function smtcLyricSyntheticForCandidate(sourceId, candidate, title, artist) {
     base.fileHash = hash;
     base.albumAudioId = String(candidate.albumAudioId || candidate.album_audio_id || candidate.mixSongId || '');
     base.album_audio_id = base.albumAudioId;
+  } else if (sourceId === 'apple') {
+    // Apple Music 歌词来自本地官方 TTML 缓存: 没有可搜索的候选 id, 由标题/歌手匹配
+    base.provider = 'apple'; base.source = 'apple'; base.type = 'apple';
+    base.id = String(candidate.appleId || candidate.id || '');
+    base.appleId = base.id;
   } else {
     base.provider = 'netease'; base.source = 'netease'; base.type = 'netease';
     base.id = String(candidate.id || '');
@@ -225,6 +320,35 @@ var smtcLyricSourceImpls = {
     getLyrics: function (candidate, synthetic) {
       if (!synthetic.id) return Promise.resolve(null);
       return apiJson(lyricEndpointForSong(synthetic), { timeoutMs: 6500 })
+        .then(function (r) { return mergeInlineLyricResponseForSong(synthetic, r || {}); })
+        .catch(function () { return null; });
+    },
+  },
+  // Apple Music: 最后一级兜底。歌词来自 Apple Music Windows 本地官方 TTML 缓存
+  // (/api/apple/lyric 只读解析, 不联网); 因此没有"搜索"概念 — search 直接返回
+  // 由当前 SMTC 元数据构造的候选, 由 getLyrics 判断本地是否真的有该曲目歌词。
+  apple: {
+    search: function (query) {
+      var title = smtcNormalizedSearchTerm(smtcStore.title);
+      if (!title) return Promise.resolve(null);
+      return Promise.resolve({
+        id: '',
+        name: title,
+        title: title,
+        artist: smtcNormalizedSearchTerm(smtcStore.artist),
+        album: smtcNormalizedSearchTerm(smtcStore.album),
+      });
+    },
+    getLyrics: function (candidate, synthetic) {
+      var title = smtcNormalizedSearchTerm(smtcStore.title);
+      if (!title) return Promise.resolve(null);
+      // duration 用于让本地 TTML 缓存做总时长校验 (防止切歌瞬间拿到上一首歌词)
+      var durationSec = Number(smtcDurationSeconds()) || 0;
+      var url = '/api/apple/lyric?title=' + encodeURIComponent(title) +
+        '&artist=' + encodeURIComponent(smtcNormalizedSearchTerm(smtcStore.artist)) +
+        '&album=' + encodeURIComponent(smtcNormalizedSearchTerm(smtcStore.album)) +
+        (durationSec > 0 ? ('&duration=' + encodeURIComponent(String(Math.round(durationSec)))) : '');
+      return apiJson(url, { timeoutMs: 4000 })
         .then(function (r) { return mergeInlineLyricResponseForSong(synthetic, r || {}); })
         .catch(function () { return null; });
     },
@@ -362,44 +486,67 @@ async function smtcResolveLyricViaSources(title, artist, seq, skipCache) {
   return null;
 }
 
-// ---------- 翻译补齐: 主源无翻译时从网易云补 (SMTC 路径, seq 保护) ----------
-// QQ/酷狗对部分歌曲(尤其英文歌)不返回翻译; 网易云 tlyric 通常可用。
-// 复用现有 buildLyricTranslationPayload + attachLyricTranslations,
-// 不阻塞原文显示, 竞态由 seq 校验 (A 的晚到翻译不会覆盖 B)。
+// ---------- 翻译补齐: 按用户当前歌词源排序跨源补翻译 (SMTC 路径, seq 保护) ----------
+// 主源提供原文但缺翻译时, 按用户配置的顺序依次尝试其它已启用源 (跳过主源本身),
+// 只把"翻译"附加到现有歌词行上:
+//   - 原文文本与时间轴完全保留 (attachLyricTranslations 只做行匹配附加,
+//     setOriginalLyricsState 仍使用原 timingSource / hasNativeKaraoke)
+//   - 不阻塞原文显示; 竞态由 seq 校验 (A 的晚到翻译不会覆盖 B)
+//   - 会话内每首歌只补一次
 var smtcTranslationSupplementDone = {};
-async function smtcSupplementNeteaseTranslation(title, artist, seq) {
+async function smtcSupplementTranslationFromSources(title, artist, seq, primarySourceId) {
   try {
     var normKey = smtcLyricNormKey(title, artist);
     if (!normKey || smtcTranslationSupplementDone[normKey]) return false;
     smtcTranslationSupplementDone[normKey] = true; // 会话内每首歌只补一次
     if (typeof buildLyricTranslationPayload !== 'function' || typeof attachLyricTranslations !== 'function') return false;
     if (seq !== smtcLyricState.seq) return false;
-    var queries = smtcLyricQueries(title, artist);
-    var candidate = null;
-    for (var i = 0; i < queries.length; i++) {
-      if (seq !== smtcLyricState.seq) return false;
-      candidate = await smtcLyricSourceImpls.netease.search(queries[i]);
-      if (candidate) break;
-    }
-    if (seq !== smtcLyricState.seq || !candidate || !candidate.id) return false;
-    var synthetic = smtcLyricSyntheticForCandidate('netease', candidate, title, artist);
-    var response = await smtcLyricSourceImpls.netease.getLyrics(candidate, synthetic);
-    if (seq !== smtcLyricState.seq || !response) return false;
-    var payload = buildLyricTranslationPayload(response);
-    if (!payload || !payload.lines || !payload.lines.length) return false;
-    if (seq !== smtcLyricState.seq) return false;
+
     var current = (typeof originalLyricsState === 'object' && originalLyricsState) ? originalLyricsState : null;
     if (!current || !current.lines || !current.lines.length) return false;
-    var merged = attachLyricTranslations(current.lines, payload.lines);
-    if (!merged.some(function (line) { return line && line.translation; })) return false;
-    if (seq !== smtcLyricState.seq) return false;
-    setOriginalLyricsState(merged, current.hasNativeKaraoke, current.timingSource, payload.lines, 'netease-supplement');
-    applyOriginalLyricsState({ reason: 'smtc-translation-supplement' });
-    console.log('[LYRICS] translation supplemented from 网易云音乐 (' + payload.lines.length + ' lines)');
-    return true;
+
+    // 其它已启用源: 严格按用户当前排序 (与主源选择使用同一份顺序)
+    var candidates = smtcEnabledLyricSourceList().filter(function (item) {
+      return item.id !== primarySourceId;
+    });
+    var queries = smtcLyricQueries(title, artist);
+    for (var s = 0; s < candidates.length; s++) {
+      if (seq !== smtcLyricState.seq) return false;
+      var sourceId = candidates[s].id;
+      var impl = smtcLyricSourceImpls[sourceId];
+      if (!impl) continue;
+      var candidate = null;
+      for (var qi = 0; qi < queries.length; qi++) {
+        if (seq !== smtcLyricState.seq) return false;
+        candidate = await impl.search(queries[qi]);
+        if (candidate) break;
+      }
+      if (!candidate) continue;
+      var synthetic = smtcLyricSyntheticForCandidate(sourceId, candidate, title, artist);
+      var response = await impl.getLyrics(candidate, synthetic);
+      if (seq !== smtcLyricState.seq) return false;
+      if (!response) continue;
+      var payload = buildLyricTranslationPayload(response);
+      if (!payload || !payload.lines || !payload.lines.length) continue;
+      // 只附加翻译: 现有原文行与时间轴原样保留
+      var merged = attachLyricTranslations(current.lines, payload.lines);
+      if (!merged.some(function (line) { return line && line.translation; })) continue;
+      if (seq !== smtcLyricState.seq) return false;
+      setOriginalLyricsState(merged, current.hasNativeKaraoke, current.timingSource, payload.lines, sourceId + '-supplement');
+      applyOriginalLyricsState({ reason: 'smtc-translation-supplement' });
+      console.log('[LYRICS] translation supplemented from ' + candidates[s].name + ' (' + payload.lines.length + ' lines)');
+      return true;
+    }
+    console.log('[LYRICS] translation supplement: no other enabled source returned translations');
+    return false;
   } catch (e) {
     return false;
   }
+}
+
+// 兼容: 历史调用点 (固定从网易云补翻译)
+function smtcSupplementNeteaseTranslation(title, artist, seq) {
+  return smtcSupplementTranslationFromSources(title, artist, seq, 'netease');
 }
 
 // ---------- 设置 UI (触发按钮 + 优先级面板: 拖动排序/启用禁用/恢复默认) ----------
@@ -653,10 +800,17 @@ function smtcSetLyricSourceOrder(order) {
   if (!Array.isArray(order)) return false;
   var known = {};
   Object.keys(SMTC_LYRIC_SOURCES).forEach(function (id) { known[id] = true; });
-  // 过滤未知 source; 缺失的默认 source 自动补全 (与 smtcLyricSourceSettings 修复逻辑一致)
+  // 过滤未知 source; 缺失的默认 source 按默认相对位置插入 (与 smtcLyricSourceSettings 一致,
+  // 四源同级, 不会被追加到末尾)。用户上报的顺序本身原样保留。
   var clean = order.filter(function (id) { return known[id] && SMTC_LYRIC_SOURCES[id]; });
-  SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id) {
-    if (clean.indexOf(id) < 0) clean.push(id);
+  SMTC_LYRIC_SOURCES_DEFAULT_ORDER.forEach(function (id, defaultIndex) {
+    if (clean.indexOf(id) >= 0) return;
+    var insertAt = clean.length;
+    for (var next = defaultIndex + 1; next < SMTC_LYRIC_SOURCES_DEFAULT_ORDER.length; next++) {
+      var pos = clean.indexOf(SMTC_LYRIC_SOURCES_DEFAULT_ORDER[next]);
+      if (pos >= 0 && pos < insertAt) insertAt = pos;
+    }
+    clean.splice(insertAt, 0, id);
   });
   var s = smtcLyricSourceSettings();
   s.order = clean;
@@ -719,10 +873,10 @@ async function smtcReSearchLyrics() {
     smtcLyricState.hasLyrics = !!state.usableLyric;
     smtcLyricState.loaded = true;
     smtcLyricState.error = '';
-    // 主源无翻译且非网易云 -> 异步补全 (seq 保护)
-    if (state.usableLyric && !state.translationLines.length && result.source !== 'netease') {
-      if (typeof smtcSupplementNeteaseTranslation === 'function') {
-        smtcSupplementNeteaseTranslation(smtcStore.title, smtcStore.artist, seq);
+    // 主源无翻译 -> 按用户排序从其它已启用源异步补全 (seq 保护, 只加翻译不动原文/时间轴)
+    if (state.usableLyric && !state.translationLines.length) {
+      if (typeof smtcSupplementTranslationFromSources === 'function') {
+        smtcSupplementTranslationFromSources(smtcStore.title, smtcStore.artist, seq, result.source);
       }
     }
     if (typeof smtcRenderChip === 'function') smtcRenderChip();

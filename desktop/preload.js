@@ -83,6 +83,8 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   getSmtcState: () => ipcRenderer.invoke('mineradio-smtc-get-state'),
   smtcControl: (command) => ipcRenderer.invoke('mineradio-smtc-control', String(command || '').slice(0, 32)),
   refreshSmtcSession: () => ipcRenderer.invoke('mineradio-smtc-refresh'),
+  // [COVER-RESOLVER] Apple Music 本地封面解析 (只读一次性 CLI, 仅作兜底/诊断)
+  resolveLocalCover: (payload) => ipcRenderer.invoke('mineradio-cover-resolve', payload || {}),
   logSmtc: (message) => ipcRenderer.send('mineradio-smtc-log', String(message || '').slice(0, 500)),
   startSmtcAudio: (aumid) => ipcRenderer.invoke('mineradio-smtc-audio-start', String(aumid || '').slice(0, 300)),
   stopSmtcAudio: () => ipcRenderer.invoke('mineradio-smtc-audio-stop'),

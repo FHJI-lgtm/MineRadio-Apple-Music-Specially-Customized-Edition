@@ -1,6 +1,12 @@
 // ============================================================
 // lyrics-source-preload.js — 歌词源窗口 preload (独立窗口专用)
 // 最小 IPC: 只传"搜索顺序", 不触碰歌词内容/SMTC/音频/封面。
+//
+// 注意: 本窗口不涉及任何 Apple Music 凭证。
+//   Apple Music 歌词源读取的是本机 Apple Music 应用自己维护的官方歌词缓存
+//   (…\Packages\AppleInc.AppleMusicWin_*\AC\INetCache\*\ttmlLyrics*.json),
+//   不需要 Developer Token / Music User Token / Cookie / 账号密码,
+//   因此这里不提供、也不应提供任何凭证导入入口。
 // ============================================================
 const { contextBridge, ipcRenderer } = require('electron');
 

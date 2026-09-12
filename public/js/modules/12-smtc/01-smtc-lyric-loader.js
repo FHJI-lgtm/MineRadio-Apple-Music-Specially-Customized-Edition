@@ -165,10 +165,11 @@ async function smtcLoadLyrics() {
     smtcLyricState.loaded = true;
     smtcLyricState.error = '';
     smtcLogToFile('lyric source=' + (typeof smtcLyricSourceName === 'function' ? smtcLyricSourceName(result.source) : result.source));
-    // 主源无翻译且非网易云 -> 异步从网易云补翻译 (seq 保护, 不阻塞原文显示)
-    if (state.usableLyric && !state.translationLines.length && result.source !== 'netease') {
-      if (typeof smtcSupplementNeteaseTranslation === 'function') {
-        smtcSupplementNeteaseTranslation(smtcStore.title, smtcStore.artist, seq);
+    // 主源无翻译 -> 按用户当前歌词源排序, 从其它已启用源异步补翻译
+    // (seq 保护, 不阻塞原文显示; 只附加翻译, 原文与时间轴保持不变)
+    if (state.usableLyric && !state.translationLines.length) {
+      if (typeof smtcSupplementTranslationFromSources === 'function') {
+        smtcSupplementTranslationFromSources(smtcStore.title, smtcStore.artist, seq, result.source);
       }
     }
   } catch (err) {

@@ -5511,7 +5511,14 @@ const server = http.createServer(async (req, res) => {
   if (pn === '/api/apple/lyric') {
     try {
       const id = url.searchParams.get('id') || '';
-      sendJSON(res, await handleAppleLyric(id));
+      // Apple Music 歌词来自本地官方 TTML 缓存: 支持 id 精确匹配, 也支持
+      // title/artist (+album) 匹配 (外部 SMTC 播放只有元数据, 没有 catalog id)。
+      sendJSON(res, await handleAppleLyric(id, {
+        title: url.searchParams.get('title') || '',
+        artist: url.searchParams.get('artist') || '',
+        album: url.searchParams.get('album') || '',
+        durationSec: Number(url.searchParams.get('duration') || 0) || 0,
+      }));
     } catch (err) {
       console.error('[AppleMusicLyric]', err);
       sendJSON(res, { provider: 'apple', error: err.message, lyric: '', tlyric: '', yrc: '', ytlrc: '' }, 500);

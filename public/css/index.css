@@ -5508,6 +5508,30 @@ body.home-controls-locked #bottom-bar {
   cursor: pointer
 }
 
+/* 歌词来源: 歌曲名/艺人下方的一行小号灰色 metadata (实际采用的来源; 无来源时 JS 隐藏) */
+.control-lyric-source {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .38);
+  line-height: 1.25;
+  max-width: 100%
+}
+
+.control-lyric-source>span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.control-lyric-source>.lyric-source-translation {
+  flex: 0 0 auto;
+  opacity: .82
+}
+
 .control-title:hover,
 .control-artist:hover {
   color: #fff;
