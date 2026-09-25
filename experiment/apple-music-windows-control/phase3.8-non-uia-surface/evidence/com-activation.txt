@@ -1,0 +1,18 @@
+## com:Class entries in AppxManifest.xml
+  none matched; raw comServer block:
+<com:Extension Category="windows.comServer"> <com:ComServer> <com:ExeServer Executable="AMPLibraryAgent.exe" DisplayName="AMPLibraryAgent"> <com:Class Id="68E7097C-F969-4006-AAC3-95115F0ED1C4" DisplayName="AMP.Core.IAMPMusicLibrary" /> </com:ExeServer> </com:ComServer> </com:Extension>
+  total class ids: 0
+
+## activation attempts (no business method is called)
+
+## AMPLibraryAgent.Proxies.dll static metadata
+  size=42 KB
+  IAMPLibrary IID present: False ; IAMPMusicLibrary IID present: False
+  GUID strings: 0 -> 
+  stub/proxy symbol strings: CStdStub IUnknown_AddRef_Proxy IUnknown_QueryInterface_Proxy IUnknown_Release_Proxy NdrCStdStub
+
+## IPC passive correlation (no packets sent)
+  udp 127.0.0.1:56216 pid=14252
+  udp 127.0.0.1:56215 pid=14252
+  AMPLibraryAgent.exe AMPLD* strings (16): AMPLDAppConnection AMPLDArtwork AMPLDCommandData AMPLDCommandProcessor AMPLDDatabaseManager AMPLDeletedObjectsTracker AMPLDLongOperation AMPLDMediaAppsManager AMPLDMediaSharingClientConnectioNotifyConfigC AMPLDMediaSharingNotifyClientCountChanged AMPLDMediaSharingPrefs AMPLDMusicAppConnection AMPLDService AMPLDServiceWin AMPLDSharingAdapter AMPLDTVAppConnection
+  AMP.Services.dll AMPLD* strings (0): 
