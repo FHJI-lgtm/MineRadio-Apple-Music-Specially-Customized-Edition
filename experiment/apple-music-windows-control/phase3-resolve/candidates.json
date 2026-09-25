@@ -1,0 +1,106 @@
+{
+  "note": "phase3-resolve cross-validation set. Each case is an input (title/artist/album) plus the expected outcome. expectId is filled only where the Apple Music song id was independently confirmed (verified working URL). expectArtist/expectAlbum are used when the id is unknown: the resolver must land on that artist/album. taggedAs marks cover-bait / same-title / alias cases.",
+  "cases": [
+    {
+      "id": "A-realname",
+      "title": "How Do I Make You Love Me?",
+      "artist": "Abel Tesfaye",
+      "album": "Dawn FM",
+      "expectId": "1603171530",
+      "expectArtist": "The Weeknd",
+      "taggedAs": "artist-alias (SMTC shows the real name, catalog uses the stage name)",
+      "note": "verified working URL: music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530"
+    },
+    {
+      "id": "B-cn",
+      "title": "晴天",
+      "artist": "周杰伦",
+      "album": "叶惠美",
+      "expectId": "535824738",
+      "expectArtist": "周杰倫",
+      "taggedAs": "chinese / simplified-vs-traditional",
+      "note": "verified working URL supplied by the user: music.apple.com/cn/song/晴天/535824738"
+    },
+    {
+      "id": "C-en",
+      "title": "Shape of You",
+      "artist": "Ed Sheeran",
+      "album": "÷ (Deluxe)",
+      "expectId": "1193701392",
+      "expectArtist": "Ed Sheeran",
+      "taggedAs": "english / mainstream",
+      "note": "verified working URL: music.apple.com/us/album/shape-of-you/1193701079?i=1193701392"
+    },
+    {
+      "id": "cover-bait-en",
+      "title": "Shape of You",
+      "artist": "Fame on Fire",
+      "album": "Shape of You - Single",
+      "expectId": "1848188008",
+      "expectArtist": "Fame on Fire",
+      "taggedAs": "cover with the exact same title (this is what fooled the naive resolver)",
+      "note": "must resolve to the cover when the cover artist is requested"
+    },
+    {
+      "id": "same-title-en-1",
+      "title": "Hello",
+      "artist": "Adele",
+      "album": "25",
+      "expectArtist": "Adele",
+      "taggedAs": "same title, different artists"
+    },
+    {
+      "id": "same-title-en-2",
+      "title": "Hello",
+      "artist": "Lionel Richie",
+      "expectArtist": "Lionel Richie",
+      "taggedAs": "same title, different artists"
+    },
+    {
+      "id": "en-2",
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
+      "album": "After Hours (Deluxe)",
+      "expectId": "1505683988",
+      "expectArtist": "The Weeknd",
+      "taggedAs": "english / mainstream"
+    },
+    {
+      "id": "en-3",
+      "title": "Perfect",
+      "artist": "Ed Sheeran",
+      "album": "÷ (Deluxe)",
+      "expectArtist": "Ed Sheeran",
+      "taggedAs": "english / mainstream"
+    },
+    {
+      "id": "en-4",
+      "title": "bad guy",
+      "artist": "Billie Eilish",
+      "album": "When We All Fall Asleep, Where Do We Go?",
+      "expectArtist": "Billie Eilish",
+      "taggedAs": "english / lowercase title"
+    },
+    {
+      "id": "cn-2",
+      "title": "十年",
+      "artist": "陈奕迅",
+      "expectArtist": "陳奕迅",
+      "taggedAs": "chinese / simplified-vs-traditional"
+    },
+    {
+      "id": "cn-3",
+      "title": "后来",
+      "artist": "刘若英",
+      "expectArtist": "劉若英",
+      "taggedAs": "chinese / simplified-vs-traditional"
+    },
+    {
+      "id": "cn-4",
+      "title": "富士山下",
+      "artist": "陈奕迅",
+      "expectArtist": "陳奕迅",
+      "taggedAs": "chinese"
+    }
+  ]
+}

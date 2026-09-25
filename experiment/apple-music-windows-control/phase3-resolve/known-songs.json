@@ -1,0 +1,29 @@
+{
+  "note": "Apple Music song ids that were independently confirmed by a WORKING play URL (the frozen 60/60 baseline songs). Kept as UTF-8 JSON so the PowerShell scripts can stay ASCII-only.",
+  "songs": [
+    {
+      "id": "A-realname",
+      "title": "How Do I Make You Love Me?",
+      "artist": "Abel Tesfaye",
+      "wantArtist": "The Weeknd",
+      "amId": "1603171530",
+      "verifiedUrl": "https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530"
+    },
+    {
+      "id": "B-cn",
+      "title": "晴天",
+      "artist": "周杰伦",
+      "wantArtist": "周杰倫",
+      "amId": "535824738",
+      "verifiedUrl": "https://music.apple.com/cn/song/%E6%99%B4%E5%A4%A9/535824738"
+    },
+    {
+      "id": "C-en",
+      "title": "Shape of You",
+      "artist": "Ed Sheeran",
+      "wantArtist": "Ed Sheeran",
+      "amId": "1193701392",
+      "verifiedUrl": "https://music.apple.com/us/album/shape-of-you/1193701079?i=1193701392"
+    }
+  ]
+}
