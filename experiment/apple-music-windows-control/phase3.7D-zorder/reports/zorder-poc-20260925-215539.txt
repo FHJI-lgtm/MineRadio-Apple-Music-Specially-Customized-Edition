@@ -1,0 +1,87 @@
+# Phase 3.7D Z-Order PoC  20260925-215539
+target=[How Do I Make You Love Me?] artist=[Abel Tesfaye] url=https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+
+## BEFORE
+  at=21:55:39.197
+  appleMusicProcessRunning=True
+  appleMusicWindowHandle=5571982
+  appleMusicWindowTitle=Apple Music
+  appleMusicVisible=True
+  appleMusicIconic=False
+  appleMusicWin32Found=True
+  appleMusicWin32FindError=
+  appleMusicWindowClass=WinUIDesktopWin32WindowClass
+  appleMusicIsOnCurrentDesktop=True
+  appleMusicDesktopId=7a8a789c-3926-4cb9-807f-dc11278c2841
+  foregroundWindow=1050912
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  foregroundProcess=msedge
+  appleMusicIsForeground=False
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  mouseX=1019
+  mouseY=947
+  zOrderObservation=index=42 topLevelCount=42 isTop=False topTitle=[MSCTFIME UI]
+  zOrderIndex=42
+  zOrderIsTop=False
+  uiaWindowFound=True
+  smtcTitle=Talk (feat. Disclosure)
+  smtcArtist=Khalid — Free Spirit
+  smtcStatus=Playing
+
+## STEP 1 preconditions
+  ok: on current desktop, not foreground, not minimized, SMTC present
+
+## STEP 2 Z-order operation
+  method=SetWindowPos
+  hwnd=5571982
+  hwndInsertAfter=HWND_BOTTOM (1)
+  flags=SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_SHOWWINDOW
+  flagsValue=0x53
+  ok=True
+  win32Error=203
+  error=
+
+## STEP 3 immediately after SetWindowPos
+  foregroundProcess=msedge
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  appleMusicIsForeground=False
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  appleMusicDesktopId=7a8a789c-3926-4cb9-807f-dc11278c2841
+  zOrderObservation=index=418 topLevelCount=418 isTop=False topTitle=[MSCTFIME UI]
+  smtcTitle=Talk (feat. Disclosure)
+  smtcStatus=Playing
+
+## STEP 5 existing frozen A-uia entry (one call, unchanged)
+  stage=OK ok=True detail=[]
+  navMethod=AppleMusic.exe /url navigated=True contentMatchMs=3072
+  matchedRow=音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟 clickRecomputed=False
+
+## AFTER
+  at=21:55:46.941
+  appleMusicProcessRunning=True
+  appleMusicWindowHandle=5571982
+  appleMusicWindowTitle=Apple Music
+  appleMusicVisible=True
+  appleMusicIconic=False
+  appleMusicWin32Found=True
+  appleMusicWin32FindError=
+  appleMusicWindowClass=WinUIDesktopWin32WindowClass
+  appleMusicIsOnCurrentDesktop=True
+  appleMusicDesktopId=7a8a789c-3926-4cb9-807f-dc11278c2841
+  foregroundWindow=5571982
+  foregroundTitle=Apple Music
+  foregroundProcess=AppleMusic
+  appleMusicIsForeground=True
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  mouseX=819
+  mouseY=928
+  zOrderObservation=index=31 topLevelCount=31 isTop=False topTitle=[MSCTFIME UI]
+  zOrderIndex=31
+  zOrderIsTop=False
+  uiaWindowFound=True
+  smtcTitle=How Do I Make You Love Me?
+  smtcArtist=Abel Tesfaye — Dawn FM
+  smtcStatus=Playing
+
+## RESULT: FAIL_ZORDER_REACTIVATED
+  reason: Apple Music became foreground during the attempt (Z-order did not suppress the activation requirement)

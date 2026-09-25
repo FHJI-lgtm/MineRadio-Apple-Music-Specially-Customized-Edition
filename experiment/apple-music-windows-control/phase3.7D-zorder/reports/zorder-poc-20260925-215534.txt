@@ -1,0 +1,31 @@
+# Phase 3.7D Z-Order PoC  20260925-215534
+target=[How Do I Make You Love Me?] artist=[Abel Tesfaye] url=https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+
+## BEFORE
+  at=21:55:34.117
+  appleMusicProcessRunning=True
+  appleMusicWindowHandle=5571982
+  appleMusicWindowTitle=Apple Music
+  appleMusicVisible=True
+  appleMusicIconic=False
+  appleMusicWin32Found=True
+  appleMusicWin32FindError=
+  appleMusicWindowClass=WinUIDesktopWin32WindowClass
+  appleMusicIsOnCurrentDesktop=True
+  appleMusicDesktopId=7a8a789c-3926-4cb9-807f-dc11278c2841
+  foregroundWindow=1050912
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  foregroundProcess=msedge
+  appleMusicIsForeground=False
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  mouseX=1049
+  mouseY=975
+  zOrderObservation=index=42 topLevelCount=42 isTop=False topTitle=[MSCTFIME UI]
+  zOrderIndex=42
+  zOrderIsTop=False
+  uiaWindowFound=True
+  smtcTitle=Talk (feat. Disclosure)
+  smtcArtist=Khalid — Free Spirit
+  smtcStatus=Playing
+
+## RESULT: OBSERVE_ONLY  (no state change was made; observation layer only)
