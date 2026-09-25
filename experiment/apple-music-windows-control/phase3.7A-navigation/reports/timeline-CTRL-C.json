@@ -1,0 +1,294 @@
+{
+    "id":  "CTRL-C",
+    "kind":  "control",
+    "url":  "https://music.apple.com/us/album/shape-of-you/1193701079?i=1193701392",
+    "method":  "url",
+    "preState":  "other-song",
+    "title":  "Shape of You",
+    "artist":  "Ed Sheeran",
+    "songId":  "1193701392",
+    "storefront":  "us",
+    "expectation":  "navigation should succeed",
+    "verdict":  "NAVIGATION_OK_VISIBLE",
+    "targetTitleVisible":  true,
+    "targetArtistVisible":  true,
+    "smtcMatchesTarget":  false,
+    "pageChanged":  true,
+    "signatureBefore":  "4423881C1C36AAFF",
+    "signatureAfter":  "EC94C5D1D6D376CF",
+    "listItemsBefore":  59,
+    "listItemsAfter":  31,
+    "windowTitleBefore":  "Apple Music",
+    "windowTitleAfter":  "Apple Music",
+    "smtcBefore":  "Blinding Lights / Paused",
+    "smtcAfter":  "Blinding Lights / Paused",
+    "invocationStarted":  true,
+    "invocationError":  "",
+    "invocationExitCode":  0,
+    "invocationCommand":  "AppleMusic.exe /url \"\u003curl\u003e\"",
+    "invocationElapsedMs":  437,
+    "firstChangeMs":  0,
+    "timeline":  [
+                     {
+                         "pointMs":  0,
+                         "actualMs":  57,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  38,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  79,
+                         "listItemCount":  15,
+                         "distinctTexts":  42,
+                         "signature":  "C48AA9D802B4A8E5",
+                         "textHits":  {
+                                          "Shape of You":  false,
+                                          "Ed Sheeran":  false
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "0/15",
+                                          "VirtualizedItemPattern":  "0/15",
+                                          "ScrollItemPattern":  "15/15",
+                                          "SelectionItemPattern":  "15/15"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  250,
+                         "actualMs":  320,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  37,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  79,
+                         "listItemCount":  15,
+                         "distinctTexts":  42,
+                         "signature":  "C48AA9D802B4A8E5",
+                         "textHits":  {
+                                          "Shape of You":  false,
+                                          "Ed Sheeran":  false
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "0/15",
+                                          "VirtualizedItemPattern":  "0/15",
+                                          "ScrollItemPattern":  "15/15",
+                                          "SelectionItemPattern":  "15/15"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  500,
+                         "actualMs":  563,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  36,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  79,
+                         "listItemCount":  15,
+                         "distinctTexts":  42,
+                         "signature":  "C48AA9D802B4A8E5",
+                         "textHits":  {
+                                          "Shape of You":  false,
+                                          "Ed Sheeran":  false
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "0/15",
+                                          "VirtualizedItemPattern":  "0/15",
+                                          "ScrollItemPattern":  "15/15",
+                                          "SelectionItemPattern":  "15/15"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  1000,
+                         "actualMs":  1136,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  106,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  2000,
+                         "actualMs":  2101,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  70,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  4000,
+                         "actualMs":  4095,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  72,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  6000,
+                         "actualMs":  6111,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  75,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  8000,
+                         "actualMs":  8096,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  71,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  12000,
+                         "actualMs":  12104,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  71,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  181,
+                         "listItemCount":  31,
+                         "distinctTexts":  115,
+                         "signature":  "EC94C5D1D6D376CF",
+                         "textHits":  {
+                                          "Ed Sheeran":  true,
+                                          "Shape of You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     }
+                 ]
+}

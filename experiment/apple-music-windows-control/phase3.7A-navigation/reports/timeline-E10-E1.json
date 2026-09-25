@@ -1,0 +1,294 @@
+{
+    "id":  "E10-E1",
+    "kind":  "e10/invocation/shell",
+    "url":  "https://music.apple.com/cn/song/someone-like-you/403037927",
+    "method":  "shell",
+    "preState":  "other-song",
+    "title":  "Someone Like You",
+    "artist":  "Adele",
+    "songId":  "403037927",
+    "storefront":  "cn",
+    "expectation":  "ShellExecute of the URL instead of AppleMusic.exe /url",
+    "verdict":  "NAVIGATION_OK_VISIBLE",
+    "targetTitleVisible":  true,
+    "targetArtistVisible":  true,
+    "smtcMatchesTarget":  false,
+    "pageChanged":  true,
+    "signatureBefore":  "EC94C5D1D6D376CF",
+    "signatureAfter":  "162F19096C670B04",
+    "listItemsBefore":  31,
+    "listItemsAfter":  44,
+    "windowTitleBefore":  "Apple Music",
+    "windowTitleAfter":  "Apple Music",
+    "smtcBefore":  "Blinding Lights / Paused",
+    "smtcAfter":  "Blinding Lights / Paused",
+    "invocationStarted":  true,
+    "invocationError":  "",
+    "invocationExitCode":  0,
+    "invocationCommand":  "Start-Process \"\u003curl\u003e\"   (ShellExecute)",
+    "invocationElapsedMs":  490,
+    "firstChangeMs":  0,
+    "timeline":  [
+                     {
+                         "pointMs":  0,
+                         "actualMs":  160,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  140,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  250,
+                         "actualMs":  379,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  97,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  500,
+                         "actualMs":  623,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  92,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  1000,
+                         "actualMs":  1118,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  87,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  2000,
+                         "actualMs":  2125,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  92,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  4000,
+                         "actualMs":  4107,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  88,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  6000,
+                         "actualMs":  6119,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  86,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  8000,
+                         "actualMs":  8119,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  91,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  12000,
+                         "actualMs":  12115,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  92,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "Adele":  true,
+                                          "Someone Like You":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     }
+                 ]
+}

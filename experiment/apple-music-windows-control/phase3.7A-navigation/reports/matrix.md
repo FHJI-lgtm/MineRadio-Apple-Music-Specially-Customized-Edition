@@ -1,0 +1,14 @@
+| test | kind | url | method | preState | verdict | pageChanged | listItems | window title before -> after | smtc after | firstChangeMs |
+|---|---|---|---|---|---|---|---|---|---|---|
+| CTRL-A | control | https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 44 -> 31 | Apple Music -> Apple Music | Blinding Lights / Paused | 500 |
+| CTRL-B | control | https://music.apple.com/cn/song/%E6%99%B4%E5%A4%A9/535824738 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 59 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| CTRL-C | control | https://music.apple.com/us/album/shape-of-you/1193701079?i=1193701392 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 59 -> 31 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D1 | e10/cn-canonical | https://music.apple.com/cn/song/someone-like-you/403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D2 | e10/cn-fake-slug | https://music.apple.com/cn/song/test/403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D3 | e10/us-canonical | https://music.apple.com/us/song/someone-like-you/403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D4 | e10/tw-canonical | https://music.apple.com/tw/song/someone-like-you/403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D5 | e10/cn-no-slug | https://music.apple.com/cn/song/403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-D6 | e10/cn-album-i-form | https://music.apple.com/cn/album/someone-like-you/403037872?i=403037927 | url | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-E1 | e10/invocation/shell | https://music.apple.com/cn/song/someone-like-you/403037927 | shell | other-song | **NAVIGATION_OK_VISIBLE** | True | 31 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-F1 | e10/state/nearby | https://music.apple.com/cn/song/someone-like-you/403037927 | url | nearby | **NAVIGATION_OK_VISIBLE** | True | 71 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |
+| E10-F2 | e10/state/current | https://music.apple.com/cn/song/someone-like-you/403037927 | url | current | **NAVIGATION_OK_VISIBLE** | False | 44 -> 44 | Apple Music -> Apple Music | Blinding Lights / Paused | 0 |

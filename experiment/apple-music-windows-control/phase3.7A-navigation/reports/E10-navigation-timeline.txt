@@ -1,0 +1,15 @@
+E10 navigation timeline - https://music.apple.com/cn/song/someone-like-you/403037927
+invocation: AppleMusic.exe /url "<url>"  started=True  exitCode=0  error=[]
+pre-state: window=[Apple Music] signature=EC94C5D1D6D376CF listItems=31 smtc=[Blinding Lights / Paused]
+verdict: NAVIGATION_OK_VISIBLE  firstChangeMs=0
+
+pointMs | actualMs | windowTitle | foreground | listItems | sig | smtcTitle / status | targetVisible | nodeCount
+0 | 58 | Apple Music | True | 15 | C48AA9D802B4A8E5 | Blinding Lights / Paused |  | 79
+250 | 318 | Apple Music | True | 15 | C48AA9D802B4A8E5 | Blinding Lights / Paused |  | 79
+500 | 589 | Apple Music | True | 15 | C48AA9D802B4A8E5 | Blinding Lights / Paused |  | 79
+1000 | 1136 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244
+2000 | 2168 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244
+4000 | 4130 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244
+6000 | 6112 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244
+8000 | 8159 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244
+12000 | 12120 | Apple Music | True | 44 | 162F19096C670B04 | Blinding Lights / Paused | Adele Someone Like You  | 244

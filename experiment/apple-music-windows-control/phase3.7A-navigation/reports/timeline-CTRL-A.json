@@ -1,0 +1,294 @@
+{
+    "id":  "CTRL-A",
+    "kind":  "control",
+    "url":  "https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530",
+    "method":  "url",
+    "preState":  "other-song",
+    "title":  "How Do I Make You Love Me?",
+    "artist":  "Abel Tesfaye",
+    "songId":  "1603171530",
+    "storefront":  "cn",
+    "expectation":  "navigation should succeed",
+    "verdict":  "NAVIGATION_OK_VISIBLE",
+    "targetTitleVisible":  true,
+    "targetArtistVisible":  true,
+    "smtcMatchesTarget":  false,
+    "pageChanged":  true,
+    "signatureBefore":  "162F19096C670B04",
+    "signatureAfter":  "48440FA355087D65",
+    "listItemsBefore":  44,
+    "listItemsAfter":  31,
+    "windowTitleBefore":  "Apple Music",
+    "windowTitleAfter":  "Apple Music",
+    "smtcBefore":  "Blinding Lights / Paused",
+    "smtcAfter":  "Blinding Lights / Paused",
+    "invocationStarted":  true,
+    "invocationError":  "",
+    "invocationExitCode":  0,
+    "invocationCommand":  "AppleMusic.exe /url \"\u003curl\u003e\"",
+    "invocationElapsedMs":  480,
+    "firstChangeMs":  500,
+    "timeline":  [
+                     {
+                         "pointMs":  0,
+                         "actualMs":  142,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  127,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  false,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  250,
+                         "actualMs":  379,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  107,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  244,
+                         "listItemCount":  44,
+                         "distinctTexts":  143,
+                         "signature":  "162F19096C670B04",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  false,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  500,
+                         "actualMs":  568,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  46,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  79,
+                         "listItemCount":  15,
+                         "distinctTexts":  42,
+                         "signature":  "C48AA9D802B4A8E5",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  false,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "0/15",
+                                          "VirtualizedItemPattern":  "0/15",
+                                          "ScrollItemPattern":  "15/15",
+                                          "SelectionItemPattern":  "15/15"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  1000,
+                         "actualMs":  1096,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  66,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  79,
+                         "listItemCount":  15,
+                         "distinctTexts":  42,
+                         "signature":  "C48AA9D802B4A8E5",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  false,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "0/15",
+                                          "VirtualizedItemPattern":  "0/15",
+                                          "ScrollItemPattern":  "15/15",
+                                          "SelectionItemPattern":  "15/15"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  2000,
+                         "actualMs":  2189,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  119,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  191,
+                         "listItemCount":  31,
+                         "distinctTexts":  113,
+                         "signature":  "48440FA355087D65",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  true,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  4000,
+                         "actualMs":  4147,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  118,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  191,
+                         "listItemCount":  31,
+                         "distinctTexts":  113,
+                         "signature":  "48440FA355087D65",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  true,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  6000,
+                         "actualMs":  6087,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  69,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  191,
+                         "listItemCount":  31,
+                         "distinctTexts":  113,
+                         "signature":  "48440FA355087D65",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  true,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  8000,
+                         "actualMs":  8109,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  71,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  191,
+                         "listItemCount":  31,
+                         "distinctTexts":  113,
+                         "signature":  "48440FA355087D65",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  true,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     },
+                     {
+                         "pointMs":  12000,
+                         "actualMs":  12105,
+                         "windowTitle":  "Apple Music",
+                         "isForeground":  true,
+                         "iconic":  false,
+                         "visible":  true,
+                         "uiaElapsedMs":  74,
+                         "uiaOk":  true,
+                         "uiaError":  "",
+                         "nodeCount":  191,
+                         "listItemCount":  31,
+                         "distinctTexts":  113,
+                         "signature":  "48440FA355087D65",
+                         "textHits":  {
+                                          "How Do I Make You Love Me?":  true,
+                                          "Abel Tesfaye":  true
+                                      },
+                         "patterns":  {
+                                          "InvokePattern":  "5/20",
+                                          "VirtualizedItemPattern":  "5/20",
+                                          "ScrollItemPattern":  "20/20",
+                                          "SelectionItemPattern":  "20/20"
+                                      },
+                         "smtcTitle":  "Blinding Lights",
+                         "smtcArtist":  "Abel Tesfaye — After Hours (Deluxe)",
+                         "smtcStatus":  "Paused",
+                         "smtcError":  ""
+                     }
+                 ]
+}
