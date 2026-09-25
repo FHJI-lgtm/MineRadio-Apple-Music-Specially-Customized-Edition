@@ -120,22 +120,54 @@ function Invoke-AmPlaySong {
           $nav = Invoke-AmNavigateUrl $Url
           $result.navMethod = $nav.method
           $navigated = $false
+          $contentTitle = $false; $contentArtist = $false; $contentMatchMs = -1
           $pick = $null; $items = @()
+          $normTitle = Normalize-AmText $Title
           do {
             Start-Sleep -Milliseconds 300
             $items = Get-AmListItems $root
             $sigNow = Get-AmTreeSignature $root
             if ($sigNow -ne $sigBefore) { $navigated = $true }
+            # Phase 3.7A fix: the structural signature alone must never decide that the
+            # navigation failed.  Two different Apple Music pages can share a shape, so a
+            # successful navigation used to be reported as "page unchanged".  The page is
+            # now also considered navigated when the TARGET CONTENT is visible, with an
+            # identity constraint: normalized title AND artist - never the title alone.
+            # This only feeds the success criterion; the loop still ends on a realizable
+            # row with geometry, so a half-rendered page can never cut the wait short and
+            # no fixed sleep is added (the polling and the 12s cap are unchanged).
+            $contentTitle = $false; $contentArtist = $false
+            try {
+              $allNodes = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+              foreach ($nd in $allNodes) {
+                $nm = ''
+                try { $nm = '' + $nd.Current.Name } catch { $nm = '' }
+                if ($nm -eq '') { continue }
+                if (-not $contentTitle) {
+                  $nn = Normalize-AmText $nm
+                  if ($nn -and $normTitle -and (($nn -eq $normTitle) -or $nn.StartsWith($normTitle))) { $contentTitle = $true }
+                }
+                if ((-not $contentArtist) -and $Artist -and (Test-AmArtistInName $nm $Artist)) { $contentArtist = $true }
+                if ($contentTitle -and ($contentArtist -or (-not $Artist))) { break }
+              }
+            } catch { }
+            if ($contentTitle -and ($contentArtist -or (-not $Artist))) {
+              $navigated = $true
+              if ($contentMatchMs -lt 0) { $contentMatchMs = [int]$tPage.ElapsedMilliseconds }
+            }
             $pick = Select-AmCandidateWithGeometry $items $Title $Artist
             $a.listMs = [int]$tPage.ElapsedMilliseconds
             if ($pick.ok -and $pick.hadGeometry) { break }
           } while ($tPage.ElapsedMilliseconds -lt $PageWaitMs)
           $a.settleMs = [int]$tPage.ElapsedMilliseconds
           $result.navigated = $navigated
+          $result.contentTitleVisible = $contentTitle
+          $result.contentArtistVisible = $contentArtist
+          $result.contentMatchMs = $contentMatchMs
           if (-not ($pick -and $pick.ok -and $pick.hadGeometry)) {
             if (-not $navigated) {
               $stage = 'URL_NAVIGATION_FAILED'
-              $detail = ('page unchanged within ' + $PageWaitMs + 'ms (nav=' + $nav.method + ') listItems=' + $items.Count)
+              $detail = ('page unchanged within ' + $PageWaitMs + 'ms (nav=' + $nav.method + ') listItems=' + $items.Count + ' contentTitle=' + $contentTitle + ' contentArtist=' + $contentArtist)
             } else {
               $stage = 'TARGET_ROW_NOT_FOUND'
               $detail = ('page changed but no row matched "' + $Title + '" (listItems=' + $items.Count + ')')

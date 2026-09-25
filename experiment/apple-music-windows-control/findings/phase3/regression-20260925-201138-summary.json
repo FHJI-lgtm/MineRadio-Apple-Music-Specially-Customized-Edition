@@ -1,0 +1,13 @@
+{
+    "total":  15,
+    "success":  15,
+    "zeroFailureCodes":  true,
+    "e2e":  {
+                "median":  2731,
+                "max":  5893,
+                "p95":  5893,
+                "mean":  3144,
+                "n":  15
+            },
+    "stamp":  "20260925-201138"
+}
