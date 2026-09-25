@@ -20,6 +20,88 @@
   OPTIONS.forEach(function (o) { OPTIONS_BY_ID[o.id] = o; });
   var currentOrder = [];
   var dragId = '';
+  var dropLineEl = null;
+
+  // ---------- 拖拽排序: 整片内容区都是有效放置区 ----------
+  // 旧实现把 dragover / drop 只绑在"行"元素上: 松手点只要没正好落在某一行
+  // (行间 3px 空隙 / 列表空白 / 说明区 / 列表下方), 浏览器就判定"此处不允许放置",
+  // 连 drop 事件都不会触发 -> 拖了半天毫无反应, 也没有任何提示。
+  // 现在改为: 内容区统一 preventDefault 接管 + 按指针 Y 计算插入位置 + 插入指示线,
+  // 这样在空隙或列表空白处松手也能正确排序。
+  function currentRows() {
+    var list = document.getElementById('list');
+    return list ? list.querySelectorAll('.row') : [];
+  }
+
+  // 指针落在"第几个元素之前" (0 = 插到最前, rows.length = 追加到最后)
+  function insertIndexAt(clientY) {
+    var rows = currentRows();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return i;
+    }
+    return rows.length;
+  }
+
+  function showDropLine(index) {
+    if (!dropLineEl) return;
+    var rows = currentRows();
+    var y = 0;
+    if (rows.length) {
+      if (index >= rows.length) {
+        var last = rows[rows.length - 1];
+        y = last.offsetTop + last.offsetHeight;
+      } else {
+        y = rows[index].offsetTop;
+      }
+    }
+    dropLineEl.style.top = y + 'px';
+    dropLineEl.hidden = false;
+  }
+
+  function hideDropLine() {
+    if (dropLineEl) dropLineEl.hidden = true;
+  }
+
+  // 把 fromId 移到位置 insertAt (语义: 插到第 insertAt 个元素之前)
+  function applyReorder(fromId, insertAt) {
+    var from = currentOrder.indexOf(fromId);
+    if (from < 0) return false;
+    var to = insertAt;
+    if (to < 0) to = 0;
+    if (to > currentOrder.length) to = currentOrder.length;
+    if (from < to) to -= 1;          // 先摘掉自身, 后面的索引左移一位
+    if (to === from) return false;   // 位置没变: 什么都不做
+    currentOrder.splice(from, 1);
+    currentOrder.splice(to, 0, fromId);
+    render();
+    reportOrder();                   // 立即保存
+    return true;
+  }
+
+  function attachDropZone() {
+    var zone = document.querySelector('.body');
+    if (!zone || zone.getAttribute('data-amw-dropzone') === '1') return;
+    zone.setAttribute('data-amw-dropzone', '1');
+    zone.addEventListener('dragover', function (e) {
+      if (!dragId) return;                       // 只接管本窗口发起的排序拖拽
+      e.preventDefault();                        // 关键: 让整片区域都允许放置
+      try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+      showDropLine(insertIndexAt(e.clientY));
+    });
+    zone.addEventListener('dragleave', function (e) {
+      if (e.target === zone) hideDropLine();
+    });
+    zone.addEventListener('drop', function (e) {
+      if (!dragId) return;
+      e.preventDefault();
+      var index = insertIndexAt(e.clientY);
+      var fromId = dragId;
+      hideDropLine();
+      applyReorder(fromId, index);
+    });
+    zone.addEventListener('dragend', function () { hideDropLine(); });
+  }
 
   function render() {
     var list = document.getElementById('list');
@@ -49,29 +131,16 @@
         dragId = '';
         reportOrder();   // 兜底: 松开后保存
       });
-      row.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        row.classList.add('drag-over');
-      });
-      row.addEventListener('dragleave', function () {
-        row.classList.remove('drag-over');
-      });
-      row.addEventListener('drop', function (e) {
-        e.preventDefault();
-        row.classList.remove('drag-over');
-        var fromId = dragId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
-        var toId = id;
-        if (!fromId || fromId === toId) return;
-        var from = currentOrder.indexOf(fromId);
-        var to = currentOrder.indexOf(toId);
-        if (from < 0 || to < 0) return;
-        currentOrder.splice(from, 1);
-        currentOrder.splice(to, 0, fromId);
-        render();
-        reportOrder();   // 立即保存
-      });
+      // 放置处理统一由内容区 (.body) 接管 (见 attachDropZone):
+      // 行本身不再各自处理 dragover/drop, 否则行间空隙 / 列表空白会变成"死区"
+      // (在那里松手浏览器判定不允许放置, 连 drop 都不触发 -> 拖了没反应)。
       list.appendChild(row);
     });
+    // 插入指示线: 绝对定位在 .list 内, 不参与布局 (不影响行序与命中测试)
+    dropLineEl = document.createElement('div');
+    dropLineEl.className = 'drop-line';
+    dropLineEl.hidden = true;
+    list.appendChild(dropLineEl);
   }
 
   function reportOrder() {
@@ -137,6 +206,7 @@
     }
   }
 
+  attachDropZone();   // 整片内容区都是有效放置区 (不再只依赖行元素)
   render();
 })();
 
