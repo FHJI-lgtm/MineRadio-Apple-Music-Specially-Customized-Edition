@@ -1,0 +1,121 @@
+﻿=== A. Raw AppxManifest.xml ===
+  path: C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AppxManifest.xml
+  read OK, length = 21972
+  exported: findings\02-appxmanifest.xml
+
+  -- Identity --
+    <Identity Name="AppleInc.AppleMusicWin" Publisher="CN=5BD5593D-A41B-4F89-884E-B4F3E0FBAA75" Version="1.1540.23042.0" ProcessorArchitecture="x64" />
+  -- Applications --
+    Id=App  Executable=AppleMusic.exe  EntryPoint=Windows.FullTrustApplication  AppListEntry=
+    Id=LibraryServer  Executable=AMPLibraryAgent.exe  EntryPoint=Windows.FullTrustApplication  AppListEntry=
+    Id=SharedHelper  Executable=SharedHelper.exe  EntryPoint=Windows.FullTrustApplication  AppListEntry=
+    Id=AppleInc.Music.Defaults  Executable=appdefaults.exe  EntryPoint=Windows.FullTrustApplication  AppListEntry=
+  -- Extension categories (with key attributes) --
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.fileTypeAssociation  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.protocol  Name=  Executable=  EntryPoint=
+    Category=windows.publisherCacheFolders  Name=  Executable=  EntryPoint=
+    Category=windows.activatableClass.proxyStub  Name=  Executable=  EntryPoint=
+  -- Protocol schemes --
+    (none)
+  -- AppService --
+    (none)
+  -- AppExtension --
+    (none)
+  -- Capabilities --
+    allowElevation
+    internetClient
+    runFullTrust
+    unvirtualizedResources
+  -- AppExecutionAlias / uap5 aliases --
+    AppleInc.Music.Defaults.exe
+    AppleMusic.exe
+    AppleMusic_Helper.exe
+  -- extension names mentioning play/open/song/track --
+    [play] ="/play &quot;%1&quot;" , ="fileassociations_play" , ="ms-resource:AppDisplayName" , ="PlaybackEventDelegate" , ="PlaybackEventWithCallbackDelegate" , ="Player"
+    [open] ="/open &quot;%1&quot;" , ="Open"
+
+=== B. Full registry tree of each registered scheme ===
+  --- HKCU:\Software\Classes\musics ---
+    value URL Protocol = 
+    value (default) = URL:musics
+  --- HKCU:\Software\Classes\music ---
+    value URL Protocol = 
+    value (default) = URL:music
+  --- HKCU:\Software\Classes\itms ---
+    value URL Protocol = 
+    value (default) = URL:itms
+  --- HKLM:\SOFTWARE\Classes\itms ---
+    value (default) = URL:iTunes Store Protocol
+    value AppUserModelID = Apple.iTunes
+    value URL Protocol = 
+    subkey DefaultIcon  (default)=C:\Program Files\iTunes\iTunes.exe
+    subkey shell  (default)=
+    subkey open  (default)=
+    subkey command  (default)="C:\Program Files\iTunes\iTunes.exe" /url "%1"
+  --- HKCU:\Software\Classes\itmss ---
+    value URL Protocol = 
+    value (default) = URL:itmss
+  --- HKLM:\SOFTWARE\Classes\itmss ---
+    value (default) = URL:iTunes Store Secure Protocol
+    value AppUserModelID = Apple.iTunes
+    value URL Protocol = 
+    subkey DefaultIcon  (default)=C:\Program Files\iTunes\iTunes.exe
+    subkey shell  (default)=
+    subkey open  (default)=
+    subkey command  (default)="C:\Program Files\iTunes\iTunes.exe" /url "%1"
+
+=== C. Effective command via AssocQueryStringW (official shell API) ===
+  musics  ->  (AssocQueryString failed hr=0x80070483)
+      app: Apple Music
+  music  ->  (AssocQueryString failed hr=0x80070483)
+      app: Apple Music
+  itms  ->  C:\WINDOWS\system32\OpenWith.exe
+      app: 选取应用
+  itmss  ->  C:\WINDOWS\system32\OpenWith.exe
+      app: 选取应用
+  https  ->  C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+      app: Microsoft Edge
+
+=== D. Per-user AppExecutionAlias entries (WindowsApps alias) ===
+  AppleInc.AppleDevices_nzyj5cx40ttqa  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.AppleDevices_nzyj5cx40ttqa
+  AppleInc.AppleMusicWin_nzyj5cx40ttqa  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.AppleMusicWin_nzyj5cx40ttqa
+  AppleInc.iCloud_nzyj5cx40ttqa  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.iCloud_nzyj5cx40ttqa
+  AppleDevices.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleDevices.exe
+  AppleInc.Devices.Defaults.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.Devices.Defaults.exe
+  AppleInc.Music.Defaults.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.Music.Defaults.exe
+  AppleMusic.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic.exe
+  AppleMusic_Helper.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic_Helper.exe
+  ApplePhotoStreams-AppX.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\ApplePhotoStreams-AppX.exe
+  AppleInc.AppleMusicWin_nzyj5cx40ttqa  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.AppleMusicWin_nzyj5cx40ttqa
+  Microsoft.ZuneMusic_8wekyb3d8bbwe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\Microsoft.ZuneMusic_8wekyb3d8bbwe
+  AppleInc.Music.Defaults.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleInc.Music.Defaults.exe
+  AppleMusic.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic.exe
+  AppleMusic_Helper.exe  C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic_Helper.exe

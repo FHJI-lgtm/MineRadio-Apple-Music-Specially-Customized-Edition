@@ -1,0 +1,387 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<Package IgnorableNamespaces="uap rescap virtualization build" xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5" xmlns:uap7="http://schemas.microsoft.com/appx/manifest/uap/windows10/7" xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2" xmlns:desktop3="http://schemas.microsoft.com/appx/manifest/desktop/windows10/3" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:virtualization="http://schemas.microsoft.com/appx/manifest/virtualization/windows10" xmlns:build="http://schemas.microsoft.com/developer/appx/2015/build" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest">
+  <Identity Name="AppleInc.AppleMusicWin" Publisher="CN=5BD5593D-A41B-4F89-884E-B4F3E0FBAA75" Version="1.1540.23042.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>ms-resource:AppDisplayName</DisplayName>
+    <PublisherDisplayName>Apple Inc.</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+    <virtualization:RegistryWriteVirtualization>
+      <virtualization:ExcludedKeys>
+        <virtualization:ExcludedKey>HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ClosedCaptioning</virtualization:ExcludedKey>
+      </virtualization:ExcludedKeys>
+    </virtualization:RegistryWriteVirtualization>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.26100.0" MaxVersionTested="10.0.26100.0" />
+    <PackageDependency Name="Microsoft.VCLibs.140.00.UWPDesktop" MinVersion="14.0.33728.0" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.33519.0" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="EN-US" />
+    <Resource Language="AR" />
+    <Resource Language="CA" />
+    <Resource Language="CS" />
+    <Resource Language="DA" />
+    <Resource Language="DE" />
+    <Resource Language="EL" />
+    <Resource Language="EN-AU" />
+    <Resource Language="EN-GB" />
+    <Resource Language="ES-419" />
+    <Resource Language="ES" />
+    <Resource Language="FI" />
+    <Resource Language="FR-CA" />
+    <Resource Language="HE" />
+    <Resource Language="HI" />
+    <Resource Language="HR" />
+    <Resource Language="HU" />
+    <Resource Language="ID" />
+    <Resource Language="IT" />
+    <Resource Language="JA" />
+    <Resource Language="KO" />
+    <Resource Language="MS" />
+    <Resource Language="NB-NO" />
+    <Resource Language="NL" />
+    <Resource Language="PL" />
+    <Resource Language="PT-BR" />
+    <Resource Language="PT-PT" />
+    <Resource Language="RO" />
+    <Resource Language="RU" />
+    <Resource Language="SK" />
+    <Resource Language="SL" />
+    <Resource Language="SV" />
+    <Resource Language="TH" />
+    <Resource Language="TR" />
+    <Resource Language="UK" />
+    <Resource Language="VI" />
+    <Resource Language="ZH-CN" />
+    <Resource Language="ZH-HK" />
+    <Resource Language="ZH-TW" />
+    <Resource Language="FR" />
+    <Resource uap:Scale="100" />
+    <Resource uap:Scale="200" />
+    <Resource uap:Scale="400" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="AppleMusic.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="ms-resource:AppDisplayName" Description="ms-resource:AppDescription" BackgroundColor="transparent" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile ShortName="ms-resource:AppDisplayName" Square71x71Logo="Images\SmallTile.png" Square310x310Logo="Images\LargeTile.png" Wide310x150Logo="Images\Wide310x150Logo.png">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="square310x310Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Images\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="AppleMusic.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="AppleMusic.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+        <uap3:Extension Category="windows.appUriHandler">
+          <uap3:AppUriHandler>
+            <uap3:Host Name="music.apple.com" />
+            <uap3:Host Name="buy.itunes.apple.com" />
+          </uap3:AppUriHandler>
+        </uap3:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="fileassociations_play" MultiSelectModel="Player" Parameters="/play &quot;%1&quot;">
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.aifc</uap:FileType>
+              <uap:FileType>.aiff</uap:FileType>
+              <uap:FileType>.aif</uap:FileType>
+              <uap:FileType>.cda</uap:FileType>
+              <uap:FileType>.cdda</uap:FileType>
+              <uap:FileType>.m3u</uap:FileType>
+              <uap:FileType>.m3u8</uap:FileType>
+              <uap:FileType>.m4a</uap:FileType>
+              <uap:FileType>.m4b</uap:FileType>
+              <uap:FileType>.m4p</uap:FileType>
+              <uap:FileType>.m4r</uap:FileType>
+              <uap:FileType>.m4v</uap:FileType>
+              <uap:FileType>.movpkg</uap:FileType>
+              <uap:FileType>.mp2</uap:FileType>
+              <uap:FileType>.mp3</uap:FileType>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.pls</uap:FileType>
+              <uap:FileType>.rmp</uap:FileType>
+              <uap:FileType>.wav</uap:FileType>
+              <uap:FileType>.wave</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name=".itl">
+            <uap:DisplayName>ms-resource:Resources/ITL</uap:DisplayName>
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.itl</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name=".itlp">
+            <uap:DisplayName>ms-resource:Resources/ITLP</uap:DisplayName>
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.itlp</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name=".musicdb">
+            <uap:DisplayName>ms-resource:Resources/MUSICDB</uap:DisplayName>
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.musicdb</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name=".musiclibrary">
+            <uap:DisplayName>ms-resource:Resources/MUSICLIBRARY</uap:DisplayName>
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.musiclibrary</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name=".itms">
+            <uap:DisplayName>ms-resource:Resources/ITMS</uap:DisplayName>
+            <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>
+            <uap:EditFlags OpenIsSafe="true" />
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>
+            </uap2:SupportedVerbs>
+            <uap:SupportedFileTypes>
+              <uap:FileType ContentType="application/x-itunes-itms">.itms</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="daap" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="italss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itals" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itmss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itms" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itpc" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itsradio" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.daap" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.italss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itals" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itlss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itls" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itmss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itms" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itpc" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itsradio" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itvlss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes.assocprotocol.itvls" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunesradio" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itvlss" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itvls" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="musics" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="music" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="itunes" Parameters="/url &quot;%1&quot;">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+    <Application Id="LibraryServer" Executable="AMPLibraryAgent.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="AMPLibraryAgent" Description="AMPLibraryAgent" BackgroundColor="transparent" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png" AppListEntry="none" />
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="AMPLibraryAgent.exe" DisplayName="AMPLibraryAgent">
+              <com:Class Id="68E7097C-F969-4006-AAC3-95115F0ED1C4" DisplayName="AMP.Core.IAMPMusicLibrary" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
+    </Application>
+    <Application Id="SharedHelper" Executable="SharedHelper.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Apple Music" Description="Apple Music" BackgroundColor="transparent" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png" AppListEntry="none" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="SharedHelper.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="AppleMusic_Helper.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+    <Application Id="AppleInc.Music.Defaults" Executable="appdefaults.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Defaults" Description="Defaults" BackgroundColor="#FFFFFF" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png" AppListEntry="none" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="AppleInc.Music.Defaults.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="appdefaults.exe">
+          <desktop:FullTrustProcess />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="allowElevation" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+  <Extensions>
+    <desktop2:Extension Category="windows.firewallRules">
+      <desktop2:FirewallRules Executable="AppleMusic.exe">
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="all" />
+        <desktop2:Rule Direction="in" IPProtocol="UDP" Profile="all" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+    <desktop2:Extension Category="windows.firewallRules">
+      <desktop2:FirewallRules Executable="AMPLibraryAgent.exe">
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="all" />
+        <desktop2:Rule Direction="in" IPProtocol="UDP" Profile="all" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+    <Extension Category="windows.publisherCacheFolders">
+      <PublisherCacheFolders>
+        <Folder Name="com.apple.AuthKitWin" />
+        <Folder Name="com.apple.MediaServices" />
+      </PublisherCacheFolders>
+    </Extension>
+    <Extension Category="windows.activatableClass.proxyStub">
+      <ProxyStub ClassId="F707A913-E0CE-4FD4-BCE3-425DD153285B">
+        <Path>AMPLibraryAgent.Proxies.dll</Path>
+        <Interface Name="IAMPLibrary" InterfaceId="F707A913-E0CE-4FD4-BCE3-425DD153285B" />
+        <Interface Name="IAMPMusicLibrary" InterfaceId="68E7097C-F969-4006-AAC3-95115F0ED1C4" />
+        <Interface Name="ActvityStateEventDelegate" InterfaceId="0A180672-967F-5B4E-9D67-8146D1200522" />
+        <Interface Name="BusyChangedEventDelegate" InterfaceId="6F89C3B3-0C25-50C5-BECA-3D5086210E34" />
+        <Interface Name="CloudLibraryEventDelegate" InterfaceId="C4C9DE7B-DE44-59DB-9805-54686C6DC298" />
+        <Interface Name="FetchInvalidationEventDelegate" InterfaceId="E9AE66D5-042E-5058-BEAA-1355425C739A" />
+        <Interface Name="LibraryEventDelegate" InterfaceId="7923015C-75C0-5732-86CC-AB09C471A674" />
+        <Interface Name="LibraryRevisionChangedEventDelegate" InterfaceId="E4712EB5-60A2-513D-B6E9-71C0ED973E52" />
+        <Interface Name="PlaybackEventDelegate" InterfaceId="F0E209BE-7FB1-5E1E-9879-B622AE7CCA41" />
+        <Interface Name="PlaybackEventWithCallbackDelegate" InterfaceId="C153DB3C-A412-5A70-A8F9-55EF31878EE3" />
+        <Interface Name="StoreServicesUIEventDelegate" InterfaceId="5B4F4F5D-5672-51F2-82DA-CD4C1BBFB42A" />
+        <Interface Name="DevicesEventDelegate" InterfaceId="897B3128-5D81-4BD0-8A53-7BB9EED8346A" />
+      </ProxyStub>
+    </Extension>
+  </Extensions>
+  <build:Metadata>
+    <build:Item Name="Microsoft.Build.DesktopBridge.Tasks.dll" Version="17.14.40140.49182" />
+    <build:Item Name="TargetFrameworkMoniker" Value=".NETFramework,Version=v4.5.1" />
+    <build:Item Name="VisualStudio" Version="17.0" />
+    <build:Item Name="OperatingSystem" Version="10.0.26100.1 (WinBuild.160101.0800)" />
+    <build:Item Name="Microsoft.Build.AppxPackage.dll" Version="17.14.40598.3191" />
+    <build:Item Name="ProjectGUID" Value="098a9900-68e7-4b0f-b3a3-3589f491587f" />
+    <build:Item Name="makepri.exe" Version="10.0.26100.7175 (WinBuild.160101.0800)" />
+  </build:Metadata>
+  <mp:PhoneIdentity PhoneProductId="94ecb442-59b5-4ede-91c1-bfab5274164a" PhonePublisherId="5e3e28d9-4e58-479c-870b-2e5f6ad1310e" />
+</Package>

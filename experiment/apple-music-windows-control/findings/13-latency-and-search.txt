@@ -1,0 +1,25 @@
+﻿=== Part B: search path feasibility (no playback) ===
+  Search_Button found: name="单击搜索"
+  invoked search
+  Edit controls after opening search: 1
+    [0] name="搜索" autoId="TextBox" enabled=True
+  typed: How Do I Make You Love Me
+  ListItems after search: 74
+    SEARCH MATCH: "how do i make you love me"
+    SEARCH MATCH: "How Do I Make You Love Me? 歌曲 · Abel Tesfaye"
+    SEARCH MATCH: "how do i make you love me"
+    SEARCH MATCH: "How Do I Make You Love Me? 歌曲 · Abel Tesfaye"
+  search closed (ESC)
+
+=== Part A: measured latency of the proven precise-play path ===
+  [t0] launching deep link: musics://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+  [t1] target row visible after 1570 ms
+  [t2] row realized+focusable after 156 ms   rect=281,803,1521,69
+  [t3] double click issued at 581,838
+
+  [t4] SMTC reports target song PLAYING after 425 ms (click -> Playing)
+       title="How Do I Make You Love Me?"  status=Playing  position=00:00:00
+  TOTAL end-to-end (deep link -> Playing): 2641 ms
+
+=== Cleanup: pause playback ===
+  paused: title="How Do I Make You Love Me?" status=Paused

@@ -1,0 +1,60 @@
+﻿AppleMusic pid=32504 hwnd=1966970
+root: name="Apple Music" class=WinUIDesktopWin32WindowClass type=ControlType.Window
+
+=== A. UIA tree (descendants, depth <= 6, max 200 nodes) ===
+  Window  name="Apple Music"  cls=WinUIDesktopWin32WindowClass  autoId=
+    Pane  name="Non Client Input Sink Window"  cls=InputNonClientPointerSource  autoId=
+    Pane  name="AppWindow Custom Title Bar"  cls=ReunionWindowingCaptionControls  autoId=
+      Button  name="Minimize"  cls=  autoId=Minimize
+      Button  name="Maximize"  cls=  autoId=Maximize
+      Button  name="Close"  cls=  autoId=Close
+    Pane  name=""  cls=Microsoft.UI.Content.DesktopChildSiteBridge  autoId=
+      Pane  name=""  cls=InputSiteWindowClass  autoId=
+        Custom  name=""  cls=  autoId=NavView
+          Button  name="返回"  cls=Button  autoId=NavigationViewBackButton
+          Button  name="打开导航"  cls=Button  autoId=Hamburger_Button
+          Window  name=""  cls=SplitViewPane  autoId=PaneRoot
+            Image  name=""  cls=Image  autoId=
+            Button  name="单击搜索"  cls=Button  autoId=Search_Button
+            Pane  name=""  cls=ScrollViewer  autoId=MenuItemsScrollViewer
+              Group  name=""  cls=  autoId=MenuItemsHost
+            Pane  name=""  cls=ScrollViewer  autoId=FooterItemsScrollViewer
+              Group  name=""  cls=  autoId=FooterMenuItemsHost
+          Group  name=""  cls=LandmarkTarget  autoId=TransportBar
+            Button  name="随机播放"  cls=ToggleButton  autoId=ShuffleButton
+            Button  name="向后跳"  cls=AppBarButton  autoId=TransportControl_SkipBack
+            Button  name="播放"  cls=AppBarButton  autoId=TransportControl_PlayPauseStop
+            Button  name="向前跳"  cls=AppBarButton  autoId=TransportControl_SkipForward
+            Button  name="不重复"  cls=Button  autoId=RepeatButton
+            Button  name=""  cls=NamedContainerAutomationPeer  autoId=ThumbnailHoverGrid
+              Image  name=""  cls=Image  autoId=
+            Image  name=""  cls=Image  autoId=Apple
+            Button  name="音量"  cls=Button  autoId=VolumeButton
+            Button  name="歌词"  cls=ToggleButton  autoId=LyricsToggleButton
+            Button  name="队列"  cls=ToggleButton  autoId=PlayQueueToggleButton
+          Group  name="内容"  cls=LandmarkTarget  autoId=
+            List  name=""  cls=ListView  autoId=
+              Group  name="Dawn FM Abel Tesfaye R&B/灵魂乐 · 2022年 杜比全景声 无损 像现实中的很多城市一样，10..."  cls=NamedContainerAutomationPeer  autoId=
+              ListItem  name="音轨 1 Dawn FM 1 分钟，36 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 2 Gasoline 3 分钟，32 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 4 Take My Breath 5 分钟，39 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 5 Sacrifice 儿童不宜 3 分钟，9 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 6 A Tale By Quincy 儿童不宜 1 分钟，36 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 7 Out of Time 3 分钟，34 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 8 Here We Go… Again (feat. Tyler, The Creator) 儿童不宜 3 分钟，..."  cls=ListViewItem  autoId=
+              ListItem  name="音轨 9 Best Friends 2 分钟，44 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 10 Is There Someone Else? 3 分钟，19 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 11 Starry Eyes 2 分钟，28 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 12 Every Angel is Terrifying 2 分钟，47 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 13 Don’t Break My Heart 3 分钟，25 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 14 I Heard You’re Married (feat. Lil Wayne) 儿童不宜 4 分钟，24 ..."  cls=ListViewItem  autoId=
+              ListItem  name="音轨 15 Less Than Zero 3 分钟，32 秒钟"  cls=ListViewItem  autoId=
+              ListItem  name="音轨 16 Phantom Regret by Jim 3 分钟"  cls=ListViewItem  autoId=
+  (nodes visited: 49)
+
+=== B. Search for Edit / search controls ===
+  Edit controls found: 0
+
+=== C. PoC: search + play via UI Automation ===
+  no enabled Edit control -> UI Automation search not available in this build

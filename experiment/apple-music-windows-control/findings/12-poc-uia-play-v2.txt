@@ -1,0 +1,31 @@
+﻿=== PoC v2: realize + play the target row ===
+  [before] title="" artist="" status=Opened pos=00:00:00
+  ListItems: 22
+  target: "音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟"
+
+=== Step 1: realize / scroll into view ===
+  ScrollIntoView() ok
+  VirtualizedItem.Realize() ok
+  SetFocus() ok
+  rect now: 281,803,1521,69  isEmpty=False
+  click point: 581,838
+
+=== Step 2: SelectionItemPattern.Select ===
+  Select() ok
+  [after Select] title="" artist="" status=Opened pos=00:00:00
+
+=== Step 3: InvokePattern.Invoke ===
+  Invoke() ok
+  [after Invoke] title="" artist="" status=Opened pos=00:00:00
+
+=== Step 4: double click at the row ===
+  double click issued at 581,838
+  [after double click] title="How Do I Make You Love Me?" artist="Abel Tesfaye — Dawn FM" status=Playing pos=00:00:01
+
+=== Result ===
+  [final] title="How Do I Make You Love Me?" artist="Abel Tesfaye — Dawn FM" status=Playing pos=00:00:01
+  screenshot: findings\shots\12-poc-uia-play-v2.png
+  precise playback succeeded = True
+
+=== Cleanup: pause via SMTC (song stays selected) ===
+  [after pause] title="How Do I Make You Love Me?" artist="Abel Tesfaye — Dawn FM" status=Paused pos=00:00:02

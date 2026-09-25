@@ -1,0 +1,70 @@
+﻿=== PoC target: How Do I Make You Love Me?  (id 1603171530) ===
+  musics url: musics://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+  https  url: https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+
+=== 0. baseline ===
+  smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+  title=""  artist=""  album=""
+  status=Opened  position=00:00:00 / 00:00:00
+  screenshot saved: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\09-00-baseline.png
+
+  AppleMusic.exe = C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AppleMusic.exe
+=== TEST 01-shell-musics ===
+  what : ShellExecute musics://song/.../1603171530 (what the user tested)
+  inv  : musics://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+  before:
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  after (10s):
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  RESULT: song selected AND playing = False
+  screenshot saved: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\09-01-shell-musics.png
+
+=== TEST 02-exe-url-musics ===
+  what : AppleMusic.exe /url "musics://..." (exact manifest shape)
+  inv  : /url "musics://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530"
+  before:
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  after (10s):
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  RESULT: song selected AND playing = False
+  screenshot saved: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\09-02-exe-url-musics.png
+
+=== TEST 03-exe-url-https ===
+  what : AppleMusic.exe /url "https://music.apple.com/..."
+  inv  : /url "https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530"
+  before:
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  after (10s):
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  RESULT: song selected AND playing = False
+  screenshot saved: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\09-03-exe-url-https.png
+
+=== TEST 04-shell-https ===
+  what : ShellExecute https://music.apple.com/... (default browser?)
+  inv  : https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+  before:
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  after (10s):
+    smtc.ok=True  sourceApp=AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=""  artist=""  album=""
+    status=Opened  position=00:00:00 / 00:00:00
+  RESULT: song selected AND playing = False
+  screenshot saved: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\09-04-shell-https.png
+
+=== Summary ===
+  success criterion: SMTC title matches the target song AND status = Playing
+  note: "opened the app" / "showed a page" is NOT success by the task definition.

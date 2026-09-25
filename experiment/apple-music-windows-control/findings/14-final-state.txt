@@ -1,0 +1,22 @@
+﻿=== 1. Apple Music process tree (is there a WebView2 child?) ===
+  pid=32504  cmd="C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic.exe" 
+    (no child processes)
+
+=== 2. msedgewebview2 processes and their real owners ===
+  pid=30228 parent=10336 (SearchHost.exe)
+  pid=8404 parent=30228 (msedgewebview2.exe)
+  pid=19100 parent=30228 (msedgewebview2.exe)
+  pid=30172 parent=30228 (msedgewebview2.exe)
+  pid=21044 parent=30228 (msedgewebview2.exe)
+  pid=18044 parent=30228 (msedgewebview2.exe)
+  NOTE: every WebView2 process belongs to SearchHost.exe, not to Apple Music.
+
+=== 3. SMTC sessions (read only) ===
+  sessions: 1
+  sourceAppId = AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+    title=[How Do I Make You Love Me?] artist=[Abel Tesfaye — Dawn FM] album=[] trackNo=0
+    status=Paused
+    position=00:00:00  end=00:00:00
+
+=== 4. Apple Music window classes present ===
+  pid=32504 hwnd=1966970 title=[Apple Music]

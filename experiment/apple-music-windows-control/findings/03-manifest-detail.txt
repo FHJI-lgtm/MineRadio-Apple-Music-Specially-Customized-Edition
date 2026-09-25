@@ -1,0 +1,195 @@
+﻿=== manifest root: Package ===
+  Identity: AppleInc.AppleMusicWin  Version=1.1540.23042.0  Publisher=CN=5BD5593D-A41B-4F89-884E-B4F3E0FBAA75
+
+=== Applications / Extensions (full traversal) ===
+  Application Id=App  Executable=AppleMusic.exe  EntryPoint=Windows.FullTrustApplication
+    Extension    Category=windows.appExecutionAlias Executable=AppleMusic.exe EntryPoint=Windows.FullTrustApplication
+      - AppExecutionAlias 
+          . ExecutionAlias  Alias=AppleMusic.exe
+    Extension    Category=windows.appUriHandler
+      - AppUriHandler 
+          . Host  Name=music.apple.com
+          . Host  Name=buy.itunes.apple.com
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=fileassociations_play MultiSelectModel=Player Parameters=/play "%1"
+          . Logo 
+          . SupportedFileTypes 
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=.itl
+          . DisplayName 
+          . Logo 
+          . SupportedFileTypes 
+          . SupportedVerbs 
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=.itlp
+          . DisplayName 
+          . Logo 
+          . SupportedFileTypes 
+          . SupportedVerbs 
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=.musicdb
+          . DisplayName 
+          . Logo 
+          . SupportedFileTypes 
+          . SupportedVerbs 
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=.musiclibrary
+          . DisplayName 
+          . Logo 
+          . SupportedFileTypes 
+          . SupportedVerbs 
+    Extension    Category=windows.fileTypeAssociation
+      - FileTypeAssociation  Name=.itms
+          . DisplayName 
+          . Logo 
+          . EditFlags  OpenIsSafe=true
+          . SupportedVerbs 
+          . SupportedFileTypes 
+    Extension    Category=windows.protocol
+      - Protocol  Name=daap Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=italss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itals Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itmss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itms Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itpc Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itsradio Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.daap Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.italss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itals Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itlss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itls Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itmss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itms Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itpc Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itsradio Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itvlss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes.assocprotocol.itvls Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunesradio Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itvlss Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itvls Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=musics Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=music Parameters=/url "%1"
+          . Logo 
+    Extension    Category=windows.protocol
+      - Protocol  Name=itunes Parameters=/url "%1"
+          . Logo 
+  Application Id=LibraryServer  Executable=AMPLibraryAgent.exe  EntryPoint=Windows.FullTrustApplication
+    Extension    Category=windows.comServer
+      - ComServer 
+          . ExeServer  Executable=AMPLibraryAgent.exe DisplayName=AMPLibraryAgent
+  Application Id=SharedHelper  Executable=SharedHelper.exe  EntryPoint=Windows.FullTrustApplication
+    Extension    Category=windows.appExecutionAlias Executable=SharedHelper.exe EntryPoint=Windows.FullTrustApplication
+      - AppExecutionAlias 
+          . ExecutionAlias  Alias=AppleMusic_Helper.exe
+  Application Id=AppleInc.Music.Defaults  Executable=appdefaults.exe  EntryPoint=Windows.FullTrustApplication
+    Extension    Category=windows.appExecutionAlias
+      - AppExecutionAlias 
+          . ExecutionAlias  Alias=AppleInc.Music.Defaults.exe
+    Extension    Category=windows.fullTrustProcess Executable=appdefaults.exe
+      - FullTrustProcess 
+
+=== All protocol names (any depth, any namespace) ===
+  Protocol  Name=daap Parameters=/url "%1"
+  Protocol  Name=italss Parameters=/url "%1"
+  Protocol  Name=itals Parameters=/url "%1"
+  Protocol  Name=itmss Parameters=/url "%1"
+  Protocol  Name=itms Parameters=/url "%1"
+  Protocol  Name=itpc Parameters=/url "%1"
+  Protocol  Name=itsradio Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.daap Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.italss Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itals Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itlss Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itls Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itmss Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itms Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itpc Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itsradio Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itvlss Parameters=/url "%1"
+  Protocol  Name=itunes.assocprotocol.itvls Parameters=/url "%1"
+  Protocol  Name=itunesradio Parameters=/url "%1"
+  Protocol  Name=itvlss Parameters=/url "%1"
+  Protocol  Name=itvls Parameters=/url "%1"
+  Protocol  Name=musics Parameters=/url "%1"
+  Protocol  Name=music Parameters=/url "%1"
+  Protocol  Name=itunes Parameters=/url "%1"
+
+=== All AppService declarations (any depth) ===
+  (none)
+
+=== Activatable class servers (inProcessServer / outOfProcessServer / proxyStub) ===
+  [windows.activatableClass.inProcessServer] count=0
+  [windows.activatableClass.outOfProcessServer] count=0
+  [windows.activatableClass.proxyStub] count=1
+      ProxyStub Path=
+          . Path 
+          . Interface  Name=IAMPLibrary InterfaceId=F707A913-E0CE-4FD4-BCE3-425DD153285B
+          . Interface  Name=IAMPMusicLibrary InterfaceId=68E7097C-F969-4006-AAC3-95115F0ED1C4
+          . Interface  Name=ActvityStateEventDelegate InterfaceId=0A180672-967F-5B4E-9D67-8146D1200522
+          . Interface  Name=BusyChangedEventDelegate InterfaceId=6F89C3B3-0C25-50C5-BECA-3D5086210E34
+          . Interface  Name=CloudLibraryEventDelegate InterfaceId=C4C9DE7B-DE44-59DB-9805-54686C6DC298
+          . Interface  Name=FetchInvalidationEventDelegate InterfaceId=E9AE66D5-042E-5058-BEAA-1355425C739A
+          . Interface  Name=LibraryEventDelegate InterfaceId=7923015C-75C0-5732-86CC-AB09C471A674
+          . Interface  Name=LibraryRevisionChangedEventDelegate InterfaceId=E4712EB5-60A2-513D-B6E9-71C0ED973E52
+          . Interface  Name=PlaybackEventDelegate InterfaceId=F0E209BE-7FB1-5E1E-9879-B622AE7CCA41
+          . Interface  Name=PlaybackEventWithCallbackDelegate InterfaceId=C153DB3C-A412-5A70-A8F9-55EF31878EE3
+          . Interface  Name=StoreServicesUIEventDelegate InterfaceId=5B4F4F5D-5672-51F2-82DA-CD4C1BBFB42A
+          . Interface  Name=DevicesEventDelegate InterfaceId=897B3128-5D81-4BD0-8A53-7BB9EED8346A
+
+=== context lines around /play and /open arguments ===
+  --- occurrence at offset 
+       <uap3:Extension Category="windows.appUriHandler">           <uap3:AppUriHandler>             <uap3:Host Name="music.apple.com" />             <uap3:Host Name="buy.itunes.apple.com" />           </uap3:AppUriHandler>         </uap3:Extension>         <uap:Extension Category="windows.fileTypeAssociation">           <uap3:FileTypeAssociation Name="fileassociations_play" MultiSelectModel="Player" Parameters="/play &quot;%1&quot;">             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:SupportedFileTypes>          
+  --- occurrence at offset 
+  Association Name=".itl">             <uap:DisplayName>ms-resource:Resources/ITL</uap:DisplayName>             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:SupportedFileTypes>               <uap:FileType>.itl</uap:FileType>             </uap:SupportedFileTypes>             <uap2:SupportedVerbs>               <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>             </uap2:SupportedVerbs>           </uap3:FileTypeAssoci
+  --- occurrence at offset 
+  ociation Name=".itlp">             <uap:DisplayName>ms-resource:Resources/ITLP</uap:DisplayName>             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:SupportedFileTypes>               <uap:FileType>.itlp</uap:FileType>             </uap:SupportedFileTypes>             <uap2:SupportedVerbs>               <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>             </uap2:SupportedVerbs>           </uap3:FileTypeAssoci
+  --- occurrence at offset 
+  Name=".musicdb">             <uap:DisplayName>ms-resource:Resources/MUSICDB</uap:DisplayName>             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:SupportedFileTypes>               <uap:FileType>.musicdb</uap:FileType>             </uap:SupportedFileTypes>             <uap2:SupportedVerbs>               <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>             </uap2:SupportedVerbs>           </uap3:FileTypeAssoci
+  --- occurrence at offset 
+  rary">             <uap:DisplayName>ms-resource:Resources/MUSICLIBRARY</uap:DisplayName>             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:SupportedFileTypes>               <uap:FileType>.musiclibrary</uap:FileType>             </uap:SupportedFileTypes>             <uap2:SupportedVerbs>               <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>             </uap2:SupportedVerbs>           </uap3:FileTypeAssoci
+  --- occurrence at offset 
+  Extension Category="windows.fileTypeAssociation">           <uap3:FileTypeAssociation Name=".itms">             <uap:DisplayName>ms-resource:Resources/ITMS</uap:DisplayName>             <uap:Logo>Images\FileAssociation-generic.png</uap:Logo>             <uap:EditFlags OpenIsSafe="true" />             <uap2:SupportedVerbs>               <uap3:Verb Id="Open" Extended="false" MultiSelectModel="Single" Parameters="/open &quot;%1&quot;">ms-resource:Resources/Shell_Verb_Open</uap3:Verb>             </uap2:SupportedVerbs>             <uap:SupportedFileT

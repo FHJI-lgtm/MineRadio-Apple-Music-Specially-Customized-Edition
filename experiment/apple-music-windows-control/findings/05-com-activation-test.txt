@@ -1,0 +1,36 @@
+﻿=== A. PackagedCom registry mapping (machine wide COM catalog) ===
+  [FOUND] HKLM:\SOFTWARE\Classes\PackagedCom\ClassIndex\{68E7097C-F969-4006-AAC3-95115F0ED1C4}
+      \ClassIndex\{68E7097C-F969-4006-AAC3-95115F0ED1C4}\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+  [FOUND] HKLM:\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+      \Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\Class
+      \Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\Class\{68E7097C-F969-4006-AAC3-95115F0ED1C4} [ServerId=0] [DisplayName=AMP.Core.IAMPMusicLibrary]
+      \Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\Server
+      \Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\Server\0 [ApplicationId=LibraryServer] [ApplicationDisplayName=AMPLibraryAgent] [DisplayName=AMPLibraryAgent] [Executable=AMPLibraryAgent.exe] [IsSystemExecutable=0] [TrustLevel=1] [RuntimeBehavior=1] [BnoIsolation=0]
+
+  all PackagedCom packages containing Apple:
+    AppleInc.AppleDevices_1.1540.24088.0_x64__nzyj5cx40ttqa
+    AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+    AppleInc.iCloud_15.9.60.0_x64__nzyj5cx40ttqa
+
+  ClassIndex entries pointing at any Apple package:
+
+=== B. CLSID / AppID / Interface / TypeLib registration ===
+  [absent] HKCR:\CLSID\{68E7097C-F969-4006-AAC3-95115F0ED1C4}
+  [absent] HKLM:\SOFTWARE\Classes\CLSID\{68E7097C-F969-4006-AAC3-95115F0ED1C4}
+  [absent] HKCU:\Software\Classes\CLSID\{68E7097C-F969-4006-AAC3-95115F0ED1C4}
+  [absent] HKCR:\CLSID\{F707A913-E0CE-4FD4-BCE3-425DD153285B}
+  [absent] HKLM:\SOFTWARE\Classes\CLSID\{F707A913-E0CE-4FD4-BCE3-425DD153285B}
+  [absent] HKCU:\Software\Classes\CLSID\{F707A913-E0CE-4FD4-BCE3-425DD153285B}
+
+=== C. Activation probe: CoCreateInstance from this (non-packaged) process ===
+  GetTypeFromCLSID -> System.__ComObject
+  CoCreateInstance -> SUCCESS (System.__ComObject)
+  QI {F707A913-E0CE-4FD4-BCE3-425DD153285B} -> hr=0x80040155 (no interface)
+  QI {68E7097C-F969-4006-AAC3-95115F0ED1C4} -> hr=0x80040155 (no interface)
+  QI {00000000-0000-0000-C000-000000000046} -> hr=0x00000000 (interface obtained)
+
+=== D. Existing AMPLibraryAgent process state (before/after probe) ===
+  pid=30304  started=09/25/2026 13:00:49
+
+=== E. Type library / method names (names only, no calls) ===
+  no Apple type library registered under HKCR\TypeLib

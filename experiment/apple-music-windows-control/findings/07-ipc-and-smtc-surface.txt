@@ -1,0 +1,180 @@
+﻿=== A1. Apple package processes ===
+  pid=30304  AMPLibraryAgent.exe  cmd="C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AMPLibraryAgent.exe" -Embedding
+
+=== A2. TCP listeners / UDP endpoints per Apple pid ===
+  [TCP] pid=30304 AMPLibraryAgent.exe  :::9698 -> :::0  state=Bound
+  [TCP] pid=30304 AMPLibraryAgent.exe  2408:8220:7419:71c0:44c9:3cee:ffaa:57d1:9698 -> 2408:8720:806:306:3::15:443  state=Established
+  [TCP] pid=30304 AMPLibraryAgent.exe  0.0.0.0:9708 -> 0.0.0.0:0  state=Bound
+  [TCP] pid=30304 AMPLibraryAgent.exe  0.0.0.0:9700 -> 0.0.0.0:0  state=Bound
+  [TCP] pid=30304 AMPLibraryAgent.exe  0.0.0.0:9699 -> 0.0.0.0:0  state=Bound
+  [TCP] pid=30304 AMPLibraryAgent.exe  192.168.1.10:9708 -> 119.188.45.9:443  state=Established
+  [TCP] pid=30304 AMPLibraryAgent.exe  192.168.1.10:9700 -> 119.188.45.9:443  state=Established
+  [TCP] pid=30304 AMPLibraryAgent.exe  192.168.1.10:9699 -> 119.188.45.8:443  state=Established
+
+  all loopback listeners on this machine (pid + name):
+    0.0.0.0:80  pid=33188 (Steam++.Accelerator)
+    :::135  pid=1328 (svchost)
+    0.0.0.0:135  pid=1328 (svchost)
+    0.0.0.0:443  pid=33188 (Steam++.Accelerator)
+    :::445  pid=4 (System)
+    127.0.0.1:1001  pid=4 (System)
+    :::1030  pid=1872 (services)
+    0.0.0.0:1030  pid=1872 (services)
+    0.0.0.0:1035  pid=15016 (svchost)
+    :::1035  pid=15016 (svchost)
+    0.0.0.0:1036  pid=6280 (GlideXService)
+    0.0.0.0:1038  pid=6280 (GlideXService)
+    0.0.0.0:1041  pid=6280 (GlideXService)
+    127.0.0.1:1042  pid=28088 (asus_framework)
+    0.0.0.0:1046  pid=6280 (GlideXService)
+    0.0.0.0:1047  pid=6280 (GlideXService)
+    0.0.0.0:1050  pid=6280 (GlideXService)
+    0.0.0.0:1051  pid=6280 (GlideXService)
+    0.0.0.0:1053  pid=6280 (GlideXService)
+    0.0.0.0:1056  pid=6280 (GlideXService)
+    0.0.0.0:1057  pid=6280 (GlideXService)
+    0.0.0.0:1060  pid=6280 (GlideXService)
+    0.0.0.0:1061  pid=6280 (GlideXService)
+    0.0.0.0:1062  pid=6280 (GlideXService)
+    127.0.0.1:1159  pid=29232 (steam)
+    127.0.0.1:1166  pid=29232 (steam)
+    127.0.0.1:3080  pid=32356 (node)
+    0.0.0.0:3389  pid=12840 (svchost)
+    :::3389  pid=12840 (svchost)
+    127.0.0.1:5037  pid=22916 (adb)
+    0.0.0.0:5040  pid=15104 (svchost)
+    127.0.0.1:5354  pid=5820 (mDNSResponder)
+    :::5357  pid=4 (System)
+    127.0.0.1:6850  pid=20912 (AacAmbientLighting)
+    127.0.0.1:7778  pid=5712 (ArmouryCrateControlInterface)
+    127.0.0.1:8080  pid=29212 (steamwebhelper)
+    127.0.0.1:9012  pid=20036 (ArmourySocketServer)
+    127.0.0.1:9013  pid=20036 (ArmourySocketServer)
+    127.0.0.1:9014  pid=23984 (ArmouryHtmlDebugServer)
+    127.0.0.1:11001  pid=5764 (AuraWallpaperService)
+    0.0.0.0:12177  pid=11336 (ArmouryCrate.UserSessionHelper)
+    127.0.0.1:13030  pid=6876 (ROGLiveService)
+    127.0.0.1:13031  pid=5748 (ArmouryCrate.Service)
+    127.0.0.1:13032  pid=5748 (ArmouryCrate.Service)
+    :::13226  pid=36360 (svchost)
+    0.0.0.0:13226  pid=36360 (svchost)
+    127.0.0.1:13599  pid=23540 (IDMIntegrator64)
+    127.0.0.1:22112  pid=6876 (ROGLiveService)
+    127.0.0.1:24830  pid=5772 (AsusSoftwareManager)
+    127.0.0.1:27015  pid=5856 (AppleMobileDeviceService)
+    0.0.0.0:27036  pid=29232 (steam)
+    127.0.0.1:27339  pid=4 (System)
+    0.0.0.0:49664  pid=1900 (lsass)
+    :::49664  pid=1900 (lsass)
+    0.0.0.0:49665  pid=1800 (wininit)
+    :::49665  pid=1800 (wininit)
+    :::49666  pid=3444 (svchost)
+    0.0.0.0:49666  pid=3444 (svchost)
+    0.0.0.0:49668  pid=5060 (spoolsv)
+    :::49668  pid=5060 (spoolsv)
+    127.0.0.1:50100  pid=5748 (ArmouryCrate.Service)
+    127.0.0.1:50923  pid=5712 (ArmouryCrateControlInterface)
+    127.0.0.1:51100  pid=11336 (ArmouryCrate.UserSessionHelper)
+    0.0.0.0:57100  pid=6280 (GlideXService)
+
+=== A3. Named pipes: names matching apple/music/amp/media ===
+  total pipes: 195
+    net.steampp.app_v3.1.0_293f5105
+  sample of all pipe names (first 40, for manual review):
+    InitShutdown
+    lsass
+    ntsvcs
+    Winsock2\CatalogChangeListener-76c-0
+    Winsock2\CatalogChangeListener-530-0
+    epmapper
+    Winsock2\CatalogChangeListener-708-0
+    LSM_API_service
+    Winsock2\CatalogChangeListener-838-0
+    atsvc
+    Winsock2\CatalogChangeListener-d74-0
+    {641B073C-E4A8-4FC1-82CE-CEE579CD0BE6}
+    asuscert
+    AsLdrSrv_NamedPipeCommand
+    NvMessageBusBroadcastNVIDIA.Display.Driver
+    Winsock2\CatalogChangeListener-13c4-0
+    wkssvc
+    AsusMigrationSrv_NamedPipeCommand
+    PARSEC-NP
+    Everything Service
+    trkwks
+    srvsvc
+    {18837DD8-C4DF-4E48-8CB6-3DD8E59C2DD5}
+    NvMessageBusBroadcast
+    {F685F498-BFDE-49D3-8132-D708F76B990E}
+    ProtectedPrefix\Administrators\Tailscale\tailscaled
+    PIPE_EVENTROOT\CIMV2SCM EVENT PROVIDER
+    DttServerPipe
+    AuraPipe1
+    AWSession0Server
+    clash-verge-service
+    AsMonStartupTask_NamedPipeCommand_0x1
+    Winsock2\CatalogChangeListener-750-0
+    WiFiNetworkManagerTask
+    3FB6A1B2-40E0-43C3-AD6D-39A499FBCFB0_1
+    TermSrv_API_service
+    Ctx_WinStation_API_service
+    SessEnvPublicRpc
+    Winsock2\CatalogChangeListener-3aa8-0
+    ArmouryCrateDeviceMonitor
+
+=== A4. Services / scheduled tasks / autostart referencing Apple ===
+  [service] Apple Mobile Device Service  state=Running  start=Auto  path="C:\Program Files\Common Files\Apple\Mobile Device Support\AppleMobileDeviceService.exe"
+  [task] \Apple\AppleSoftwareUpdate  C:\Program Files (x86)\Apple Software Update\SoftwareUpdate.exe
+  [run] HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run  iTunesHelper = "C:\Program Files\iTunes\iTunesHelper.exe"
+
+=== B1. SMTC type surface (what third-party apps can call) ===
+  WinRT Windows.Media.Control types loaded
+  --- Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager ---
+      EventRegistrationToken add_CurrentSessionChanged(TypedEventHandler`2)
+      EventRegistrationToken add_SessionsChanged(TypedEventHandler`2)
+      GlobalSystemMediaTransportControlsSession GetCurrentSession()
+      IReadOnlyList`1 GetSessions()
+      Void remove_CurrentSessionChanged(EventRegistrationToken)
+      Void remove_SessionsChanged(EventRegistrationToken)
+      IAsyncOperation`1 RequestAsync()
+  --- Windows.Media.Control.GlobalSystemMediaTransportControlsSession ---
+      EventRegistrationToken add_MediaPropertiesChanged(TypedEventHandler`2)
+      EventRegistrationToken add_PlaybackInfoChanged(TypedEventHandler`2)
+      EventRegistrationToken add_TimelinePropertiesChanged(TypedEventHandler`2)
+      String get_SourceAppUserModelId()
+      GlobalSystemMediaTransportControlsSessionPlaybackInfo GetPlaybackInfo()
+      GlobalSystemMediaTransportControlsSessionTimelineProperties GetTimelineProperties()
+      Void remove_MediaPropertiesChanged(EventRegistrationToken)
+      Void remove_PlaybackInfoChanged(EventRegistrationToken)
+      Void remove_TimelinePropertiesChanged(EventRegistrationToken)
+      IAsyncOperation`1 TryChangeAutoRepeatModeAsync(MediaPlaybackAutoRepeatMode)
+      IAsyncOperation`1 TryChangeChannelDownAsync()
+      IAsyncOperation`1 TryChangeChannelUpAsync()
+      IAsyncOperation`1 TryChangePlaybackPositionAsync(Int64)
+      IAsyncOperation`1 TryChangePlaybackRateAsync(Double)
+      IAsyncOperation`1 TryChangeShuffleActiveAsync(Boolean)
+      IAsyncOperation`1 TryFastForwardAsync()
+      IAsyncOperation`1 TryGetMediaPropertiesAsync()
+      IAsyncOperation`1 TryPauseAsync()
+      IAsyncOperation`1 TryPlayAsync()
+      IAsyncOperation`1 TryRecordAsync()
+      IAsyncOperation`1 TryRewindAsync()
+      IAsyncOperation`1 TrySkipNextAsync()
+      IAsyncOperation`1 TrySkipPreviousAsync()
+      IAsyncOperation`1 TryStopAsync()
+      IAsyncOperation`1 TryTogglePlayPauseAsync()
+      prop String SourceAppUserModelId
+  --- GlobalSystemMediaTransportControlsSessionMediaProperties (read-only snapshot fields) ---
+      prop String AlbumArtist
+      prop String AlbumTitle
+      prop Int32 AlbumTrackCount
+      prop String Artist
+      prop IReadOnlyList`1 Genres
+      prop Nullable`1 PlaybackType
+      prop String Subtitle
+      prop IRandomAccessStreamReference Thumbnail
+      prop String Title
+      prop Int32 TrackNumber
+
+=== B2. Live SMTC snapshot (read only) ===
+  sessions: 

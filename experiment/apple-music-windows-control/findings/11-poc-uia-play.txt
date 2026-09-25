@@ -1,0 +1,32 @@
+﻿=== PoC: precise song playback via UI Automation ===
+  target title: How Do I Make You Love Me
+  [before] title="" artist="" album="" status=Opened pos=00:00:00/00:00:00
+
+=== A. locate the track row ===
+  ListItems visible: 22
+  found: "音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟"
+    patterns: InvokePatternIdentifiers.Pattern, SelectionItemPatternIdentifiers.Pattern, ScrollItemPatternIdentifiers.Pattern, VirtualizedItemPatternIdentifiers.Pattern
+    bounding rect: Empty
+
+=== B. attempt 1: SelectionItemPattern.Select ===
+  Select() issued
+  [after Select] title="" artist="" album="" status=Opened pos=00:00:00/00:00:00
+
+=== C. attempt 2: double click on the row (mouse input) ===
+  double click at ,
+  [after double click] title="" artist="" album="" status=Opened pos=00:00:00/00:00:00
+
+=== D. attempt 3: InvokePattern.Invoke ===
+  Invoke() issued
+  [after Invoke] title="" artist="" album="" status=Opened pos=00:00:00/00:00:00
+
+=== E. final state ===
+  [final] title="" artist="" album="" status=Opened pos=00:00:00/00:00:00
+  (PrintWindow)
+  screenshot: C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\recon\..\findings\shots\11-poc-uia-play.png
+
+  RESULT: precise playback of the target song = False
+  (success requires SMTC title match AND PlaybackStatus = Playing)
+
+=== F. cleanup: pause playback via official SMTC API (leave the app quiet) ===
+  nothing to pause

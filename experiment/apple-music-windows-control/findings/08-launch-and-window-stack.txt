@@ -1,0 +1,30 @@
+﻿=== A. Launch Apple Music (if not running) ===
+  launching: C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic.exe
+  Start-Process returned
+
+  processes after launch:
+    pid=30304  AMPLibraryAgent.exe
+    pid=32504  AppleMusic.exe
+
+=== B. Top level windows of AppleMusic.exe (class name = UI stack hint) ===
+  pid=32504  MainWindowHandle=1966970  title=Apple Music
+    window class = WinUIDesktopWin32WindowClass
+
+  child processes of AppleMusic.exe:
+
+=== C. Named pipes named apple/music/amp/media (app running) ===
+  total pipes: 191
+    no apple/music/itunes/daap/airplay named pipes
+
+=== D. Endpoints owned by Apple pids (listen state first) ===
+    pid=30304: no TCP listener
+    [UDP-BOUND] pid=30304  127.0.0.1:49893
+    [UDP-BOUND] pid=30304  127.0.0.1:49892
+    pid=32504: no TCP listener
+
+=== E. Live SMTC snapshot while Apple Music runs (read-only) ===
+  sessions: 1
+  sourceAppId = AppleInc.AppleMusicWin_nzyj5cx40ttqa!App
+      title= | artist= | album=
+      status=Opened
+      position=00:00:00 / 00:00:00

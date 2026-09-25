@@ -1,0 +1,73 @@
+﻿=== A. Operating system ===
+  Caption      : Microsoft Windows 11 专业版
+  Version/Build: 10.0.26200 / 26200
+  Architecture : 64-bit
+
+=== B. Apple Music install / packaging type ===
+  Name           : AppleInc.AppleMusicWin
+  PackageFamily  : AppleInc.AppleMusicWin_nzyj5cx40ttqa
+  Version        : 1.1540.23042.0
+  InstallLocation: C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+  SignatureKind  : Store   (Store = Microsoft Store signed)
+  IsFramework    : False
+  PublisherId    : nzyj5cx40ttqa
+  executables inside install folder:
+    AMPLibraryAgent.exe   18.01 MB
+    appdefaults.exe   0.26 MB
+    AppleMusic.exe   2.91 MB
+    defaults.exe   0.06 MB
+    RestartAgent.exe   0.08 MB
+    SharedHelper.exe   0.08 MB
+    WMFCapabilities.exe   0.18 MB
+  other packages from the same publisher:
+    AppleInc.AppleMusicWin  1.1540.23042.0
+    AppleInc.iCloud  15.9.60.0
+    AppleInc.AppleDevices  1.1540.24088.0
+
+=== C. AppxManifest: applications + extension declarations ===
+  manifest exported to: findings\01-appxmanifest.xml  (0 chars)
+  extension categories declared:
+  windows.protocol schemes declared:
+    (none)
+  windows.appService declared:
+    (none)
+  capabilities declared:
+
+=== D. Protocol handlers in registry (HKCU / HKLM) ===
+  [HKCU:\Software\Classes\musics]
+    (default)=URL:musics   URL Protocol=
+  [HKCU:\Software\Classes\music]
+    (default)=URL:music   URL Protocol=
+  [HKCU:\Software\Classes\itms]
+    (default)=URL:itms   URL Protocol=
+  [HKLM:\SOFTWARE\Classes\itms]
+    (default)=URL:iTunes Store Protocol   URL Protocol=
+    shell\open\command = "C:\Program Files\iTunes\iTunes.exe" /url "%1"
+    DefaultIcon = C:\Program Files\iTunes\iTunes.exe
+  [HKCU:\Software\Classes\itmss]
+    (default)=URL:itmss   URL Protocol=
+  [HKLM:\SOFTWARE\Classes\itmss]
+    (default)=URL:iTunes Store Secure Protocol   URL Protocol=
+    shell\open\command = "C:\Program Files\iTunes\iTunes.exe" /url "%1"
+    DefaultIcon = C:\Program Files\iTunes\iTunes.exe
+  [itms-apps] not registered
+  [itms-appss] not registered
+  [apple-music] not registered
+  [applemusic] not registered
+  [HKLM:\SOFTWARE\Classes\pcast]
+    (default)=URL:iTunes Podcast   URL Protocol=
+    shell\open\command = "C:\Program Files\iTunes\iTunes.exe" /url "%1"
+    DefaultIcon = C:\Program Files\iTunes\iTunes.exe
+  [podcasts] not registered
+
+=== E. Modern MSIX extension registration (ContractId) ===
+
+=== F. Other related registrations ===
+  [HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AppleMusic.exe] not present
+  [HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\iTunes.exe]
+    (default)=C:\Program Files\iTunes\iTunes.exe
+  [HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\AppleMusic.exe]
+    (default)=C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AppleMusic.exe
+
+=== G. ActivatableClasses (per-package activation entries) ===
+  ActivatableClasses\Package not present
