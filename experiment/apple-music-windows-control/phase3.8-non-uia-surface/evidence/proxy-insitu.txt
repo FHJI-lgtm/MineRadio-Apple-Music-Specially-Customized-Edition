@@ -1,0 +1,12 @@
+## manifest block around the proxy path
+  sktop2:Extension> <Extension Category="windows.publisherCacheFolders"> <PublisherCacheFolders> <Folder Name="com.apple.AuthKitWin" /> <Folder Name="com.apple.MediaServices" /> </PublisherCacheFolders> </Extension> <Extension Category="windows.activatableClass.proxyStub"> <ProxyStub ClassId="F707A913-E0CE-4FD4-BCE3-425DD153285B"> <Path>AMPLibraryAgent.Proxies.dll</Path> <Interface Name="IAMPLibrary" InterfaceId="F707A913-E0CE-4FD4-BCE3-425DD153285B" /> <Interface Name="IAMPMusicLibrary" InterfaceId="68E7097C-F969-4006-AAC3-95115F0ED1C4" /> 
+
+## LoadLibrary proxies.dll handle=0
+
+## B: empirical test - does DllGetClassObject accept the IID as the PS CLSID?
+  DllGetClassObject(clsid=68e7097c-f969-4006-aac3-95115f0ed1c4, iid=IClassFactory) hr=0x80004005 factory=0   [IAMPMusicLibrary]
+  DllGetClassObject(clsid=f707a913-e0ce-4fd4-bce3-425dd153285b, iid=IClassFactory) hr=0x80004005 factory=0   [IAMPLibrary]
+
+## C: process-local PS registration + QI retry
+  IAMPMusicLibrary: cannot confirm a PS class factory for the IID (hr=0x80004005) - mapping NOT assumed
+  IAMPLibrary: cannot confirm a PS class factory for the IID (hr=0x80004005) - mapping NOT assumed
