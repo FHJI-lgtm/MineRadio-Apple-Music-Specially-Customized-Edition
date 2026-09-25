@@ -7,6 +7,33 @@
 
 ---
 
+## 最新一轮（URL 作为确定性定位入口）：**60/60 = 100%**
+
+按确认后的设计改成"URL 只导航、播放仍走已验证 UIA 链路"后重跑：原始数据 `findings/poc/stability-20260925-185755.md/.jsonl/.csv`
+
+| 歌曲 | URL | 次数 | 成功 | 成功率 | mean e2e | median | p95 | max | SMTC 段 median |
+|---|---|---|---|---|---|---|---|---|---|
+| A `How Do I Make You Love Me?`/Abel Tesfaye | cn `/song/.../1603171530` | 20 | 20 | **100%** | 2786 ms | 2662 ms | 3423 ms | 3445 ms | 142 ms |
+| B `晴天`/周杰倫 | **用户提供的 cn `/song/晴天/535824738`** | 20 | 20 | **100%** | 2780 ms | 2672 ms | 3231 ms | 3772 ms | 140 ms |
+| C `Shape of You`/Ed Sheeran | us 专辑链接 `?i=1193701392` | 20 | 20 | **100%** | 2740 ms | 2649 ms | 3340 ms | 3380 ms | 140 ms |
+| **合计** | | **60** | **60** | **100%** | 2769 ms | **2662 ms** | 3380 ms | 3772 ms | **141 ms** |
+
+- 失败阶段计数：**空**；多次尝试：0；多候选（ambiguous）：0；见过错曲播放：0。
+- 这一轮三首都走 `deeplink` 模式（URL 导航 → UIA 找行 → realize → 左侧安全区双击 → SMTC 校验），`navMethod` 均为 `AppleMusic.exe /url`。
+- B 的 SMTC 实测为 `晴天` / `周杰伦 — 叶惠美`：SMTC 报**简体**"周杰伦"而定义里是**繁体**"周杰倫"，靠 CJK 字符重叠容错匹配通过 —— 这个容错对中文歌是必需的（对拉丁名仍严格，见第 10 节）。
+- 中途发现并修掉一个环境类问题：显示缩放变化后 Apple Music 窗口会停在屏幕外（1920x1103 @308,308，屏幕 1920x1080），此时所有行 rect 都落在虚拟屏之外 → 全部 `BOUNDS_INVALID`。现在 `Restore-AmWindow` 除了"最小化则 restore"之外，还会在**窗口超出屏幕时最大化**它（`reason=outside-screen`）。副作用：最大化窗口的 rect 天然比屏幕大 ±12px，因此每次都会判定"需要最大化"并幂等地再做一次，`window.restored` 因此恒为 true（仅信号噪声，无副作用）。
+
+### URL 路径新增的两个阶段码
+
+| 阶段码 | 含义 |
+|---|---|
+| `URL_NAVIGATION_FAILED` | 给了 URL 但页面内容在 12s 内**毫无变化**（导航没生效、链接被店面忽略） |
+| `TARGET_ROW_NOT_FOUND` | 页面确实变了，但没有 title/artist 匹配的行（URL 指向别处或该店面无此曲） |
+
+导航成功**永远不等于播放成功**：即使页面已打开，也必须由 SMTC 报 `Playing` + 标题匹配（给了 artist 时 artist 也要匹配）才判定成功；`SMTC_TIMEOUT`（从未进入 Playing）与 `SMTC_WRONG_TRACK`（在播但曲目不对）始终保持严格区分。
+
+> 说明：下面第 4-7 节记录的是**改造前**那一轮（B 走搜索路径）的结果，保留作为"搜索路径不可靠"的对照证据；核心结论以本节 100% 那一轮为准。
+
 ## 1. 修改/新增了哪些文件
 
 全部位于 `experiment/apple-music-windows-control/`，**未改动 main 业务代码**：

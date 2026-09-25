@@ -106,13 +106,29 @@ function Get-AmWindowState([IntPtr]$Hwnd) {
 function Restore-AmWindow([IntPtr]$Hwnd, [int]$WaitMs = 600) {
   $before = Get-AmWindowState $Hwnd
   $restored = $false
+  $reason = ''
   if ($before.iconic -or -not $before.visible) {
     [void][AmUiaNative]::ShowWindow($Hwnd, 9)   # SW_RESTORE
     $restored = $true
+    $reason = 'minimized'
     Start-Sleep -Milliseconds $WaitMs
+  } else {
+    # A window that hangs outside the screen (observed after a display-scale change:
+    # 1920x1103 at 308,308 on a 1920x1080 screen) reports row rectangles that fall
+    # outside the virtual screen, so every click is rejected as BOUNDS_INVALID.
+    # Maximizing puts the whole content back on screen.
+    $rr = New-Object AmUiaNative+RECT
+    [void][AmUiaNative]::GetWindowRect($Hwnd, [ref]$rr)
+    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    if ($rr.Left -lt $vs.Left -or $rr.Top -lt $vs.Top -or $rr.Right -gt ($vs.Left + $vs.Width) -or $rr.Bottom -gt ($vs.Top + $vs.Height)) {
+      [void][AmUiaNative]::ShowWindow($Hwnd, 3)   # SW_MAXIMIZE
+      $restored = $true
+      $reason = 'outside-screen'
+      Start-Sleep -Milliseconds $WaitMs
+    }
   }
   $after = Get-AmWindowState $Hwnd
-  return @{ restored = $restored; before = $before; after = $after }
+  return @{ restored = $restored; reason = $reason; before = $before; after = $after }
 }
 
 # stage: OK | AM_UI_NOT_FOUND

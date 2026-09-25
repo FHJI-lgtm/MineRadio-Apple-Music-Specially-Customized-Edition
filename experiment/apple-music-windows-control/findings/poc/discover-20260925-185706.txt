@@ -1,0 +1,21 @@
+=== discover/verify 3 songs   2026-09-25T10:57:06.6412351Z ===
+  [A] "How Do I Make You Love Me?" / Abel Tesfaye
+      ok=False stage=BOUNDS_INVALID mode=deeplink attempts=2 e2e=4189ms (smtc=0)
+      row="音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟" candidates=1 ambiguous=False pickedByPosition=False
+      smtc: title="" artist="" status=
+      detail: scrollIntoView=False realize=False setFocus=False rect=1691,1132 1779x81
+  [B] "晴天" / 周杰倫
+      ok=False stage=BOUNDS_INVALID mode=deeplink attempts=2 e2e=3841ms (smtc=0)
+      row="音轨 3 晴天 4 分钟，30 秒钟" candidates=1 ambiguous=False pickedByPosition=False
+      smtc: title="" artist="" status=
+      detail: scrollIntoView=False realize=False setFocus=False rect=1691,1132 1779x81
+  [C] "Shape of You" / Ed Sheeran
+      ok=False stage=BOUNDS_INVALID mode=deeplink attempts=2 e2e=3324ms (smtc=0)
+      row="音轨 4 Shape of You 3 分钟，54 秒钟" candidates=1 ambiguous=False pickedByPosition=False
+      smtc: title="" artist="" status=
+      detail: scrollIntoView=False realize=False setFocus=False rect=1691,1213 1779x81
+
+=== measured SMTC strings (copy into songs.json to freeze) ===
+  A: title="" artist=""
+  B: title="" artist=""
+  C: title="" artist=""
