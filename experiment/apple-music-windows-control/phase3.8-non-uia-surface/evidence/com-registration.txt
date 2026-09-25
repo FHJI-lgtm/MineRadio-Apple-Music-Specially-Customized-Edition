@@ -1,0 +1,72 @@
+=== CLSID registrations pointing at AMPLibraryAgent (HKLM) ===
+
+End of search: 0 match(es) found.
+
+=== CLSID registrations pointing at AMPLibraryAgent (HKCU) ===
+
+End of search: 0 match(es) found.
+
+=== Interface registrations mentioning AMPMusicLibrary ===
+
+End of search: 0 match(es) found.
+
+=== Interface registrations mentioning AMPLibraryAgent (HKLM) ===
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{047D5B9A-EA45-4B2B-B1A2-14DFF00BDE7B}
+    (Default)    REG_SZ    ILamp
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{050C181F-60A8-4711-A1AF-1B1B4C658EA2}
+    (Default)    REG_SZ    ILampArray2
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{11D45590-57FB-4546-B1CE-863107F740DF}
+    (Default)    REG_SZ    ILampArrayEffect
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{1229C9F2-783E-5BC8-9A1E-772E45E66401}
+    (Default)    REG_SZ    Windows.Foundation.TypedEventHandler[Windows.Devices.Lights.LampArray, Object]
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{13608090-E336-4C8F-9053-A92407CA7B1D}
+    (Default)    REG_SZ    ILampArrayBitmapEffectFactory
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{191a8c6e-60dd-5a21-a53c-bf3f940a1dde}
+    (Default)    REG_SZ    IAsyncOperationCompletedHandler_1_Windows__CDevices__CLights__CLamp
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{1959530A-8E53-4E09-AD11-1B7334811CAD}
+    (Default)    REG_SZ    IDebugProgramProvider2
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{2314acda-c5df-5051-977d-94d79d1312fb}
+    (Default)    REG_SZ    Windows.Foundation.Collections.IIterable[Windows.Devices.Lights.Effects.LampArrayEffectPlaylist]
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{24b5818b-448e-53fa-ab4c-663008c5d4cf}
+    (Default)    REG_SZ    Windows.Foundation.TypedEventHandler[Windows.Devices.Lights.Effects.LampArrayBitmapEffect, Windows.Devices.Lights.Effects.LampArrayBitmapRequestedEventArgs]
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{26fd5384-8ac1-55d1-b3e6-fc677092d79d}
+    (Default)    REG_SZ    ITypedEventHandler_2_Windows__CDevices__CLights__CInternal__CLampArrayDeviceWatcher_IInspectable
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{27354145-7F64-5B0F-8F00-5D77AFBE261E}
+    (Default)    REG_SZ    IStreamPseudoRandomBased
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{2B004437-40A7-432E-A0B9-0D570C2153FF}
+    (Default)    REG_SZ    ILampArrayColorRampEffect
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\Interface\{2F5F00F2-2C18-4F88-8435-C534086076F5}
+    (Default)    REG_SZ    ICmsTimestampInfo
+
+
+=== TypeLib entries mentioning AMPMusicLibrary ===
+
+End of search: 0 match(es) found.
+
+=== PackagedCom ClassIndex for AppleMusic ===
+
+=== PackagedCom package AppleMusicWin keys ===
+
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+    (Default)    REG_DWORD    0x3e
+
+
+=== AppID entries mentioning Apple/AMP (HKLM) ===
+
+HKEY_LOCAL_MACHINE\SOFTWARE\Classes\AppID\{16D99191-6280-4B33-A2F5-04805A0FC582}
+    (Default)    REG_SZ    AppleSoftwareUpdateAdmin
+
+End of search: 1 match(es) found.

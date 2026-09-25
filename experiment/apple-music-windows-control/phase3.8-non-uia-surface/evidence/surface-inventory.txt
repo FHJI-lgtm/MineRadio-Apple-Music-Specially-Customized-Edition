@@ -1,0 +1,29 @@
+# 3.8 non-UIA surface inventory 2026-09-25T20:54:05
+
+## processes
+pid=8928 name=AppleMusic.exe parent=19496
+  path=C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AppleMusic.exe
+  cmd="C:\Users\limin\AppData\Local\Microsoft\WindowsApps\AppleMusic.exe" 
+pid=14252 name=AMPLibraryAgent.exe parent=2040
+  path=C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AMPLibraryAgent.exe
+  cmd="C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AMPLibraryAgent.exe" -Embedding
+
+## packaged COM registration (HKCU\Software\Classes\PackagedCom)
+package=AppleInc.AppleDevices_1.1540.24088.0_x64__nzyj5cx40ttqa
+package=AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+package=AppleInc.iCloud_15.9.60.0_x64__nzyj5cx40ttqa
+
+## CLSID/AppID entries mentioning Apple or AMP
+
+## named pipes matching apple/music/amp/agent/itunes
+  \\.\pipe\net.steampp.app_v3.1.0_293f5105
+
+## listening TCP/UDP owned by Apple processes
+  ports 49892/49893 listeners: 
+  udp 127.0.0.1:56216 pid=14252
+  udp 127.0.0.1:56215 pid=14252
+
+## protocol handlers in the package manifest (registry-declared)
+  apple-icloudapp
+  music
+  musics

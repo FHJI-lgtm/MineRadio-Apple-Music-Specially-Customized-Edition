@@ -1,0 +1,73 @@
+# package metadata probe 2026-09-25T20:54:31
+
+## package modules
+  CoreKE.dll  44687 KB
+  CoreFP.dll  36741 KB
+  icudt62.dll  26530 KB
+  AMP.Services.dll  26287 KB
+  onnxruntime.dll  21049 KB
+  CoreMedia.dll  20953 KB
+  AMPLibraryAgent.exe  18439 KB
+  DirectML.dll  18115 KB
+  v8.dll  17755 KB
+  CoreLSKD.dll  16854 KB
+  Microsoft.UI.Xaml.dll  14692 KB
+  AMP.UI.Views.dll  12881 KB
+  icudtl.dat  10043 KB
+  resources.pri  8855 KB
+  CoreAudioToolbox.dll  8744 KB
+  AppleMediaServicesKit.dll  6451 KB
+  Microsoft.UI.Xaml.Controls.dll  6438 KB
+  AMP.UI.Controls.dll  5093 KB
+  CoreGraphics.dll  4889 KB
+  WinUIEdit.dll  3340 KB
+  gnsdk_dsp.dll  3291 KB
+  DWriteCore.dll  3026 KB
+  AppleMusic.exe  2978 KB
+  dwmcorei.dll  2782 KB
+  Foundation.dll  2710 KB
+
+## AppxManifest.xml: comServer / comInterface / library entries
+  [comServer]  <com:Extension Category="windows.comServer"> 
+  [AMPLibraryAgent]  <Application Id="LibraryServer" Executable="AMPLibraryAgent.exe" EntryPoint="Windows.FullTrustApplication"> 
+  [AMPLibraryAgent]  <uap:VisualElements DisplayName="AMPLibraryAgent" Description="AMPLibraryAgent" BackgroundColor="transparent" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png" AppListEntry="none" /> 
+  [AMPLibraryAgent]  <com:ExeServer Executable="AMPLibraryAgent.exe" DisplayName="AMPLibraryAgent"> 
+  [AMPLibraryAgent]  <desktop2:FirewallRules Executable="AMPLibraryAgent.exe"> 
+  [AMPLibraryAgent]  <Path>AMPLibraryAgent.Proxies.dll</Path> 
+  [Interface]  <Interface Name="IAMPLibrary" InterfaceId="F707A913-E0CE-4FD4-BCE3-425DD153285B" /> 
+  [Interface]  <Interface Name="IAMPMusicLibrary" InterfaceId="68E7097C-F969-4006-AAC3-95115F0ED1C4" /> 
+  [Interface]  <Interface Name="ActvityStateEventDelegate" InterfaceId="0A180672-967F-5B4E-9D67-8146D1200522" /> 
+  [Interface]  <Interface Name="BusyChangedEventDelegate" InterfaceId="6F89C3B3-0C25-50C5-BECA-3D5086210E34" /> 
+  [Interface]  <Interface Name="CloudLibraryEventDelegate" InterfaceId="C4C9DE7B-DE44-59DB-9805-54686C6DC298" /> 
+  [Interface]  <Interface Name="FetchInvalidationEventDelegate" InterfaceId="E9AE66D5-042E-5058-BEAA-1355425C739A" /> 
+
+## ASCII interface strings inside AMPLibraryAgent.exe and the main module
+  AMPLibraryAgent.exe (18439 KB) AMP* strings=25
+     A_RAMP_NOT_SUPPORTED
+     AMPErrorDomainCppException
+     AMPErrorDomainHRESULT
+     AMPLAddTrackInfoDataPacker
+     AMPLBaseCommandDataPacker
+     AMPLBaseCommandDataProcessor
+     AMPLChangeDataProcessor
+     AMPLDAppConnection
+     AMPLDArtwork
+     AMPLDCommandProcessor
+     AMPLDDatabaseManager
+     AMPLDLongOperation
+     AMPLDMediaAppsManager
+     AMPLDMediaSharingClientConnectioNotifyConfi
+     AMPLDMediaSharingNotifyClientCountChanged
+     AMPLDMediaSharingPrefs
+     AMPLDMusicAppConnection
+     AMPLDService
+     AMPLDServiceWin
+     AMPLDSharingAdapter
+     AMPLDTVAppConnection
+     AMPLEntireLibraryCommandDataCreator
+     AMPLFetchChangesDataCreator
+     AMPLFetchChangesDataProcessor
+     AMPLibrary
+     !! IAMPMusicLibrary present: IAMPMusicLibrary
+  AppleMusicCore.dll not present
+  AppleMusicWin.dll not present
