@@ -1,0 +1,78 @@
+# Virtual desktop isolation PoC  20260925-214348
+case=A title=[How Do I Make You Love Me?] artist=[Abel Tesfaye] url=https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+observeOnly=true
+
+## BEFORE
+  at=21:43:48.545
+  vdApiAvailable=False
+  vdApiError=Retrieving the COM class factory for component with CLSID {00000000-0000-0000-0000-000000000000} failed due to the following error: 80040154 Class not registered (Exception from HRESULT: 0x80040154 (REGDB_E_CLASSNOTREG)).
+  appleMusicWin32Found=False
+  appleMusicWindowHandle=0
+  appleMusicWindowTitle=
+  appleMusicVisible=False
+  appleMusicIconic=False
+  appleMusicWin32CandidateCount=0
+  appleMusicIsOnCurrentDesktop=unavailable
+  appleMusicDesktopId=unavailable
+  desktopQueryError=no-window
+  foregroundHwnd=1050912
+  foregroundProcess=
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  activeDesktopIdProxy=unavailable
+  activeDesktopIdProxyNote=documented API has no active-desktop getter; proxy = desktop id of the foreground window
+  uiaWindowFound=False
+  uiaWindowName=
+  uiaWindowClass=
+  uiaWindowControlType=
+  uiaWindowEnabled=
+  uiaWindowOffscreen=
+  uiaWindowBounds=
+  smtcTitle=
+  smtcArtist=
+  smtcStatus=
+
+## AFTER
+  at=21:43:48.864
+  vdApiAvailable=False
+  vdApiError=Retrieving the COM class factory for component with CLSID {00000000-0000-0000-0000-000000000000} failed due to the following error: 80040154 Class not registered (Exception from HRESULT: 0x80040154 (REGDB_E_CLASSNOTREG)).
+  appleMusicWin32Found=False
+  appleMusicWindowHandle=0
+  appleMusicWindowTitle=
+  appleMusicVisible=False
+  appleMusicIconic=False
+  appleMusicWin32CandidateCount=0
+  appleMusicIsOnCurrentDesktop=unavailable
+  appleMusicDesktopId=unavailable
+  desktopQueryError=no-window
+  foregroundHwnd=1050912
+  foregroundProcess=
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  activeDesktopIdProxy=unavailable
+  activeDesktopIdProxyNote=documented API has no active-desktop getter; proxy = desktop id of the foreground window
+  uiaWindowFound=False
+  uiaWindowName=
+  uiaWindowClass=
+  uiaWindowControlType=
+  uiaWindowEnabled=
+  uiaWindowOffscreen=
+  uiaWindowBounds=
+  smtcTitle=
+  smtcArtist=
+  smtcStatus=
+
+## AUDIT (mouse / foreground / focus)
+  physicalKeyboardInput=False
+  cursorAfter=1042,758
+  foregroundBefore=: 为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  mouseMoved=False
+  foregroundChanged=False
+  foregroundAfter=: 为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  cursorBefore=1042,758
+  focusChanged=False
+  foregroundChangedByApplication=False
+  focusAfter=
+  focusBefore=
+
+## VERDICT
+  desktopProxyStable=True appleMusicDesktopUnchanged=True targetPlaying=False
+  RESULT: OBSERVATION_ONLY  (no playback attempt was made; this run only validates the observation layer)
