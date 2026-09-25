@@ -53,7 +53,11 @@ function Test-AmArtistLayer([string]$want, [string]$got) {
   if ($w -and $g -and ($w -eq $g)) { $res.ok = $true; $res.layer = 'normalized'; $res.score = 9; return $res }
   $wk = Get-AmArtistKey $want; $gk = Get-AmArtistKey $got
   foreach ($al in $script:AmArtistAliases) {
-    if (($wk -eq $al.a -and $gk -eq $al.b) -or ($wk -eq $al.b -and $gk -eq $al.a)) { $res.ok = $true; $res.layer = 'alias'; $res.score = 8; return $res }
+    # the alias table is written with spaces ("the weeknd"); the keys above are
+    # space-stripped, so BOTH sides must be key-normalized before comparing -
+    # otherwise the catalog credit "Abel Tesfaye" is treated as a different artist.
+    $ka = Get-AmArtistKey $al.a; $kb = Get-AmArtistKey $al.b
+    if (($wk -eq $ka -and $gk -eq $kb) -or ($wk -eq $kb -and $gk -eq $ka)) { $res.ok = $true; $res.layer = 'alias'; $res.score = 8; return $res }
   }
   if ((Test-AmHasCjk $want) -or (Test-AmHasCjk $got)) {
     if ($wk -and $gk) {
@@ -321,8 +325,14 @@ function Resolve-AmSong {
   $out.reason = 'OK'
   $out.songId = $top.trackId
   $out.storefront = $top.storefront
+  # an Apple Music song id is storefront-scoped: build the deep link for the
+  # storefront where the lookup actually confirmed the id, not for the requested
+  # one (a cn URL for a tw-only id simply fails to navigate)
+  $urlStorefront = $Storefront
+  if ($out.lookup.performed -and $out.lookup.ok -and (('' + $out.lookup.storefront) -ne '')) { $urlStorefront = '' + $out.lookup.storefront }
+  $out.urlStorefront = $urlStorefront
   $out.slug = ConvertTo-AmSongSlug $top.title
-  $out.canonicalUrl = Get-AmCanonicalSongUrl $top.trackId $Storefront $top.title
+  $out.canonicalUrl = Get-AmCanonicalSongUrl $top.trackId $urlStorefront $top.title
   $out.confidence = Get-AmConfidence -Winner $top -Selection $sel -RequestTitle $Title -RequestArtist $Artist -RequestAlbum $Album `
     -LookupPerformed (-not $NoLookup) -LookupOk $lookupOk -LookupTitle $lvTitle -LookupArtist $lvArtist -LookupAlbum $lvAlbum
   # auto-play policy: a strong result that is also the plain version (or an explicitly

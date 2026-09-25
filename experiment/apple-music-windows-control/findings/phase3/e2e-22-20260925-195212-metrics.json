@@ -1,0 +1,97 @@
+{
+    "label":  "e2e-22",
+    "jsonl":  "e2e-20260925-194743.jsonl",
+    "auditedAt":  "2026-09-25T11:52:12.3232106Z",
+    "total":  22,
+    "resolveSuccess":  16,
+    "resolveRate":  73,
+    "autoPlayable":  16,
+    "playbackAttempted":  16,
+    "playbackSuccess":  12,
+    "playbackRate":  75,
+    "e2eSuccess":  12,
+    "e2eRate":  55,
+    "smtcExplainedFalseNegatives":  3,
+    "smtcExplainedIds":  [
+                             "E01",
+                             "E04",
+                             "E22"
+                         ],
+    "smtcUnexplainedMismatch":  0,
+    "smtcUnexplainedIds":  [
+
+                           ],
+    "smtcStrictMismatch":  2,
+    "smtcStrictMismatchIds":  [
+                                  "E01",
+                                  "E04"
+                              ],
+    "playbackVerifiedAudited":  15,
+    "playbackRateAudited":  94,
+    "e2eRateAudited":  68,
+    "wrongArtistAcceptances":  0,
+    "wrongArtistIds":  [
+
+                       ],
+    "wrongVersionAutomaticAcceptance":  0,
+    "wrongVersionIds":  [
+
+                        ],
+    "wrongAlbumAutoplayed":  0,
+    "wrongAlbumIds":  [
+
+                      ],
+    "editionDifferentFromRequest":  0,
+    "editionDifferentIds":  [
+
+                            ],
+    "hardFailure":  false,
+    "resolveMs":  {
+                      "p50":  2515,
+                      "max":  6310,
+                      "p95":  5662,
+                      "mean":  3048,
+                      "n":  22
+                  },
+    "playbackMs":  {
+                       "p50":  3841,
+                       "max":  26798,
+                       "p95":  26798,
+                       "mean":  8027,
+                       "n":  16
+                   },
+    "e2eMs":  {
+                  "p50":  5719,
+                  "max":  29557,
+                  "p95":  23806,
+                  "mean":  8887,
+                  "n":  22
+              },
+    "smtcMs":  {
+                   "p50":  144,
+                   "max":  6090,
+                   "p95":  6090,
+                   "mean":  1388,
+                   "n":  16
+               },
+    "playbackMsDerivedCount":  0,
+    "taxonomy":  {
+                     "RESOLVE_NOT_FOUND":  0,
+                     "RESOLVE_AMBIGUOUS":  6,
+                     "RESOLVE_WRONG_ARTIST":  0,
+                     "RESOLVE_WRONG_ALBUM":  0,
+                     "RESOLVE_WRONG_VERSION":  0,
+                     "RESOLVE_LOW_CONFIDENCE":  0,
+                     "RESOLVE_NONCANONICAL_ONLY":  0,
+                     "LOOKUP_FAILED":  0,
+                     "URL_NAVIGATION_FAILED":  1,
+                     "TARGET_ROW_NOT_FOUND":  0,
+                     "REALIZE_FAILED":  0,
+                     "BOUNDS_INVALID":  0,
+                     "CLICK_FAILED":  0,
+                     "SMTC_TIMEOUT":  0,
+                     "SMTC_WRONG_TRACK":  3,
+                     "APP_NOT_RUNNING":  0
+                 },
+    "refusalCodes":  "RESOLVE_AMBIGUOUS"
+}

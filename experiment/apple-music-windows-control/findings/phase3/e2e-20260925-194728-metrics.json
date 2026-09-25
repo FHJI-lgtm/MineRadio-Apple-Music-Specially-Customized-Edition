@@ -1,0 +1,83 @@
+{
+    "label":  "e2e",
+    "jsonl":  "e2e-20260925-194608.jsonl",
+    "auditedAt":  "2026-09-25T11:47:28.0908689Z",
+    "total":  10,
+    "resolveSuccess":  7,
+    "resolveRate":  70,
+    "autoPlayable":  7,
+    "playbackAttempted":  7,
+    "playbackSuccess":  6,
+    "playbackRate":  86,
+    "e2eSuccess":  6,
+    "e2eRate":  60,
+    "wrongArtistAcceptances":  0,
+    "wrongArtistIds":  [
+
+                       ],
+    "smtcArtistMismatch":  0,
+    "smtcArtistMismatchIds":  [
+
+                              ],
+    "wrongVersionAutomaticAcceptance":  0,
+    "wrongVersionIds":  [
+
+                        ],
+    "wrongAlbumAutoplayed":  0,
+    "wrongAlbumIds":  [
+
+                      ],
+    "editionDifferentFromRequest":  0,
+    "editionDifferentIds":  [
+
+                            ],
+    "hardFailure":  false,
+    "resolveMs":  {
+                      "p50":  2612,
+                      "max":  5150,
+                      "p95":  5150,
+                      "mean":  2744,
+                      "n":  10
+                  },
+    "playbackMs":  {
+                       "p50":  4187,
+                       "max":  18352,
+                       "p95":  18352,
+                       "mean":  6208,
+                       "n":  7
+                   },
+    "e2eMs":  {
+                  "p50":  6710,
+                  "max":  20964,
+                  "p95":  20964,
+                  "mean":  7092,
+                  "n":  10
+              },
+    "smtcMs":  {
+                   "p50":  561,
+                   "max":  6107,
+                   "p95":  6107,
+                   "mean":  1449,
+                   "n":  7
+               },
+    "playbackMsDerivedCount":  0,
+    "taxonomy":  {
+                     "RESOLVE_NOT_FOUND":  0,
+                     "RESOLVE_AMBIGUOUS":  3,
+                     "RESOLVE_WRONG_ARTIST":  0,
+                     "RESOLVE_WRONG_ALBUM":  0,
+                     "RESOLVE_WRONG_VERSION":  0,
+                     "RESOLVE_LOW_CONFIDENCE":  0,
+                     "RESOLVE_NONCANONICAL_ONLY":  0,
+                     "LOOKUP_FAILED":  0,
+                     "URL_NAVIGATION_FAILED":  0,
+                     "TARGET_ROW_NOT_FOUND":  0,
+                     "REALIZE_FAILED":  0,
+                     "BOUNDS_INVALID":  0,
+                     "CLICK_FAILED":  0,
+                     "SMTC_TIMEOUT":  0,
+                     "SMTC_WRONG_TRACK":  1,
+                     "APP_NOT_RUNNING":  0
+                 },
+    "refusalCodes":  "RESOLVE_AMBIGUOUS"
+}
