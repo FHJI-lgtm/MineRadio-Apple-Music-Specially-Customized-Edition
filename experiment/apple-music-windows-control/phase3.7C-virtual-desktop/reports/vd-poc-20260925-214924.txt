@@ -1,0 +1,82 @@
+# Virtual desktop isolation PoC  20260925-214924
+case=A title=[How Do I Make You Love Me?] artist=[Abel Tesfaye] url=https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530
+observeOnly=true
+
+## BEFORE
+  at=21:49:24.106
+  vdApiAvailable=True
+  vdApiError=ok
+  appleMusicWin32Found=True
+  appleMusicWin32FindError=
+  appleMusicWindowHandle=18614846
+  appleMusicWindowTitle=Apple Music
+  appleMusicVisible=True
+  appleMusicIconic=False
+  appleMusicWin32CandidateCount=6
+  appleMusicProcessRunning=True
+  appleMusicIsOnCurrentDesktop=False
+  appleMusicDesktopId=d0eaca32-4916-4f4a-8a59-06207d6a2f9d
+  desktopQueryError=|
+  foregroundHwnd=1050912
+  foregroundProcess=
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  activeDesktopIdProxyNote=documented API has no active-desktop getter; proxy = desktop id of the foreground window
+  uiaWindowFound=False
+  uiaWindowName=
+  uiaWindowClass=
+  uiaWindowControlType=
+  uiaWindowEnabled=
+  uiaWindowOffscreen=
+  uiaWindowBounds=
+  smtcTitle=Romeo (feat. Frances Alina)
+  smtcArtist=JØD & Meiden — Romeo (feat. Frances Alina) - Single
+  smtcStatus=Paused
+
+## AFTER
+  at=21:49:24.474
+  vdApiAvailable=True
+  vdApiError=ok
+  appleMusicWin32Found=True
+  appleMusicWin32FindError=
+  appleMusicWindowHandle=18614846
+  appleMusicWindowTitle=Apple Music
+  appleMusicVisible=True
+  appleMusicIconic=False
+  appleMusicWin32CandidateCount=6
+  appleMusicProcessRunning=True
+  appleMusicIsOnCurrentDesktop=False
+  appleMusicDesktopId=d0eaca32-4916-4f4a-8a59-06207d6a2f9d
+  desktopQueryError=|
+  foregroundHwnd=1050912
+  foregroundProcess=
+  foregroundTitle=为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+  activeDesktopIdProxyNote=documented API has no active-desktop getter; proxy = desktop id of the foreground window
+  uiaWindowFound=False
+  uiaWindowName=
+  uiaWindowClass=
+  uiaWindowControlType=
+  uiaWindowEnabled=
+  uiaWindowOffscreen=
+  uiaWindowBounds=
+  smtcTitle=Romeo (feat. Frances Alina)
+  smtcArtist=JØD & Meiden — Romeo (feat. Frances Alina) - Single
+  smtcStatus=Paused
+
+## AUDIT (mouse / foreground / focus)
+  physicalKeyboardInput=False
+  cursorAfter=1133,826
+  foregroundBefore=: 为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  mouseMoved=True
+  foregroundChanged=False
+  foregroundAfter=: 为Apple Music定制Mineradio版本 (1) — DeepSeek Harness 和另外 2 个页面 - 个人 - Microsoft​ Edge
+  cursorBefore=1129,827
+  focusChanged=False
+  foregroundChangedByApplication=False
+  focusAfter=发消息或创建任务, / 调用指令, @ 文件或对话
+  focusBefore=发消息或创建任务, / 调用指令, @ 文件或对话
+
+## VERDICT
+  desktopProxyStable=True appleMusicDesktopUnchanged=True targetPlaying=False
+  RESULT: OBSERVATION_ONLY  (no playback attempt was made; this run only validates the observation layer)
