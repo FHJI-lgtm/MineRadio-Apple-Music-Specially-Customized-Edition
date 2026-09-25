@@ -1,0 +1,29 @@
+{
+    "stamp":  null,
+    "jobs":  15,
+    "mouseGuardStatic":  {
+                             "ok":  true,
+                             "hits":  [
+
+                                      ],
+                             "scanned":  4
+                         },
+    "playWaitMs":  6000,
+    "rows":  [
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null,
+                 null
+             ]
+}

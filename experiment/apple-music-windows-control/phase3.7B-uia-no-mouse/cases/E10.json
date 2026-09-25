@@ -1,0 +1,25 @@
+{
+  "note": "Phase 3.7B target. Only the song identity and scenarios live here; nothing is hardcoded anywhere else.",
+  "target": {
+    "id": "E10",
+    "title": "Someone Like You",
+    "artist": "Adele",
+    "songId": "403037927",
+    "url": "https://music.apple.com/cn/song/someone-like-you/403037927"
+  },
+  "scenarios": [
+    { "id": "N1", "desc": "Apple Music visible, NOT foreground, cursor elsewhere", "minimize": 0, "otherAppForeground": true, "restore": 0 },
+    { "id": "N2", "desc": "Apple Music minimized, another app foreground", "minimize": 1, "otherAppForeground": true, "restore": 0 },
+    { "id": "N3", "desc": "Apple Music foreground, cursor elsewhere", "minimize": 0, "otherAppForeground": false, "restore": 1 },
+    { "id": "N4", "desc": "target page already loaded, another app foreground", "minimize": 0, "otherAppForeground": true, "restore": 0, "preloadTarget": true }
+  ],
+  "strategies": [
+    { "id": "invoke", "desc": "InvokePattern.Invoke on the target row" },
+    { "id": "select", "desc": "SelectionItemPattern.Select on the target row" },
+    { "id": "legacy-default", "desc": "LegacyIAccessiblePattern.DoDefaultAction" },
+    { "id": "legacy-select", "desc": "LegacyIAccessiblePattern.Select" },
+    { "id": "realize+invoke", "desc": "VirtualizedItem.Realize -> invoke" },
+    { "id": "realize+select", "desc": "VirtualizedItem.Realize -> select" },
+    { "id": "realize+invoke+select", "desc": "Realize -> invoke -> select (each step attributed)" }
+  ]
+}
