@@ -61,8 +61,19 @@ function getLyricSunBloomTexture() {
   return lyricSunBloomTexture;
 }
 
-function makeLyricShaderMaterial(mask, pal, motionProfile) {
+// opts 是**可选**的弱化/局部高亮参数, 不传时逐字段等于改动前的硬编码值 (主歌词路径完全不变):
+//   baseColor/hiColor/glowColor/solarColor: 覆盖配色 (背景人声用更弱的同色系)
+//   edgeBoost/sweep/shimmer/glitch/glitchSlice/glitchChroma/glitchRate: 覆盖动效强度
+//   fillBand: { min, max } —— 竖向填充带 (uv.y)。只有显式传入时才启用 uFillBand=1;
+//     用于"同一张 mask 里有多行, 但只有第一行参与逐字高亮"的场景 (背景人声原文 + 其译文)。
+//     不传时 uFillBand=0, 片元着色器整段跳过, 与改动前逐像素一致。
+function makeLyricShaderMaterial(mask, pal, motionProfile, opts) {
   motionProfile = motionProfile || lyricMotionProfile();
+  opts = opts || {};
+  var fillBand = opts.fillBand && isFinite(Number(opts.fillBand.min)) && isFinite(Number(opts.fillBand.max)) ? opts.fillBand : null;
+  function optOr(value, fallback) {
+    return value == null ? fallback : Number(value);
+  }
   return new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: mask.texture },
@@ -71,28 +82,33 @@ function makeLyricShaderMaterial(mask, pal, motionProfile) {
       uTextMin: { value: mask.textMin },
       uTextMax: { value: mask.textMax },
       uOpacity: { value: 0 },
-      uBaseColor: { value: lyricThreeColor(pal.primary, '#d6f8ff', 0.38) },
-      uHiColor: { value: lyricThreeColor(pal.highlight || pal.primary, '#fff0b8', 0.48) },
-      uGlowColor: { value: lyricStageGlowThreeColor(pal, '#9cffdf', 0.36) },
-      uSolarColor: { value: lyricBeatGlowThreeColor(pal, '#fff0b8', 0.50) },
-      uFeather: { value: lyricsHasNativeKaraoke ? 0.030 : 0.055 },
+      uBaseColor: { value: opts.baseColor || lyricThreeColor(pal.primary, '#d6f8ff', 0.38) },
+      uHiColor: { value: opts.hiColor || lyricThreeColor(pal.highlight || pal.primary, '#fff0b8', 0.48) },
+      uGlowColor: { value: opts.glowColor || lyricStageGlowThreeColor(pal, '#9cffdf', 0.36) },
+      uSolarColor: { value: opts.solarColor || lyricBeatGlowThreeColor(pal, '#fff0b8', 0.50) },
+      uFeather: { value: opts.feather == null ? (lyricsHasNativeKaraoke ? 0.030 : 0.055) : Number(opts.feather) },
       uSolar: { value: 0 },
-      uSweep: { value: motionProfile.sweep || 0 },
-      uShimmer: { value: motionProfile.shimmer || 0 },
-      uGlitch: { value: motionProfile.glitch || 0 },
-      uGlitchSlice: { value: motionProfile.glitchSlice || 0 },
-      uGlitchChroma: { value: motionProfile.glitchChroma || 0 },
-      uGlitchRate: { value: motionProfile.glitchRate || 1 },
+      uSweep: { value: optOr(opts.sweep, motionProfile.sweep || 0) },
+      uShimmer: { value: optOr(opts.shimmer, motionProfile.shimmer || 0) },
+      uGlitch: { value: optOr(opts.glitch, motionProfile.glitch || 0) },
+      uGlitchSlice: { value: optOr(opts.glitchSlice, motionProfile.glitchSlice || 0) },
+      uGlitchChroma: { value: optOr(opts.glitchChroma, motionProfile.glitchChroma || 0) },
+      uGlitchRate: { value: optOr(opts.glitchRate, motionProfile.glitchRate || 1) },
       uGlitchSeed: { value: Math.random() * 997.0 },
       uGlitchBurst: { value: 0 },
-      uEdgeBoost: { value: motionProfile.edgeBoost || 1 },
+      uEdgeBoost: { value: optOr(opts.edgeBoost, motionProfile.edgeBoost || 1) },
       uActiveMix: { value: 1 },
+      uFillBand: { value: fillBand ? 1 : 0 },
+      uFillBandMin: { value: fillBand ? clampRange(Number(fillBand.min), 0, 1) : 0 },
+      uFillBandMax: { value: fillBand ? clampRange(Number(fillBand.max), 0, 1) : 1 },
+      uFillBandFeather: { value: fillBand && isFinite(Number(fillBand.feather)) ? Math.max(0, Number(fillBand.feather)) : 0.02 },
     },
     vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: [
       'precision highp float;',
       'uniform sampler2D uMap;',
       'uniform float uTime,uProgress,uTextMin,uTextMax,uOpacity,uFeather,uSolar,uSweep,uShimmer,uGlitch,uGlitchSlice,uGlitchChroma,uGlitchRate,uGlitchSeed,uGlitchBurst,uEdgeBoost,uActiveMix;',
+      'uniform float uFillBand,uFillBandMin,uFillBandMax,uFillBandFeather;',
       'uniform vec3 uBaseColor,uHiColor,uGlowColor,uSolarColor;',
       'varying vec2 vUv;',
       'float hash(float n){ return fract(sin(n) * 43758.5453123); }',
@@ -113,6 +129,11 @@ function makeLyricShaderMaterial(mask, pal, motionProfile) {
       '  float mask = texture2D(uMap, sampleUv).a;',
       '  if(mask < 0.01) discard;',
       '  float activeMix = clamp(uActiveMix, 0.0, 1.0);',
+      // 可选竖向填充带: 只有显式传入 fillBand 的行才进入 (uFillBand = 1)。
+      // 主歌词/译文行的 uFillBand 恒为 0, 该 GPU 分支被整段跳过, 着色逐像素不变。
+      '  if (uFillBand > 0.5) {',
+      '    activeMix *= smoothstep(uFillBandMin - uFillBandFeather, uFillBandMin + uFillBandFeather, uv.y) * (1.0 - smoothstep(uFillBandMax - uFillBandFeather, uFillBandMax + uFillBandFeather, uv.y));',
+      '  }',
       '  float denom = max(0.001, uTextMax - uTextMin);',
       '  float p = clamp((uv.x - uTextMin) / denom, 0.0, 1.0);',
       '  float filled = (1.0 - smoothstep(uProgress, uProgress + uFeather, p)) * activeMix;',

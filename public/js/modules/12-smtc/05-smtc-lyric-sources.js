@@ -348,7 +348,9 @@ var smtcLyricSourceImpls = {
         '&artist=' + encodeURIComponent(smtcNormalizedSearchTerm(smtcStore.artist)) +
         '&album=' + encodeURIComponent(smtcNormalizedSearchTerm(smtcStore.album)) +
         (durationSec > 0 ? ('&duration=' + encodeURIComponent(String(Math.round(durationSec)))) : '');
-      return apiJson(url, { timeoutMs: 4000 })
+      // 已导入 Apple Music 歌词凭证时这里会走官方 Web 歌词 (带逐词时间轴),
+      // 首次请求需要先获取 Web Player Bearer, 因此给到 9s; 本地缓存命中时依旧是毫秒级返回。
+      return apiJson(url, { timeoutMs: 9000 })
         .then(function (r) { return mergeInlineLyricResponseForSong(synthetic, r || {}); })
         .catch(function () { return null; });
     },
@@ -378,12 +380,89 @@ function smtcLyricWritePersistentCache(normKey, entry) {
       timestamp: Date.now(),
       response: entry.response,
       synthetic: entry.synthetic,
+      // 记录"这次拿到的仍是本地兜底结果"的时间: 冷却期内不再重复刷新
+      appleLocalFallbackAt: (entry.response && entry.response.source === 'apple-ttml-local') ? Date.now() : undefined,
     }).catch(function () { });
   } catch (e) { }
 }
 
+// ---------- Apple Music 凭证感知的缓存刷新 (P0) ----------
+// 背景: 歌词凭证已配置时, 旧的 apple-ttml-local 结果缺少背景人声 (bg) 字段;
+//   若直接命中该缓存, 就永远不会请求 Web 官方歌词 (背景人声永远显示在主歌词里)。
+// 策略: refresh-first + fallback
+//   - 凭证已配置 且 缓存响应来源是 apple-ttml-local -> 视为可刷新 (不直接命中),
+//     由主编排器重新请求 /api/apple/lyric (服务端仍是 Web 优先)。
+//   - 刷新后若仍是本地结果, 冷却期内允许直接命中, 避免每次切歌重复请求。
+//   - Web 失败绝不清空旧歌词: 主编排器只在拿到可用结果时才替换状态。
+var SMTC_APPLE_LOCAL_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+var SMTC_APPLE_LYRICS_CREDENTIAL_TTL_MS = 30 * 1000;
+var smtcAppleLyricsCredentialState = { configured: false, checked: false, at: 0 };
+
+function smtcAppleLyricsCredentialConfigured() {
+  return smtcAppleLyricsCredentialState.configured === true;
+}
+
+// 只读状态, 会话内缓存 30s; 桥接不可用时按"未配置"处理 (行为与改动前一致)
+function smtcRefreshAppleLyricsCredentialState() {
+  var bridge = window.desktopWindow;
+  if (!bridge || typeof bridge.getAppleLyricsCredentialStatus !== 'function') {
+    return Promise.resolve(smtcAppleLyricsCredentialConfigured());
+  }
+  var now = Date.now();
+  if (smtcAppleLyricsCredentialState.checked && now - smtcAppleLyricsCredentialState.at < SMTC_APPLE_LYRICS_CREDENTIAL_TTL_MS) {
+    return Promise.resolve(smtcAppleLyricsCredentialConfigured());
+  }
+  return Promise.resolve()
+    .then(function () { return bridge.getAppleLyricsCredentialStatus(); })
+    .then(function (status) {
+      smtcAppleLyricsCredentialState = { configured: !!(status && status.configured), checked: true, at: Date.now() };
+      return smtcAppleLyricsCredentialConfigured();
+    })
+    .catch(function () {
+      smtcAppleLyricsCredentialState = { configured: false, checked: false, at: 0 };
+      return false;
+    });
+}
+
+function smtcAppleLocalEntryNeedsRefresh(entry) {
+  var response = entry && entry.response;
+  if (!response) return false;
+  if (String(response.source || '') !== 'apple-ttml-local') return false;   // apple-web 等一律不降级
+  if (!smtcAppleLyricsCredentialConfigured()) return false;                  // 未配置凭证 -> 行为完全不变
+  var fallbackAt = Number(entry.appleLocalFallbackAt || 0);
+  if (fallbackAt && Date.now() - fallbackAt < SMTC_APPLE_LOCAL_REFRESH_COOLDOWN_MS) return false;
+  return true;
+}
+
+// ---------- Apple Web 歌词解析 schema 迁移 (只让旧版 apple-web 缓存失效一次) ----------
+// v1 = 只解析 body (官方翻译恒为空); v2 = 解析 head/translations 官方翻译;
+// v3 = 背景人声附属行的官方译文与主译文分离 (bg 条目新增 translation 字段)。
+// 必须与 apple-music-web-lyrics.js 的 APPLE_WEB_LYRICS_SCHEMA_VERSION 保持一致。
+// 只对"旧 schema 的 apple-web"生效: 重新请求一次后, 新响应自带当前版本号,
+// 因此即使该歌真的没有中文翻译/没有 bg 译文也不会每次播放都请求 API (不会永久刷新)。
+var SMTC_APPLE_WEB_LYRICS_SCHEMA_VERSION = 3;
+
+function smtcAppleWebEntryNeedsRefresh(entry) {
+  var response = entry && entry.response;
+  if (!response) return false;
+  if (String(response.source || '') !== 'apple-web') return false;            // 其它源一律不受影响
+  if (!smtcAppleLyricsCredentialConfigured()) return false;                   // 未配置凭证 -> 行为完全不变
+  var version = Number(response.schemaVersion || 0);
+  if (!isFinite(version) || version >= SMTC_APPLE_WEB_LYRICS_SCHEMA_VERSION) return false;
+  return true;
+}
+
 function smtcLyricCacheEntryUsable(entry, title, artist) {
   if (!entry || !entry.response || !entry.source) return null;
+  if (smtcAppleLocalEntryNeedsRefresh(entry)) {
+    console.log('[LYRICS] apple-ttml-local 缓存视为可刷新 (已配置歌词凭证) -> 重新请求 /api/apple/lyric');
+    return null;
+  }
+  if (smtcAppleWebEntryNeedsRefresh(entry)) {
+    console.log('[LYRICS] apple-web 缓存 schema 过旧 (v' + Number(entry.response.schemaVersion || 0)
+      + ' < v' + SMTC_APPLE_WEB_LYRICS_SCHEMA_VERSION + ') -> 重新请求 /api/apple/lyric');
+    return null;
+  }
   if (entry.timestamp && Date.now() - Number(entry.timestamp) > SMTC_LYRIC_SOURCE_CACHE_TTL_MS) return null;
   var synthetic = entry.synthetic || smtcLyricSyntheticForSourceId(entry.source, title, artist);
   try {
@@ -405,6 +484,8 @@ async function smtcResolveLyricViaSources(title, artist, seq, skipCache) {
     ' skipCache=' + (skipCache ? 'true' : 'false'));
 
   if (!skipCache) {
+    // 先刷新"歌词凭证是否已配置": 决定旧的 apple-ttml-local 缓存能否直接命中
+    await smtcRefreshAppleLyricsCredentialState();
     // 1) 会话内缓存
     var mem = smtcLyricSourceMemoryCache[normKey];
     var memHit = mem ? smtcLyricCacheEntryUsable(mem, title, artist) : null;

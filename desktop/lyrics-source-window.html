@@ -15,9 +15,9 @@
     user-select: none;
     overflow: hidden;
   }
-  /* 外层: 固定 header + 可滚动主体 + 固定底部操作区
-     (中间区域 min-height:0 + overflow-y:auto, 窗口变矮时只有它收缩滚动,
-      标题/关闭按钮/底部按钮永远留在可视区域内) */
+  /* 布局: 固定标题区 + 唯一可滚动内容区 + 固定底部操作区
+     (内容区 min-height:0 + overflow-y:auto: 窗口变矮时只有它收缩滚动,
+       标题 / 关闭按钮 / 底部按钮永远留在可视区域内) */
   body { display: flex; flex-direction: column; height: 100vh; }
 
   .titlebar {
@@ -39,11 +39,12 @@
   }
   .close-btn:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.95); }
 
-  /* 中间: 唯一可滚动区域 */
+  /* 中间: 唯一可滚动区域 (窗口 320x272, 内容比可视区高时只滚动这里) */
   .body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     padding: 2px 14px 10px;
   }
@@ -65,7 +66,7 @@
   .row.drag-over { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.12); }
   .handle { opacity: 0.5; font-size: 13px; }
 
-  /* Apple Music 说明块: 独立于排序列表, 不参与拖拽排序, 无任何凭证输入 */
+  /* Apple Music 说明块: 独立于排序列表, 不参与拖拽排序 */
   .apple-block {
     margin: 12px 2px 0;
     padding: 10px 12px;
@@ -73,12 +74,107 @@
     background: rgba(255,255,255,0.035);
     border: 1px solid rgba(255,255,255,0.08);
   }
+  .apple-block-title { font-size: 12px; font-weight: 600; opacity: 0.85; margin-bottom: 6px; }
+  /* 说明文字: 占满整块宽度 (不再与按钮抢同一行而被压成窄列) */
   .apple-note { font-size: 10.5px; opacity: 0.55; line-height: 1.55; }
   .apple-note b { font-weight: 600; opacity: 0.9; }
 
+  /* 获取方式: 缓存获取 (无需登录) / 导入凭证
+     版式: 名称行 -> 说明文字 (整行宽) -> 操作按钮行 (两个按钮同一行, 右对齐) */
+  .way {
+    margin-top: 8px; padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .way-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; min-width: 0;
+  }
+  .way-name { font-size: 11.5px; font-weight: 600; opacity: 0.88; min-width: 0; }
+  .way-desc { font-size: 10.5px; opacity: 0.5; line-height: 1.5; margin-top: 3px; }
+  .way-tag {
+    flex: 0 0 auto; font-size: 10px; opacity: 0.6;
+    padding: 2px 8px; border-radius: 999px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
+  }
+  /* 凭证操作: 独立一行, 重新获取 / 删除凭证 始终同行 */
+  .way-actions {
+    display: flex; align-items: center; flex-wrap: wrap;
+    justify-content: flex-end; gap: 6px;
+    margin-top: 8px;
+  }
+  /* 作者样式里的 display:flex 会覆盖 UA 的 [hidden]{display:none}, 必须显式声明 */
+  .way-actions[hidden] { display: none; }
+  .mini-btn {
+    padding: 4px 10px; border-radius: 7px; font-size: 10.5px; cursor: pointer;
+    color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+  .mini-btn:hover:not(:disabled) { background: rgba(255,255,255,0.13); }
+  .mini-btn:disabled { opacity: 0.45; cursor: default; }
+  .mini-btn.danger { color: rgba(255,150,150,0.92); border-color: rgba(255,120,120,0.28); }
+  .mini-btn.danger:hover:not(:disabled) { background: rgba(255,90,90,0.16); }
+  .mini-btn[hidden] { display: none; }
+
+  /* 凭证状态: 只显示"是否已配置", 永不显示 token 明文 */
+  .cred-state { font-size: 10.5px; opacity: 0.5; margin-top: 8px; padding: 0 2px; }
+  .cred-state.configured { color: rgba(150,220,170,0.88); opacity: 0.9; }
+
+  /* 凭证导入弹窗 (遮罩覆盖整个窗口) */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: rgba(0,0,0,0.55);
+  }
+  .modal-mask[hidden] { display: none; }
+  /* 弹窗: 高度不得超过窗口 (否则居中后标题/底部按钮会被挤出可视区);
+     标题固定 + 内容滚动 + 底部按钮固定, 小窗口下按钮永远可达。 */
+  .modal {
+    width: 100%; max-width: 420px;
+    max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column;
+    border-radius: 12px; background: #191c1f;
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 18px 48px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .modal-title { flex: 0 0 auto; padding: 12px 14px 8px; font-size: 13px; font-weight: 600; }
+  .modal-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 14px 6px;
+  }
+  .modal-body::-webkit-scrollbar { width: 8px; }
+  .modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+  .modal-body::-webkit-scrollbar-track { background: transparent; }
+  .modal-text { margin: 0 0 7px; font-size: 11px; line-height: 1.6; opacity: 0.6; }
+  .modal-text b { opacity: 0.9; font-weight: 600; }
+  .modal-input {
+    width: 100%; box-sizing: border-box; margin-top: 4px;
+    padding: 8px 10px; border-radius: 8px; font-size: 12px;
+    color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.16); outline: none;
+    user-select: text;
+  }
+  .modal-input:focus { border-color: rgba(255,255,255,0.34); }
+  .modal-tip { min-height: 15px; margin-top: 6px; font-size: 10.5px; line-height: 1.5; opacity: 0.55; }
+  .modal-tip.error { color: rgba(255,140,140,0.95); opacity: 0.95; }
+  .modal-actions {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 6px; margin-top: 8px;
+  }
+  .modal-foot {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding: 10px 14px 14px;
+  }
+  .foot-btn.primary { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.30); }
+  .foot-btn.primary:hover:not(:disabled) { background: rgba(255,255,255,0.22); }
+
   .hint { font-size: 11px; opacity: 0.45; padding: 10px 4px 0; }
 
-  /* 底部: 固定操作区 (不随中间内容滚动) */
+  /* 底部: 固定操作区 (不随中间内容滚动, 也不被内容挤出可视区) */
   .foot {
     flex: 0 0 auto;
     padding: 8px 14px 14px;
@@ -104,13 +200,59 @@
     <div class="sub">拖动以调整搜索优先级 · 搜索歌词时按此顺序依次尝试</div>
     <div class="list" id="list"></div>
     <div class="apple-block">
-      <div class="apple-note">Apple Music 歌词直接读取本机 Apple Music 的官方歌词缓存：Apple Music 应用已登录并播放过该曲目后即可自动使用，<b>无需配置任何凭证</b>。</div>
+      <div class="apple-block-title">Apple Music 歌词</div>
+      <div class="apple-note">三种方式互不影响：<b>缓存获取</b>始终可用、不需要登录；<b>登录获取 Token</b> 或 <b>手动导入 Token</b> 后优先使用 Apple Music 官方歌词（含逐词时间轴与翻译）。</div>
+
+      <div class="way">
+        <div class="way-head">
+          <div class="way-name">缓存获取（无需登录）</div>
+          <div class="way-tag">始终启用</div>
+        </div>
+        <div class="way-desc">读取本机 Apple Music 已缓存的官方歌词；该曲目在 Apple Music 播放过之后即可自动生效。</div>
+      </div>
+
+      <div class="way">
+        <div class="way-head">
+          <div class="way-name">Apple Music Web 的 media-user-token</div>
+        </div>
+        <div class="way-desc">登录 Apple Music 网页版后，可直接使用“登录 Apple Music 获取 Token”获取凭证；也可以手动从浏览器开发者工具的请求 Headers 中复制 media-user-token。</div>
+        <div class="way-desc">此 Token 仅保存在本机，用于获取 Apple Music 官方歌词。</div>
+        <div class="way-actions" id="cred-login-row">
+          <button class="mini-btn" id="cred-login">登录 Apple Music 获取 Token</button>
+        </div>
+        <div class="way-actions">
+          <button class="mini-btn" id="cred-import">手动导入 Token</button>
+          <button class="mini-btn danger" id="cred-clear" hidden>删除凭证</button>
+        </div>
+      </div>
+
+      <div class="cred-state" id="cred-state">未配置 Apple Music 歌词凭证</div>
     </div>
   </div>
   <div class="foot">
     <button class="foot-btn" id="research" title="按当前排序重新搜索当前歌曲">重新搜索歌词</button>
     <button class="foot-btn" id="done">关闭</button>
   </div>
+
+  <div class="modal-mask" id="cred-modal" hidden>
+    <div class="modal">
+      <div class="modal-title" id="cred-modal-title">导入 Apple Music 歌词凭证</div>
+      <div class="modal-body" id="cred-modal-body">
+        <p class="modal-text">登录 Apple Music 网页版后自动获取 <b>Apple Music Web 的 media-user-token</b>：</p>
+        <div class="modal-actions">
+          <button class="mini-btn" id="cred-login-modal">登录 Apple Music 获取 Token</button>
+        </div>
+        <p class="modal-text">或手动粘贴：在浏览器开发者工具的请求 Headers 中复制完整 media-user-token，粘贴到下面。</p>
+        <input class="modal-input" id="cred-input" type="password" spellcheck="false" autocomplete="off" placeholder="粘贴 media-user-token">
+        <div class="modal-tip" id="cred-tip">Token 仅保存在本机，不会显示完整内容，也不会写入日志。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="foot-btn" id="cred-cancel">取消</button>
+        <button class="foot-btn primary" id="cred-save">验证并保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="lyrics-source-window.js"></script>
 </body>
 </html>

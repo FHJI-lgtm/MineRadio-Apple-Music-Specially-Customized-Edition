@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, screen, session, globalShortcut, dialog, Tray, Menu, protocol, desktopCapturer, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, session, globalShortcut, dialog, Tray, Menu, protocol, desktopCapturer, powerMonitor, safeStorage } = require('electron');
 const net = require('net');
 const http = require('http');
 const path = require('path');
@@ -35,6 +35,18 @@ const {
   saveAppleUserToken,
   clearAppleToken,
 } = require('../apple-music-api');
+// Apple Music 歌词凭证 (media-user-token) 的独立存储, 与上面的 Apple Developer
+// 凭证体系 (apple-music-api.js) 完全分离, 互不读写对方的数据结构。
+const {
+  createAppleMusicLyricsCredentialStore,
+  CREDENTIAL_FILE_NAME: APPLE_LYRICS_CREDENTIAL_FILE_NAME,
+} = require('./apple-music-lyrics-credential');
+// Apple Music Web 私有歌词 provider: 只注入"取 media-user-token 的回调" + 后台预热 Bearer。
+// provider 自身不落盘、不打印 token, 也不会把 token 返回给 renderer。
+const {
+  setCredentialSource: setAppleLyricsCredentialSource,
+  warmUpWebPlayerBearer: warmUpAppleLyricsBearer,
+} = require('../apple-music-web-lyrics');
 
 registerWallpaperEngineScheme(protocol);
 registerLocalMusicScheme(protocol);
@@ -135,6 +147,8 @@ const KUGOU_LOGIN_URL = 'https://www.kugou.com/';
 const KUGOU_LOGIN_WARMUP_URL = 'https://www.kugou.com/newuc/user/uc/type=edit';
 const SPOTIFY_LOGIN_PARTITION = 'persist:mineradio-spotify-login';
 const APPLE_LOGIN_PARTITION = 'persist:mineradio-apple-login';
+// 歌词 Token 自动获取的超时 (只作用于 purpose === 'lyrics-token'; 账号登录路径不设超时)
+const APPLE_LYRICS_TOKEN_LOGIN_TIMEOUT_MS = 180000;
 const APPLE_MEDIA_USER_TOKEN_COOKIE = 'media-user-token';
 const appleMusicLoginUrl = (storefront) => 'https://music.apple.com/' + encodeURIComponent(String(storefront || 'us').toLowerCase());
 
@@ -3207,9 +3221,17 @@ async function readAppleMediaUserToken(cookieSession) {
   }
 }
 
-async function openAppleMusicLoginWindow(owner) {
+// purpose === 'lyrics-token' 时只服务"Apple Music 歌词凭证"入口:
+//   - **不要求** Apple Developer 凭证 (Team ID / Key ID / P8): 歌词 media-user-token 与
+//     Developer API 完全无关, 前置检查在这里解耦;
+//   - 登录成功后写入现有 appleMusicLyricsCredentialStore (仅既有本地格式校验 + 现有 safeStorage),
+//     不写 Developer 体系的 music user token 文件;
+//   - 返回值只含状态字段, 永不包含 token 本身, 也不会把 token 写进日志/错误信息。
+// 其余调用 (账号登录) 的行为与改动前完全一致。
+async function openAppleMusicLoginWindow(owner, purpose) {
+  const lyricsTokenMode = purpose === 'lyrics-token';
   const credentials = getAppleCredentials();
-  if (!credentials.configured) {
+  if (!lyricsTokenMode && !credentials.configured) {
     return {
       ok: false,
       provider: 'apple',
@@ -3221,17 +3243,24 @@ async function openAppleMusicLoginWindow(owner) {
   const cookieSession = session.fromPartition(APPLE_LOGIN_PARTITION);
   const initialToken = await readAppleMediaUserToken(cookieSession);
   if (initialToken) {
-    try {
-      await saveAppleUserToken({ musicUserToken: initialToken, storefront: credentials.storefront });
-      return { ok: true, provider: 'apple', reused: true, message: 'Apple Music 已连接（复用上次会话）。' };
-    } catch (err) {
-      console.warn('[AppleMusicLogin] reused token rejected, opening sign-in window:', err.message);
+    if (lyricsTokenMode) {
+      if (saveAppleLyricsTokenCandidate(initialToken)) {
+        return { ok: true, provider: 'apple', reused: true, lyricsToken: true };
+      }
+    } else {
+      try {
+        await saveAppleUserToken({ musicUserToken: initialToken, storefront: credentials.storefront });
+        return { ok: true, provider: 'apple', reused: true, message: 'Apple Music 已连接（复用上次会话）。' };
+      } catch (err) {
+        console.warn('[AppleMusicLogin] reused token rejected, opening sign-in window:', err.message);
+      }
     }
   }
 
   return new Promise((resolve) => {
     let settled = false;
     let pollTimer = null;
+    let pollTimeoutTimer = 0;
 
     const loginWindow = new BrowserWindow({
       width: 1060,
@@ -3263,6 +3292,14 @@ async function openAppleMusicLoginWindow(owner) {
 
     const trySaveToken = async (token) => {
       if (settled || !token) return false;
+      if (lyricsTokenMode) {
+        // 歌词凭证: 只做既有本地格式校验 + 写入现有 credential store, 不发起任何网络请求,
+        // 因此不会因为网络不可用而失败, 也不会阻止保存。
+        if (!saveAppleLyricsTokenCandidate(token)) return false;
+        if (pollTimeoutTimer) clearTimeout(pollTimeoutTimer);
+        await finish({ ok: true, provider: 'apple', opened: true, lyricsToken: true });
+        return true;
+      }
       try {
         const saved = await saveAppleUserToken({ musicUserToken: token, storefront: credentials.storefront });
         await finish(Object.assign({ ok: true, provider: 'apple', opened: true }, saved, {
@@ -3318,22 +3355,75 @@ async function openAppleMusicLoginWindow(owner) {
       cookieSession.cookies.removeListener('changed', cookieChangedHandler);
       if (settled) return;
       if (pollTimer) clearInterval(pollTimer);
+      if (pollTimeoutTimer) clearTimeout(pollTimeoutTimer);
       readAppleMediaUserToken(cookieSession).then((token) => {
         if (token) {
           trySaveToken(token).then((saved) => {
-            if (!saved) resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录未完成，请重新打开登录窗口。' });
+            if (!saved) {
+              resolve(lyricsTokenMode
+                ? { ok: false, provider: 'apple', error: 'TOKEN_REJECTED', message: '未能识别登录令牌，请重试或使用手动导入 Token。' }
+                : { ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录未完成，请重新打开登录窗口。' });
+            }
           });
         } else {
-          resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭，未检测到登录态。' });
+          resolve(lyricsTokenMode
+            ? { ok: false, provider: 'apple', error: 'LOGIN_WINDOW_CLOSED', message: '登录窗口已关闭，未检测到登录态。' }
+            : { ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭，未检测到登录态。' });
         }
       }).catch(() => {
-        resolve({ ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭。' });
+        resolve(lyricsTokenMode
+          ? { ok: false, provider: 'apple', error: 'LOGIN_WINDOW_CLOSED', message: '登录窗口已关闭。' }
+          : { ok: false, provider: 'apple', cancelled: true, message: 'Apple Music 登录窗口已关闭。' });
       });
     });
 
+    if (lyricsTokenMode && APPLE_LYRICS_TOKEN_LOGIN_TIMEOUT_MS > 0) {
+      // 歌词 Token 获取必须有明确的超时失败态 (账号登录路径不设超时, 行为不变)
+      pollTimeoutTimer = setTimeout(() => {
+        pollTimeoutTimer = 0;
+        finish({
+          ok: false,
+          provider: 'apple',
+          error: 'LOGIN_TIMEOUT',
+          message: '登录超时，请重试。',
+        });
+      }, APPLE_LYRICS_TOKEN_LOGIN_TIMEOUT_MS);
+    }
     pollTimer = setInterval(checkToken, 2500);
-    loginWindow.loadURL(appleMusicLoginUrl(credentials.storefront)).catch((e) => finish({ ok: false, provider: 'apple', error: e.message || 'Apple Music 登录页打开失败' }));
+    loginWindow.loadURL(appleMusicLoginUrl(credentials.storefront)).catch((e) => {
+      if (pollTimeoutTimer) clearTimeout(pollTimeoutTimer);
+      finish({
+        ok: false,
+        provider: 'apple',
+        error: lyricsTokenMode ? 'LOGIN_PAGE_FAILED' : (e.message || 'Apple Music 登录页打开失败'),
+      });
+    });
   });
+}
+
+// 歌词凭证 media-user-token: 只做既有本地格式校验 + 写入现有 credential store (safeStorage),
+// 不发起任何网络请求; 返回布尔值, 永不回显/记录 token。
+function saveAppleLyricsTokenCandidate(token) {
+  try {
+    const saved = appleMusicLyricsCredentialStore.set(token);
+    return !!(saved && saved.ok);
+  } catch (err) {
+    // 只记录固定文案: 绝不打印 token 或包含 token 的错误详情
+    console.warn('[AppleMusicLogin] lyrics token save failed');
+    return false;
+  }
+}
+
+// 歌词凭证入口: 复用同一个 Apple Music Web 登录窗口自动捕获 media-user-token。
+// 不要求 Apple Developer 凭证; 返回值只含状态字段 (ok/configured/reused/error/message)。
+async function openAppleMusicLyricsTokenLogin(owner) {
+  const result = await openAppleMusicLoginWindow(owner, 'lyrics-token');
+  if (result && result.ok) return { ok: true, configured: true, reused: result.reused === true };
+  return {
+    ok: false,
+    error: String((result && result.error) || 'LOGIN_WINDOW_CLOSED'),
+    message: String((result && result.message) || '未能获取 Token，请重试或使用手动导入 Token。'),
+  };
 }
 
 async function clearAppleMusicLoginSession() {
@@ -5511,6 +5601,22 @@ ipcMain.on('mineradio-smtc-log', (event, message) => {
   smtcAppendLog('renderer: ' + String(message || '').slice(0, 500));
 });
 
+// ---- Apple Music 歌词凭证 (media-user-token) ----
+// 只服务"Apple Music 歌词源"的可选 Web 凭证增强入口。
+// 与 .apple-music-credentials.json / .apple-music-token.json (Apple Developer
+// 体系) 完全独立: 独立文件、独立结构, 互不影响。
+// 本阶段只做 保存 / 状态读取 / 删除, 不发起任何网络请求。
+const appleMusicLyricsCredentialStore = createAppleMusicLyricsCredentialStore({
+  filePath: path.join(STABLE_USER_DATA_PATH, APPLE_LYRICS_CREDENTIAL_FILE_NAME),
+  safeStorage,
+});
+// 把凭证读取口交给歌词 Web provider (仅主进程内可见), 已配置时后台预热 Bearer,
+// 这样首次歌词请求不必等 Apple 页面 + bundle 下载。
+setAppleLyricsCredentialSource(() => appleMusicLyricsCredentialStore.readTokenForMainProcess());
+try {
+  if (appleMusicLyricsCredentialStore.getStatus().configured) warmUpAppleLyricsBearer();
+} catch (_) {}
+
 // ============================================================
 // Lyrics Source Window (独立歌词源搜索顺序窗口)
 // 只传输"搜索顺序"; 不传输歌词内容/SMTC/音频/封面。
@@ -5652,6 +5758,46 @@ ipcMain.on('mineradio-lyrics-source-research-done', (event) => {
   if (lyricsSourceWindow && !lyricsSourceWindow.isDestroyed()) {
     try { lyricsSourceWindow.webContents.send('mineradio-lyrics-source-research-done', {}); } catch (_) {}
   }
+});
+
+// ---- Apple Music 歌词凭证 (media-user-token) IPC ----
+// 只接受歌词源窗口的调用; 只返回"是否已配置/更新时间", 永不返回 token 明文;
+// 不打印 token, 不发起网络请求。
+function isTrustedLyricsSourceIpc(event) {
+  return !!(lyricsSourceWindow
+    && !lyricsSourceWindow.isDestroyed()
+    && event
+    && event.sender
+    && event.sender === lyricsSourceWindow.webContents);
+}
+
+// 状态是"只读且不含 token"的信息: 主窗口需要它来判断"是否该刷新旧本地歌词缓存";
+// set / clear 仍然只允许设置窗口调用 (最小权限)。
+function isTrustedAppleLyricsCredentialStatusReader(event) {
+  return isTrustedLyricsSourceIpc(event) || isTrustedMainWindowIpc(event);
+}
+
+ipcMain.handle('mineradio-apple-lyrics-credential-status', (event) => {
+  if (!isTrustedAppleLyricsCredentialStatusReader(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return { ok: true, ...appleMusicLyricsCredentialStore.getStatus() };
+});
+
+ipcMain.handle('mineradio-apple-lyrics-credential-set', (event, payload = {}) => {
+  if (!isTrustedLyricsSourceIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  const token = payload && typeof payload === 'object' ? payload.mediaUserToken : payload;
+  return appleMusicLyricsCredentialStore.set(token);
+});
+
+ipcMain.handle('mineradio-apple-lyrics-credential-clear', (event) => {
+  if (!isTrustedLyricsSourceIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return appleMusicLyricsCredentialStore.clear();
+});
+
+// 复用 Apple Music Web 登录窗口自动获取 media-user-token (不要求 Developer 凭证)。
+// 只接受歌词源窗口调用; 返回值只含状态, 永不返回/打印 token。
+ipcMain.handle('mineradio-apple-lyrics-credential-login', async (event) => {
+  if (!isTrustedLyricsSourceIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return openAppleMusicLyricsTokenLogin(lyricsSourceWindow);
 });
 
 // ============================================================
@@ -6173,6 +6319,7 @@ const APP_OWNED_MIGRATION_FILES = [
   '.spotify-credentials.json',
   '.apple-music-token.json',
   '.apple-music-credentials.json',
+  APPLE_LYRICS_CREDENTIAL_FILE_NAME,   // Apple Music 歌词凭证 (media-user-token)
   'current-fx-autosave.json',
   'desktop-behavior.json',
   'cuefield-feedback.jsonl',

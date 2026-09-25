@@ -299,7 +299,7 @@ function lyricMaskStoneSeed(lines, entries, fontSize) {
   var signature = (lines || []).join('\u241e') + '|' + Math.round(Number(fontSize) || 0) + '|';
   for (var i = 0; i < (entries || []).length; i++) {
     var entry = entries[i] || {};
-    signature += (entry.translationLine ? 't' : 'p') + ':' + lyricEntryWeight(entry) + ':' + Math.round((Number(entry.scale) || 1) * 1000) + '|';
+    signature += (entry.backgroundLine ? 'b' : (entry.translationLine ? 't' : 'p')) + ':' + lyricEntryWeight(entry) + ':' + Math.round((Number(entry.scale) || 1) * 1000) + '|';
   }
   return lyricStableHash(signature);
 }
@@ -628,10 +628,10 @@ function drawLyricReadabilityStrokeLines(state, dx, dy) {
     var y = state.y0 + i * state.lineHeight + lyricEntryLineOffset(entry) * state.lineHeight + (dy || 0);
     var prevAlpha = ctx.globalAlpha;
     var prevLineWidth = ctx.lineWidth;
-    var alpha = entry.alpha == null ? 1 : clampRange(Number(entry.alpha), entry.translationLine ? 0.10 : 0.22, 1);
+    var alpha = entry.alpha == null ? 1 : clampRange(Number(entry.alpha), entry.backgroundLine ? 0.14 : (entry.translationLine ? 0.10 : 0.22), 1);
     ctx.font = lyricFontCss(lineFontSize, lyricEntryWeight(entry));
-    ctx.globalAlpha = prevAlpha * alpha * (entry.translationLine ? 0.62 : 1);
-    if (entry.translationLine) ctx.lineWidth = Math.max(1.8 * state.pixelScale, prevLineWidth * 0.52);
+    ctx.globalAlpha = prevAlpha * alpha * (entry.backgroundLine ? 0.72 : (entry.translationLine ? 0.62 : 1));
+    if (entry.translationLine || entry.backgroundLine) ctx.lineWidth = Math.max(1.8 * state.pixelScale, prevLineWidth * (entry.backgroundLine ? 0.60 : 0.52));
     if (state.fitScaleX < 1) {
       ctx.save();
       ctx.translate(state.W / 2 + (dx || 0), 0);
@@ -779,14 +779,14 @@ function drawLyricGlowText(state, dx, dy) {
   for (var i = 0; i < state.drawLines.length; i++) {
     var entry = state.entries[i] || {};
     var lineFontSize = state.fontSize * (entry.scale || 1);
-    var alpha = entry.alpha == null ? 1 : clampRange(Number(entry.alpha), entry.translationLine ? 0.08 : 0.22, 1);
+    var alpha = entry.alpha == null ? 1 : clampRange(Number(entry.alpha), entry.backgroundLine ? 0.12 : (entry.translationLine ? 0.08 : 0.22), 1);
     var y = state.y0 + i * state.lineHeight + lyricEntryLineOffset(entry) * state.lineHeight + (dy || 0);
     var prevAlpha = ctx.globalAlpha;
     var prevLineWidth = ctx.lineWidth;
-    var glowFactor = entry.translationLine ? 0.34 : 1;
+    var glowFactor = entry.backgroundLine ? 0.45 : (entry.translationLine ? 0.34 : 1);
     ctx.font = lyricFontCss(lineFontSize, lyricEntryWeight(entry));
     ctx.globalAlpha = prevAlpha * alpha * glowFactor;
-    if (entry.translationLine) ctx.lineWidth = Math.max(1.8 * state.pixelScale, prevLineWidth * 0.48);
+    if (entry.translationLine || entry.backgroundLine) ctx.lineWidth = Math.max(1.8 * state.pixelScale, prevLineWidth * (entry.backgroundLine ? 0.56 : 0.48));
     if (state.fitScaleX < 1) {
       ctx.save();
       ctx.translate(state.W / 2 + (dx || 0), 0);

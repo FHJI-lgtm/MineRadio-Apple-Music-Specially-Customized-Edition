@@ -119,6 +119,26 @@
       -webkit-background-clip:text;
       background-clip:text;
     }
+    /* 背景人声 (Apple Music ttm:role="x-bg"): 主歌词下方的附属行
+       字号约 74%、不透明度约 58%, 保持居中, 不新增配色体系 (复用 --lyric-secondary) */
+    .line-bg{
+      position:relative;
+      z-index:1;
+      display:none;
+      margin-top:.16em;
+      color:var(--lyric-secondary);
+      font-family:var(--lyric-font);
+      font-size:calc(var(--lyric-size) * .74);
+      font-weight:calc(var(--lyric-weight) - 150);
+      line-height:var(--lyric-line-height);
+      letter-spacing:var(--lyric-letter-spacing);
+      text-align:center;
+      white-space:nowrap;
+      overflow:visible;
+      opacity:.58;
+      text-shadow:0 0 18px var(--lyric-shadow-soft);
+    }
+    .line-bg.show{display:block}
     .line.in{animation:lyr-in 820ms cubic-bezier(.16,.84,.32,1.02) forwards}
     body.paused .line{filter:none;opacity:.84}
     .lock-hint{
@@ -187,7 +207,7 @@
   <canvas id="fx"></canvas>
   <div class="wrap">
     <div id="stage" class="stage">
-      <div id="lyricViewport" class="lyric-viewport"><div id="lyricScroller" class="lyric-scroll"><div id="line" class="line" data-text="Mineradio">Mineradio</div></div></div>
+      <div id="lyricViewport" class="lyric-viewport"><div id="lyricScroller" class="lyric-scroll"><div id="line" class="line" data-text="Mineradio">Mineradio</div><div id="lineBg" class="line-bg" aria-hidden="true"></div></div></div>
       <div id="lockHint" class="lock-hint"><span class="lock-icon"></span><span id="lockText">&#20013;&#38190;&#35299;&#38145;</span><button id="closeLyricsBtn" class="lyrics-close" type="button" aria-label="Close desktop lyrics">&#20851;&#38381;&#26700;&#38754;&#27468;&#35789;</button></div>
     </div>
   </div>
@@ -198,11 +218,13 @@
     var stage = document.getElementById('stage');
     var lyricViewport = document.getElementById('lyricViewport');
     var line = document.getElementById('line');
+    var lineBg = document.getElementById('lineBg');   // 背景人声附属行 (x-bg)
     var lockHint = document.getElementById('lockHint');
     var lockText = document.getElementById('lockText');
     var closeLyricsBtn = document.getElementById('closeLyricsBtn');
     var dpr = 1;
     var lastText = '';
+    var lastBgText = '';
     var progressText = '';
     var displayedProgress = 0;
     var baseFontSize = 58;
@@ -222,7 +244,7 @@
     var particles = [];
     var live = { solar:0, beat:0, bass:0, scale:1, glow:0, spark:0, lift:0 };
     var state = {
-      enabled:false,text:'Mineradio',progress:0,progressSpan:4.8,progressReceivedAt:0,playing:false,
+      enabled:false,text:'Mineradio',textBg:'',progress:0,progressSpan:4.8,progressReceivedAt:0,playing:false,
       playbackTime:0,playbackDuration:0,playbackRate:1,playbackReceivedAt:0,beatMapKey:'',
       size:1,opacity:.92,clickThrough:true,lyricGlowParticles:false,cinema:true,highlightFollow:false,frameRate:60,
       lyricGlow:true,lyricGlowBeat:true,lyricGlowStrength:.35,highBloom:0,beatGlow:0,beatPulse:0,bass:0,feather:.055,
@@ -592,6 +614,7 @@
       var maxHeight = Math.max(64, innerHeight - 188);
       var nextLayoutKey = [
         line.textContent || '',
+        lineBg ? (lineBg.textContent || '') : '',
         baseFontSize,
         state.fontFamily,
         state.fontWeight,
@@ -807,6 +830,19 @@
         line.setAttribute('data-text', text);
         layoutKey = '';
         replayLineAnimation();
+      }
+      // 背景人声: 只作为主行下方的附属行显示, 不参与主行进度/滚动定位
+      var bgText = typeof next.textBg === 'string' ? next.textBg.trim() : '';
+      var bgTranslation = typeof next.textBgTranslation === 'string' ? next.textBgTranslation.trim() : '';
+      // 背景人声的官方译文 (可选): 与 bg 原文同一附属行, 绝不混入主歌词 translation
+      var bgFullText = bgTranslation ? (bgText ? (bgText + ' ' + bgTranslation) : bgTranslation) : bgText;
+      if (bgFullText !== lastBgText) {
+        lastBgText = bgFullText;
+        if (lineBg) {
+          lineBg.textContent = bgFullText;
+          lineBg.className = bgFullText ? 'line-bg show' : 'line-bg';
+        }
+        layoutKey = '';
       }
       fitLyricText(false);
     }

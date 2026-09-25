@@ -23,6 +23,9 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 const crypto = require('crypto');
+// 第三阶段: Apple Music Web 私有歌词 provider (Bearer + media-user-token)。
+// 只读、不落盘; 未配置凭证或调用失败时, 下面的本地 TTML 缓存路径完全不变。
+const webLyrics = require('./apple-music-web-lyrics');
 
 const APPLE_API_BASE = (process.env.MINERADIO_APPLE_API_BASE || 'https://api.music.apple.com').replace(/\/+$/, '');
 // amp-api.music.apple.com accepts the same developer + media-user tokens
@@ -1610,12 +1613,61 @@ function findAppleCachedSongId(roots, title, artist) {
   return '';
 }
 
+// Web provider 需要的 catalog song id: 直接复用上面已验证的本地 Apple 元数据解析。
+webLyrics.setLocalSongIdResolver(({ title, artist }) => {
+  try { return findAppleCachedSongId(appleMusicPackageRoots(), title, artist) || ''; } catch (_) { return ''; }
+});
+
 async function handleAppleLyric(id, opts) {
   const options = opts && typeof opts === 'object' ? opts : {};
   const wantId = normalizeText(id);
   const wantTitle = String(options.title || '').trim();
   const wantArtist = String(options.artist || '').trim();
   const base = { provider: 'apple', id: wantId, lyric: '', tlyric: '', yrc: '', ytlrc: '' };
+
+  // ---- 第三阶段: Apple Music Web 私有歌词 (需要 media-user-token) ----
+  // 已配置凭证时优先走官方 Web 歌词 (带逐词时间轴与 localization);
+  // 任何失败 (401/403/404/429/5xx/网络/TTML 解析/song id 找不到) 都不改变原有语义,
+  // 继续执行下面的本地 TTML 缓存路径。这里只记录错误分类, 绝不记录 token。
+  if (webLyrics.isConfigured()) {
+    let web = null;
+    try {
+      web = await webLyrics.fetchWebLyrics({
+        songId: wantId,
+        title: wantTitle,
+        artist: wantArtist,
+        album: String(options.album || '').trim(),
+        durationSec: Number(options.durationSec) || 0,
+        storefront: String(options.storefront || '').trim(),
+      });
+    } catch (error) {
+      web = { ok: false, error: 'NETWORK_ERROR', detail: (error && error.message) || '' };
+    }
+    if (web && web.ok && web.lyric) {
+      return Object.assign(base, {
+        id: web.songId || wantId,
+        lyric: web.lyric,
+        yrc: web.yrc || '',
+        tlyric: web.tlyric || '',
+        ytlrc: web.ytlrc || '',
+        source: 'apple-web',
+        songId: web.songId,
+        storefront: web.storefront,
+        language: web.language,
+        // 原歌词语言 (与 language 同义) / 实际翻译语言 (<translation xml:lang>, 不是根 xml:lang)
+        lyricsLanguage: web.lyricsLanguage || web.language || '',
+        localizationLanguage: web.localizationLanguage || '',
+        // Apple Web 歌词解析 schema 版本: 缓存层据此让旧版 (无官方翻译) 缓存失效一次
+        schemaVersion: Number(web.schemaVersion) || 0,
+        wordTiming: !!web.hasWordTiming,
+        // 背景人声 (可选字段): 只做管道透传, 不影响既有字段; 无 bg 时为 undefined (JSON 自动省略)
+        bg: Array.isArray(web.bg) && web.bg.length ? web.bg : undefined,
+        matchedBy: 'apple-web:' + (web.songIdVia || 'unknown'),
+        stats: web.stats || null,
+      });
+    }
+    console.warn('[AppleMusicLyric] web provider unavailable, fallback to local cache:', (web && web.error) || 'UNKNOWN');
+  }
 
   const roots = appleMusicPackageRoots();
   if (!roots.length) {

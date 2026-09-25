@@ -16,6 +16,10 @@ win-unpacked/
 *.asar
 
 # User data and private state
+# Apple Developer 私钥 (P8 / PEM) — 真实密钥, 永不提交
+*.p8
+AuthKey_*.p8
+*.pem
 .cookie
 .qq-cookie
 .kugou-cookie
@@ -33,6 +37,9 @@ spotify-token.json
 .apple-music-credentials.json
 apple-music-credentials.json
 .apple-music-token.json
+# Apple Music 歌词凭证 (Apple Music Web media-user-token) — 真实令牌, 永不提交
+.apple-music-lyrics-credential.json
+apple-music-lyrics-credential.json
 listen-sync-journal.json
 login-easter-egg.json
 login-easter-egg-state.json
@@ -63,6 +70,9 @@ yarn-error.log*
 # Historical local experiment files
 public/index.*.html
 !public/index.html
+
+# Apple Music Web lyrics PoC raw dumps (可含官方歌词原文, 永不提交)
+.poc-qa/
 
 # Screenshots and transient verification artifacts
 .playwright-cli/

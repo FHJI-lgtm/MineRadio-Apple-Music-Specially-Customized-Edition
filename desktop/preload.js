@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   trimAppMemory: (payload) => ipcRenderer.invoke('mineradio-memory-trim-app', payload || {}),
   purgeSystemMemory: (payload) => ipcRenderer.invoke('mineradio-memory-purge-system', payload || {}),
   getCacheSettings: () => ipcRenderer.invoke('mineradio-cache-get-settings'),
+  // Apple Music 歌词凭证状态 (只读, 不含 token): 用于判断旧本地歌词缓存是否需要刷新
+  getAppleLyricsCredentialStatus: () => ipcRenderer.invoke('mineradio-apple-lyrics-credential-status'),
   chooseCacheDirectory: () => ipcRenderer.invoke('mineradio-cache-choose-directory'),
   setCacheSettings: (payload) => ipcRenderer.invoke('mineradio-cache-set-settings', payload || {}),
   listWallpaperEngineProjects: (payload) => ipcRenderer.invoke('mineradio-wallpaper-engine-list', payload || {}),

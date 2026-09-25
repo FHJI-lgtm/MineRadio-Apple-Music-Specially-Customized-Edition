@@ -932,8 +932,29 @@ function currentDesktopLyricSnapshot() {
       var span = Math.max(0.75, nextT - curLine.t);
       return {
         text: normalizeDesktopLyricText(curLine.text || currentLyricFallbackText()),
+        // 背景人声 (x-bg): 与 3D 舞台共享同一份数据, 作为主行下方的附属行
+        textBg: stripLyricBackgroundWrapperText(curLine.background || ''),
+        // 背景人声的官方译文 (可选): 同属 bg 附属行, 绝不进入主歌词 translation
+        textBgTranslation: stripLyricBackgroundWrapperText(curLine.backgroundTranslation || ''),
         progress: getLyricLineProgress(curLine, nextLine, t),
         progressSpan: span
+      };
+    }
+    // 前奏等待态 (t < 第一句 t): 歌词已加载, 只是还没唱到第一行。
+    // 直接显示第 0 行 (progress = 0 => 无逐字高亮), 不显示 title 卡片、也不清空;
+    // 只读既有时间戳, 不改任何时间。只有"没有真实歌词"才继续走下面的 title 逻辑。
+    if (lines.length && !lyricsAreFallbackTitleOnly(lines)) {
+      var waitingLine = lines[0];
+      var waitingNext = lines[1];
+      var waitingNextT = waitingNext && waitingNext.t > waitingLine.t
+        ? waitingNext.t
+        : Math.min((audio && audio.duration) || t + 4, waitingLine.t + (waitingLine.duration || 4.8));
+      return {
+        text: normalizeDesktopLyricText(waitingLine.text || ''),
+        textBg: stripLyricBackgroundWrapperText(waitingLine.background || ''),
+        textBgTranslation: stripLyricBackgroundWrapperText(waitingLine.backgroundTranslation || ''),
+        progress: 0,
+        progressSpan: Math.max(0.75, waitingNextT - waitingLine.t)
       };
     }
     var introText = normalizeDesktopLyricText(currentLyricFallbackText());
@@ -1049,6 +1070,8 @@ function desktopLyricsPayload(forceBeatMap, includeCustomFontData) {
   var payload = {
     enabled: !!fx.desktopLyrics && !isDevelopmentLockedFx('desktopLyrics'),
     text: lyric.text,
+    textBg: lyric.textBg || '',
+    textBgTranslation: lyric.textBgTranslation || '',
     progress: lyric.progress,
     progressSpan: lyric.progressSpan,
     title: meta.title,
@@ -1379,7 +1402,7 @@ function pushDesktopLyricsState(force) {
   var colors = payload.colors || {};
   var motion = payload.motion || {};
   var payloadCustomFontId = payload.customFont ? payload.customFont.id : '';
-  var key = payload.enabled + '|' + payload.text + '|' + Math.round(payload.progress * 1000) + '|' + Math.round((payload.progressSpan || 0) * 100) + '|' + payload.playing + '|' + payload.size + '|' + payload.opacity + '|' + payload.y + '|' + payload.clickThrough + '|' + payload.cinema + '|' + payload.highlightFollow + '|' + payload.frameRate + '|' + payload.fontFamily + '|' + payloadCustomFontId + '|' + payload.fontWeight + '|' + payload.letterSpacing + '|' + payload.lineHeight + '|' + payload.lyricScale + '|' + payload.feather + '|' + payload.beatMapKey + '|' + colors.primary + '|' + colors.secondary + '|' + colors.highlight + '|' + colors.glow + '|' + motion.lyricGlow + '|' + motion.lyricGlowBeat + '|' + Math.round((motion.lyricGlowStrength || 0) * 100) + '|' + Math.round((motion.highBloom || 0) * 100) + '|' + Math.round((motion.beatGlow || 0) * 100) + '|' + Math.round((motion.beatPulse || 0) * 100) + '|' + Math.round((motion.bass || 0) * 100);
+  var key = payload.enabled + '|' + payload.text + '|' + (payload.textBg || '') + '|' + (payload.textBgTranslation || '') + '|' + Math.round(payload.progress * 1000) + '|' + Math.round((payload.progressSpan || 0) * 100) + '|' + payload.playing + '|' + payload.size + '|' + payload.opacity + '|' + payload.y + '|' + payload.clickThrough + '|' + payload.cinema + '|' + payload.highlightFollow + '|' + payload.frameRate + '|' + payload.fontFamily + '|' + payloadCustomFontId + '|' + payload.fontWeight + '|' + payload.letterSpacing + '|' + payload.lineHeight + '|' + payload.lyricScale + '|' + payload.feather + '|' + payload.beatMapKey + '|' + colors.primary + '|' + colors.secondary + '|' + colors.highlight + '|' + colors.glow + '|' + motion.lyricGlow + '|' + motion.lyricGlowBeat + '|' + Math.round((motion.lyricGlowStrength || 0) * 100) + '|' + Math.round((motion.highBloom || 0) * 100) + '|' + Math.round((motion.beatGlow || 0) * 100) + '|' + Math.round((motion.beatPulse || 0) * 100) + '|' + Math.round((motion.bass || 0) * 100);
   if (!force && key === desktopOverlayPushState.lastLyricsKey && now - desktopOverlayPushState.lyricsAt < 900) return;
   desktopOverlayPushState.lyricsAt = now;
   desktopOverlayPushState.lastLyricsKey = key;

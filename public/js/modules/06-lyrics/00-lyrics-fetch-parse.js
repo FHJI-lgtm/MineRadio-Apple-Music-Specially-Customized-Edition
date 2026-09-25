@@ -273,6 +273,130 @@ function withLyricFallbackForSong(song, lines) {
   var text = lyricFallbackTextForSong(song);
   return text ? [{ t: 0, text: text, duration: 9999, charCount: Math.max(1, text.length), fallback: true }] : [];
 }
+// ============================================================
+// 背景人声 (Apple Music ttm:role="x-bg") —— 可选字段, 不改变既有数据结构语义
+//   - 默认作为"当前主歌词的附属视觉行": 挂在主 line 上 (line.background*)
+//   - 只有 standalone=true 且无法归属主行时, 才成为独立时间轴行 (role === "x-bg")
+//   - 旧 provider 不带 bg 时, 下面的函数完全不会被调用, 行为不变
+// ============================================================
+function normalizeLyricBackgroundEntries(value) {
+  if (!Array.isArray(value)) return [];
+  var out = [];
+  for (var i = 0; i < value.length; i++) {
+    var raw = value[i];
+    if (!raw || typeof raw !== 'object') continue;
+    var text = String(raw.text == null ? '' : raw.text).replace(/\s+/g, ' ').trim();
+    var words = [];
+    if (Array.isArray(raw.words)) {
+      for (var w = 0; w < raw.words.length; w++) {
+        var rw = raw.words[w];
+        if (!rw || typeof rw !== 'object') continue;
+        var wt = String(rw.text == null ? '' : rw.text);
+        // 注意: Number(null) === 0, 必须显式判空, 否则会把"无时间"伪造成 0
+        var ws = (rw.t == null || rw.t === '') ? NaN : Number(rw.t);
+        if (!wt && !isFinite(ws)) continue;
+        words.push({ text: wt, t: isFinite(ws) ? ws : 0, d: Math.max(0.06, Number(rw.d) || 0.24), c0: 0, c1: wt.length, role: 'x-bg' });
+      }
+    }
+    if (!text && !words.length) continue;
+    out.push({
+      t: (raw.t == null || raw.t === '') ? null : (isFinite(Number(raw.t)) ? Number(raw.t) : null),
+      duration: (raw.duration == null) ? 0 : Math.max(0, Number(raw.duration) || 0),
+      text: text || words.map(function (x) { return x.text; }).join('').trim(),
+      words: words,
+      standalone: raw.standalone === true,
+      // 背景人声的官方译文 (可选, 来自 Apple localization): 只跟随 bg 本身, 不进入主歌词 translation
+      translation: String(raw.translation == null ? '' : raw.translation).replace(/\s+/g, ' ').trim(),
+      parentT: (raw.parentT == null || raw.parentT === '') ? null : (isFinite(Number(raw.parentT)) ? Number(raw.parentT) : null)
+    });
+  }
+  return out;
+}
+function mergeLyricBackgroundText(a, b) {
+  var left = String(a || '').replace(/\s+/g, ' ').trim();
+  var right = String(b || '').replace(/\s+/g, ' ').trim();
+  if (!left) return right;
+  if (!right) return left;
+  if (left.indexOf(right) >= 0) return left;
+  return left + ' ' + right;
+}
+// 找 bg 归属的主行: 1) parentT 精确匹配(无时间 bg 也靠它) 2) 时间包含 3) 最近前一行
+function findLyricLineIndexForBackground(lines, bg) {
+  var i;
+  if (bg.parentT != null) {
+    for (i = 0; i < lines.length; i++) {
+      var parent = lines[i];
+      if (parent && parent.role !== 'x-bg' && isFinite(Number(parent.t)) && Math.abs(Number(parent.t) - bg.parentT) <= 0.05) return i;
+    }
+  }
+  if (bg.t == null) return -1;
+  for (i = lines.length - 1; i >= 0; i--) {
+    var line = lines[i];
+    if (!line || line.role === 'x-bg' || !isFinite(Number(line.t))) continue;
+    var span = Math.max(0.4, Number(line.duration) || 0);
+    if (bg.t >= Number(line.t) - 0.05 && bg.t <= Number(line.t) + span + 0.35) return i;
+  }
+  var best = -1;
+  for (i = 0; i < lines.length; i++) {
+    var candidate = lines[i];
+    if (!candidate || candidate.role === 'x-bg' || !isFinite(Number(candidate.t))) continue;
+    if (Number(candidate.t) <= bg.t + 0.05 && (bg.t - Number(candidate.t)) <= 1.2) best = i;
+  }
+  return best;
+}
+function makeLyricBackgroundLine(bg, t) {
+  var text = String(bg.text || '').replace(/\s+/g, ' ').trim();
+  var words = (bg.words || []).map(function (w) {
+    var wt = String(w.text == null ? '' : w.text);
+    return { text: wt, t: Number(w.t) || 0, d: Math.max(0.06, Number(w.d) || 0.24), c0: 0, c1: wt.length, role: 'x-bg' };
+  });
+  return {
+    t: Number(t) || 0,
+    duration: Math.max(0.4, Number(bg.duration) || 0),
+    text: text,
+    words: words,
+    charCount: Math.max(1, text.length),
+    source: 'apple-bg',
+    role: 'x-bg',
+    // 独立成行的 bg 也保留自己的官方译文 (可选)
+    backgroundTranslation: String(bg.translation || '').replace(/\s+/g, ' ').trim()
+  };
+}
+function attachLyricBackgrounds(lines, backgrounds) {
+  var out = Array.isArray(lines) ? lines.slice() : [];
+  backgrounds.forEach(function (bg) {
+    var index = findLyricLineIndexForBackground(out, bg);
+    if (index >= 0) {
+      var line = out[index];
+      line.background = mergeLyricBackgroundText(line.background, bg.text);
+      line.backgroundRole = 'x-bg';
+      // 背景人声的官方译文单独挂在 backgroundTranslation 上, 绝不写入 line.translation
+      if (bg.translation) line.backgroundTranslation = mergeLyricBackgroundText(line.backgroundTranslation, bg.translation);
+      if (bg.words && bg.words.length) {
+        line.backgroundWords = (line.backgroundWords || []).concat(bg.words);
+        line.backgroundWords.sort(function (a, b) { return (Number(a.t) || 0) - (Number(b.t) || 0); });
+      }
+      return;
+    }
+    var t = bg.t != null ? bg.t : bg.parentT;
+    if (t == null) {
+      // 既无自身时间也无父行引用: 挂到最后一行, 保证不丢文本且不伪造时间
+      var last = out.length ? out[out.length - 1] : null;
+      if (last && last.role !== 'x-bg') {
+        last.background = mergeLyricBackgroundText(last.background, bg.text);
+        last.backgroundRole = 'x-bg';
+        if (bg.translation) last.backgroundTranslation = mergeLyricBackgroundText(last.backgroundTranslation, bg.translation);
+      } else if (bg.text) {
+        out.push(makeLyricBackgroundLine(bg, 0));
+      }
+      return;
+    }
+    out.push(makeLyricBackgroundLine(bg, t));
+  });
+  // 时间轴必须保持 t 升序 (查找用二分)
+  out.sort(function (a, b) { return (Number(a.t) || 0) - (Number(b.t) || 0); });
+  return out;
+}
 function parseLyricResponseToOriginalState(song, response) {
   response = response || {};
   var nativeLines = parseYrcText(response.yrc || '');
@@ -283,6 +407,9 @@ function parseLyricResponseToOriginalState(song, response) {
   var timingSource = hasNativeKaraoke ? 'yrc-word' : (nativeLines.length ? 'yrc-line' : (lrcLines.length ? 'lrc-line' : 'fallback'));
   var primaryLines = nativeLines.length ? nativeLines : lrcLines;
   var lines = withLyricFallbackForSong(song, attachLyricTranslations(primaryLines, translationLines));
+  // 背景人声: 默认作为主行附属视觉行; 仅 standalone 且无法归属时才独立成行
+  var lyricBackgrounds = normalizeLyricBackgroundEntries(response.bg);
+  if (lyricBackgrounds.length) lines = attachLyricBackgrounds(lines, lyricBackgrounds);
   if (lines.length && lines[0].fallback) timingSource = 'fallback';
   return {
     lines: cloneLyricLines(lines),
@@ -500,12 +627,17 @@ function mergeLyricTranslationLineSources() {
 }
 function buildLyricTranslationPayload(response) {
   response = response || {};
-  var lrcTranslations = markLyricLineSource(parseLyricText(lyricTranslationTextFromAliases(response)), 'tlyric');
-  var yrcTranslations = markLyricLineSource(parseYrcText(response.ytlrc || ''), 'ytlrc');
+  // 翻译来源标识: Apple 官方翻译 (apple-web) 必须按 Apple 记账, 否则会被当成通用 tlyric
+  // 并被 UI 显示成别的来源; 其它 provider 保持既有 tlyric/ytlrc 语义不变。
+  var appleWebTranslation = String(response.source || '') === 'apple-web';
+  var lrcSourceId = appleWebTranslation ? 'apple-web' : 'tlyric';
+  var yrcSourceId = appleWebTranslation ? 'apple-web' : 'ytlrc';
+  var lrcTranslations = markLyricLineSource(parseLyricText(lyricTranslationTextFromAliases(response)), lrcSourceId);
+  var yrcTranslations = markLyricLineSource(parseYrcText(response.ytlrc || ''), yrcSourceId);
   var lines = mergeLyricTranslationLineSources(lrcTranslations, yrcTranslations);
   var sources = [];
-  if (lrcTranslations.length) sources.push('tlyric');
-  if (yrcTranslations.length) sources.push('ytlrc');
+  if (lrcTranslations.length) sources.push(lrcSourceId);
+  if (yrcTranslations.length && sources.indexOf(yrcSourceId) < 0) sources.push(yrcSourceId);
   return { lines: lines, source: sources.length ? sources.join('+') : 'none' };
 }
 function attachLyricTranslations(primaryLines, translationLines) {

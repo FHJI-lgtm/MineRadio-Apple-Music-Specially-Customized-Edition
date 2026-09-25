@@ -64,11 +64,30 @@ function lyricLineHasTranslationAt(index) {
   var n = Math.max(0, Math.round(Number(index) || 0));
   return !!lyricLineTranslationTextAt(n);
 }
+// 背景人声额外"容器"间距 (仅当上一主行自身带 bg 时, 加到该 pair 上)。
+// 单位与槽位步进一致 (1 = 一个 lineWorldStep), 因此世界间距 = 该值 * lineWorldStep。
+//
+// 真机实测 (lineWorldStep=0.3675, baseSlotStep=2.1214, bgGap=0.7504, 61.2px/世界单位):
+//   第一轮 0.50 -> A→B 由 1.062 增到 1.239 世界, bg 每侧净空仅 +0.092 世界 (≈5.6px),
+//   用户真机截图仍见 bg 译文与下一主行重叠 (残差 ≈0.15 世界 ≈9px)。
+//   bg 行是"原文+译文"两行 (plane 1.14 世界高), 要让它与下一主行完全分开,
+//   每侧需要 ≈0.195 世界 -> extra ≈ 2*0.195/0.3675 ≈ 1.05; 为留余量本轮取 1.15
+//   (每侧净空 +0.211 世界 ≈13px, A→B ≈1.49 世界)。
+// 这是**逐 pair** 的局部间距: 连续多个 bg 行只会在各自 pair 上增加, 不会全局累加。
+function lyricBackgroundExtraGapValue() { return 1.15; }
 function lyricLineSlotStepValue(index) {
-  if (!lyricTranslationLayoutActive()) return 1;
   var n = Math.round(Number(index) || 0);
-  var needsTranslationSlot = lyricLineHasTranslationAt(n) || (n >= 0 && lyricLineHasTranslationAt(n + 1));
-  return needsTranslationSlot ? lyricPrimarySlotStepValue() : clampRange(1.04 + (lyricContextSpreadValue() - 1) * 0.10, 0.96, 1.24);
+  // 该行(或下一行)带背景人声时, 需要为其附属行留出空隙, 避免压到下一行主歌词
+  var needsBackgroundSlot = lyricLineHasBackgroundAt(n) || (n >= 0 && lyricLineHasBackgroundAt(n + 1));
+  var step = 1;
+  if (lyricTranslationLayoutActive()) {
+    var needsTranslationSlot = lyricLineHasTranslationAt(n) || (n >= 0 && lyricLineHasTranslationAt(n + 1));
+    step = needsTranslationSlot ? lyricPrimarySlotStepValue() : clampRange(1.04 + (lyricContextSpreadValue() - 1) * 0.10, 0.96, 1.24);
+  }
+  var total = needsBackgroundSlot ? step + lyricBackgroundGapValue() : step;
+  // 仅当**本行自身**带 bg 时, 为本行与其下一主行之间的 pair 再扩大容器 (pair-wise, 不累积)
+  if (lyricLineHasBackgroundAt(n)) total += lyricBackgroundExtraGapValue();
+  return total;
 }
 var lyricPrimaryVirtualPrefixCache = { key: '', values: [0] };
 function lyricPrimaryVirtualPrefixKey() {
@@ -76,6 +95,9 @@ function lyricPrimaryVirtualPrefixKey() {
   var last = lyricsLines && lyricsLines.length ? lyricsLines[lyricsLines.length - 1] : null;
   return [
     lyricTranslationLayoutActive() ? 1 : 0,
+    Math.round(lyricBackgroundGapValue() * 1000),
+    Math.round(lyricBackgroundExtraGapValue() * 1000),
+    lyricBackgroundSignature(),
     Math.round(lyricTranslationGapValue() * 1000),
     Math.round(lyricTranslationScaleValue() * 1000),
     Math.round(lyricContextSpreadValue() * 1000),
@@ -88,7 +110,8 @@ function lyricPrimaryVirtualPrefixKey() {
 function lyricPrimaryVirtualIndex(index) {
   var n = Math.round(Number(index) || 0);
   if (!isFinite(n) || n === 0) return 0;
-  if (!lyricTranslationLayoutActive()) return n;
+  // 无翻译布局且整首没有背景人声: 完全保持既有行为 (旧 provider 零影响)
+  if (!lyricTranslationLayoutActive() && !lyricLyricsHaveBackground()) return n;
   if (n < 0) return n * lyricPrimarySlotStepValue();
   var key = lyricPrimaryVirtualPrefixKey();
   if (!lyricPrimaryVirtualPrefixCache || lyricPrimaryVirtualPrefixCache.key !== key) {
@@ -100,6 +123,32 @@ function lyricPrimaryVirtualIndex(index) {
 }
 function lyricTranslationVirtualIndex(parentIndex) {
   return lyricPrimaryVirtualIndex(parentIndex) + lyricTranslationVisualGapValue();
+}
+// ---- 背景人声 (ttm:role="x-bg"): 主行下方的附属视觉行 ----
+// 视觉: 字号约主歌词 74%, 不透明度约 58%, 明显弱于主歌词但可辨识
+function lyricBackgroundOpacityValue() { return 0.58; }
+function lyricBackgroundScaleValue() { return 0.74; }
+function lyricBackgroundGapValue() { return clampRange(lyricTranslationVisualGapValue() * 0.62, 0.32, 0.86); }
+function lyricLineHasBackgroundAt(index) {
+  var line = lyricsLines && lyricsLines[index];
+  return !!(line && line.background);
+}
+// 整首是否有背景人声 (缓存: lyricsLines 换新数组才重算), 用于让无 bg 的歌曲完全走旧路径
+var lyricBackgroundSignatureCache = { arr: null, value: '' };
+function lyricBackgroundSignature() {
+  if (lyricBackgroundSignatureCache.arr === lyricsLines) return lyricBackgroundSignatureCache.value;
+  var lines = lyricsLines || [];
+  var bits = '';
+  for (var i = 0; i < lines.length; i++) bits += (lines[i] && lines[i].background) ? '1' : '0';
+  lyricBackgroundSignatureCache = { arr: lyricsLines, value: bits };
+  return bits;
+}
+function lyricLyricsHaveBackground() {
+  var bits = lyricBackgroundSignature();
+  return bits.indexOf('1') >= 0;
+}
+function lyricBackgroundVirtualIndex(parentIndex) {
+  return lyricPrimaryVirtualIndex(parentIndex) + lyricBackgroundGapValue();
 }
 function lyricTranslationScaleValue() {
   return clampRange(fx && fx.lyricTranslationScale == null ? fxDefaults.lyricTranslationScale : Number(fx && fx.lyricTranslationScale), 0.46, 1.12);

@@ -691,6 +691,13 @@ function stageLyricCurrentUsesPersistentTrack() {
 
 function stageLyricResidentRowKey(row) {
   if (!row) return '';
+  // 背景人声附属行: lineIndex 恒为 null, 必须用它自己的 parentIndex 建键,
+  // 否则 Number(null)=0 会让所有 bg 行塌缩到 "0|primary" (既发现不了 bg 行,
+  // 又会覆盖第 0 行的 primary 键)。只有 bg 行走这个分支。
+  if (row.isBackground) {
+    var bgParent = row.parentIndex != null ? Number(row.parentIndex) : NaN;
+    return isFinite(bgParent) ? (Math.round(bgParent) + '|bg') : '';
+  }
   var lineIndex = row.isTranslation
     ? (row.parentIndex != null ? Number(row.parentIndex) : Number(row.lineIndex))
     : Number(row.lineIndex);
@@ -1125,6 +1132,9 @@ function stageLyricPersistentLineRowsResident(data, lineIndex, rowMap) {
   if (!entry) return true;
   rowMap = rowMap || stageLyricPersistentResidentRowMap(data);
   if (!rowMap[lineIndex + '|primary']) return false;
+  // 背景人声: 该行有 bg 数据却没有对应 bg 行 -> 视为未驻留, 触发重建 (只有 bg 行受影响)。
+  // 没有 bg 数据的歌曲/行完全不受影响, 原来的轻量路径保持不变。
+  if (entry.background && !rowMap[lineIndex + '|bg']) return false;
   if (
     normalizeLyricTranslationMode(fx && fx.lyricTranslationMode) !== 'off' &&
     makeStageLyricTranslationEntry(entry, false) &&
@@ -1527,7 +1537,10 @@ function stageLyricProgressSeekVisualReady(seconds) {
   var t = Math.max(0, Number(seconds) || 0);
   var lyricT = typeof getAdjustedLyricPlaybackTime === 'function' ? getAdjustedLyricPlaybackTime(t) : t;
   var targetIndex = findStageLyricIndexAtTime(lyricT);
-  if (targetIndex < 0) return stageLyrics.currentIdx === -2;
+  // 第一句之前: title 卡片哨兵 (-2) 与"前奏等待态"(第 0 行已显示, 进度恒为 0) 都算视觉就绪
+  if (targetIndex < 0) {
+    return stageLyrics.currentIdx === -2 || (stageLyrics.currentIdx === 0 && !!stageLyrics.currentPayload);
+  }
   if (Number(stageLyrics.currentIdx) !== Number(targetIndex)) return false;
   var data = stageLyrics.current.userData && stageLyrics.current.userData.lyric;
   if (!data || !data.trackPersistent) return true;
@@ -2757,7 +2770,8 @@ function applyLyricTranslationModeToTrackEntries(entries, activeLine, maxRowsOve
   entries = Array.isArray(entries) ? entries : [];
   activeLine = Math.max(0, Math.min(entries.length - 1, activeLine || 0));
   var mode = normalizeLyricTranslationMode(fx && fx.lyricTranslationMode);
-  if (mode === 'off' || !entries.length) return { entries: entries, activeLine: activeLine };
+  // 即使关闭翻译, 背景人声仍需作为主行附属行注入
+  if (mode === 'off' || !entries.length) return applyLyricBackgroundEntriesToTrackEntries(entries, activeLine, maxRowsOverride);
   var maxRows = Math.max(1, Math.round(Number(maxRowsOverride) || 24));
   var out = [];
   var nextActiveLine = 0;
@@ -2775,7 +2789,8 @@ function applyLyricTranslationModeToTrackEntries(entries, activeLine, maxRowsOve
       if (tr) out.push(tr);
     }
   }
-  return { entries: out.length ? out : entries, activeLine: nextActiveLine };
+  var withBackground = applyLyricBackgroundEntriesToTrackEntries(out.length ? out : entries, nextActiveLine, maxRows);
+  return { entries: withBackground.entries, activeLine: withBackground.activeLine };
 }
 function stageLyricTrackKeyForMode(mode) {
   mode = normalizeLyricDisplayMode(mode);
@@ -2801,7 +2816,12 @@ function stageLyricTrackKeyForMode(mode) {
     last ? normalizeStageLyricText(last.text).slice(0, 16) : '',
     lyricsTranslationLines ? lyricsTranslationLines.length : 0,
     first ? normalizeLyricTranslationText(first.translation).slice(0, 16) : '',
-    last ? normalizeLyricTranslationText(last.translation).slice(0, 16) : ''
+    last ? normalizeLyricTranslationText(last.translation).slice(0, 16) : '',
+    // 背景人声 (x-bg) 签名: 直接用已有的 lyricBackgroundSignature() (逐行 0/1),
+    // 它同时反映 bg 条数与"哪些父行有 bg"; bg 数据在 bundle 建成之后才到位时,
+    // 键会变化 -> track 缓存失效 -> 重建 bundle, 让 bg 跟随 parent 行进入当前 bundle。
+    // 无 bg 的歌曲该值为全 0 常量, 不改变缓存稳定性。
+    (typeof lyricBackgroundSignature === 'function' ? lyricBackgroundSignature() : '')
   ].join('|');
 }
 var stageLyricTrackCache = { key: '', entries: null, lineMap: null, start: 0, end: -1 };
@@ -2809,15 +2829,25 @@ function stageLyricTrackBaseEntry(index) {
   var line = lyricsLines && lyricsLines[index];
   var text = lyricLineDisplayTextAt(index);
   if (!text) return null;
-  return {
+  var isBackgroundLine = !!(line && line.role === 'x-bg');   // 独立背景人声行: 直接以弱样式呈现
+  // 显示层去外层包裹括号 (只改这里的显示文本; lyricsLines 上的原始文本保持原样)
+  if (isBackgroundLine) text = stripLyricBackgroundWrapperText(text);
+  var entry = {
     text: text,
-    role: 'context',
-    alpha: clampRange(lyricContextOpacityValue(), 0.18, 0.92),
-    scale: 0.88,
+    role: isBackgroundLine ? 'bg' : 'context',
+    alpha: isBackgroundLine
+      ? clampRange(lyricBackgroundOpacityValue(), 0.18, 0.92)
+      : clampRange(lyricContextOpacityValue(), 0.18, 0.92),
+    scale: isBackgroundLine ? clampRange(lyricBackgroundScaleValue(), 0.30, 1.08) : 0.88,
     translation: normalizeLyricTranslationText(line && line.translation),
     lineIndex: index,
     virtualIndex: lyricPrimaryVirtualIndex(index)
   };
+  // 主行附属的背景人声: 交给 applyLyricBackgroundEntriesToTrackEntries 生成附属行
+  if (line && line.background) entry.background = normalizeStageLyricText(line.background);
+  if (line && line.backgroundTranslation) entry.backgroundTranslation = normalizeStageLyricText(line.backgroundTranslation);
+  if (line && Array.isArray(line.backgroundWords) && line.backgroundWords.length) entry.backgroundWords = line.backgroundWords;
+  return entry;
 }
 function lyricMeshTrackWindow(index, mode, options) {
   options = options || {};
@@ -2908,7 +2938,13 @@ function buildStageLyricTrackEntries(index, mode) {
   if (!lyricsLines || !lyricsLines.length || index < 0) return { entries: [], activeLine: 0, start: 0, end: -1 };
   var windowInfo = lyricBufferedTrackWindow(index, mode);
   var cacheKey = stageLyricTrackKeyForMode(mode) + '|win=' + windowInfo.start + '-' + windowInfo.end;
-  if (stageLyricTrackCache && stageLyricTrackCache.key === cacheKey && Array.isArray(stageLyricTrackCache.entries)) {
+  // 防御: 除了 key, 还要校验 bg 签名一致 (缓存写入时的 bg 签名 === 当前 bg 签名)。
+  // 只依赖 key 仍可能遇到"bg 数据在键算好之后才到位"的时序问题; 签名不一致时
+  // 不复用缓存, 而是重新构建 bundle (不修改 payload, 不删除任何 bg 数据)。
+  var currentBgSignature = (typeof lyricBackgroundSignature === 'function') ? lyricBackgroundSignature() : '';
+  var cachedBgSignature = stageLyricTrackCache ? stageLyricTrackCache.bgSignature : undefined;
+  var cacheBgSignatureMatches = cachedBgSignature === undefined || cachedBgSignature === currentBgSignature;
+  if (stageLyricTrackCache && stageLyricTrackCache.key === cacheKey && Array.isArray(stageLyricTrackCache.entries) && cacheBgSignatureMatches) {
     var cachedLine = stageLyricTrackCache.lineMap && stageLyricTrackCache.lineMap[Math.max(0, Math.round(Number(index) || 0))];
     return {
       entries: stageLyricTrackCache.entries,
@@ -2935,7 +2971,7 @@ function buildStageLyricTrackEntries(index, mode) {
     var row = translated.entries[ri];
     if (row && !row.translationLine && row.lineIndex != null && isFinite(Number(row.lineIndex))) lineMap[Number(row.lineIndex)] = ri;
   }
-  stageLyricTrackCache = { key: cacheKey, entries: translated.entries, lineMap: lineMap, start: start, end: end, lightweight: false };
+  stageLyricTrackCache = { key: cacheKey, entries: translated.entries, lineMap: lineMap, start: start, end: end, lightweight: false, bgSignature: currentBgSignature };
   return {
     entries: translated.entries,
     activeLine: isFinite(Number(lineMap[Math.max(0, Math.round(Number(index) || 0))])) ? Number(lineMap[Math.max(0, Math.round(Number(index) || 0))]) : translated.activeLine,
@@ -2949,12 +2985,15 @@ function buildStageLyricDisplayPayload(index, options) {
   var mode = normalizeLyricDisplayMode(fx && fx.lyricDisplayMode);
   var current = stageLyricContextEntry(index, index);
   if (!current) return null;
+  // bg 签名: 进入 display payload key, 使 bg 数据到位时 key 变化 -> 触发 mesh 重建 (showStageLine)
+  var bgSignature = (typeof lyricBackgroundSignature === 'function') ? lyricBackgroundSignature() : '';
   if (mode === 'single') {
     var singleTrack = stageLyricSingleLineTrackStub(index);
     var singleTranslated = applyLyricTranslationModeToEntries([current], 0);
     return {
       mode: mode,
-      key: 'single|' + index + '|' + singleTranslated.entries.map(function (entry) { return entry.role + ':' + entry.text; }).join('\n'),
+      key: 'single|' + index + '|' + singleTranslated.entries.map(function (entry) { return entry.role + ':' + entry.text; }).join('\n') + '|bg=' + bgSignature,
+      bgSignature: bgSignature,
       activeLine: singleTranslated.activeLine,
       entries: singleTranslated.entries,
       trackIndex: index,
@@ -2992,7 +3031,8 @@ function buildStageLyricDisplayPayload(index, options) {
   activeLine = translated.activeLine;
   return {
     mode: mode,
-    key: mode + '|' + index + '|' + activeLine + '|' + entries.map(function (entry) { return entry.role + ':' + entry.text; }).join('\n'),
+    key: mode + '|' + index + '|' + activeLine + '|' + entries.map(function (entry) { return entry.role + ':' + entry.text; }).join('\n') + '|bg=' + bgSignature,
+    bgSignature: bgSignature,
     activeLine: activeLine,
     entries: entries,
     trackIndex: index,
@@ -3121,6 +3161,28 @@ function tickLyricsParticles() {
   var lyricT = typeof getAdjustedLyricPlaybackTime === 'function' ? getAdjustedLyricPlaybackTime(t) : t;
   var newIdx = findStageLyricIndexAtTime(lyricT);
   if (newIdx < 0) {
+    // ── 前奏等待态 (t < 第一句 t) ──────────────────────────────────────────────
+    // 有真实歌词时数据已经加载, 只是还没唱到第一行。直接建立并显示第 0 行作为等待态:
+    //   - 只读 lines[0] 既有时间戳, 不伪造/不修改任何时间 (findStageLyricIndexAtTime() 不动);
+    //   - 等待态固定 progress = 0 => 不产生逐字高亮;
+    //   - 到 lines[0].t 时 newIdx === 0 === currentIdx, 走同一行复用分支无缝进入 current,
+    //     逐字高亮从 0 开始正常扫过。
+    // 只有"没有真实歌词"(纯 title 兜底 / 歌词还没到) 才继续走下面的 title 卡片/清空逻辑。
+    if (lyricsLines && lyricsLines.length && !lyricsAreFallbackTitleOnly(lyricsLines)) {
+      if (stageLyrics.currentIdx !== 0 || !stageLyrics.current || !stageLyrics.currentPayload) {
+        stageLyrics.transitionLineStep = 0;
+        var waitingPayload = buildStageLyricPlaybackPayload(0);
+        // noSyncBuild: 网格已预热则立即显示; 未就绪时 showStageLine 内部会转成按需预热并在下一帧重试
+        if (waitingPayload && showStageLine(waitingPayload, false, { noSyncBuild: true })) {
+          stageLyrics.currentIdx = 0;
+        }
+        requestStageLyricWarmup('intro-first-line', 140);
+        scheduleStageLyricPrewarmForIndex(0, 'intro-first-line', 24);
+        if (typeof scheduleStageLyricFullTrackWarmup === 'function') scheduleStageLyricFullTrackWarmup('track-ready', 180);
+      }
+      if (stageLyrics.current) updateLyricMeshProgress(stageLyrics.current, 0);
+      return;
+    }
     var introText = currentLyricFallbackText();
     if (!introText) {
       clearStageLyrics();
@@ -3155,7 +3217,14 @@ function tickLyricsParticles() {
     return;
   }
   var displayPayload = null;
-  if (newIdx === stageLyrics.currentIdx && stageLyrics.current && stageLyrics.currentPayload) {
+  // 复用当前 payload 前, 额外校验 bg 签名: 当前 payload 的 bg 数据与最新不一致时
+  // (例如 bg 数据在 bundle 建立之后才到位) 不允许直接复用, 而是重新构建 playback payload。
+  var currentBgSignature = (typeof lyricBackgroundSignature === 'function') ? lyricBackgroundSignature() : '';
+  var currentPayloadBgSignature = (stageLyrics.currentPayload && stageLyrics.currentPayload.bgSignature !== undefined)
+    ? stageLyrics.currentPayload.bgSignature
+    : null;
+  var currentPayloadBgMatches = currentPayloadBgSignature === null || currentPayloadBgSignature === currentBgSignature;
+  if (newIdx === stageLyrics.currentIdx && stageLyrics.current && stageLyrics.currentPayload && currentPayloadBgMatches) {
     displayPayload = stageLyrics.currentPayload;
     upgradeCurrentStageLyricFromPreparedTrack('same-line-upgrade');
   } else {

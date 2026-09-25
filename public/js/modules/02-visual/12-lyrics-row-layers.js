@@ -13,6 +13,8 @@ function lyricLineCenterWorldY(mask, entry, lineIndex, worldH) {
 
 function lyricRowVirtualIndex(entry, fallbackIndex) {
   entry = entry || {};
+  // 背景人声附属行: 挂在主行下方 (必须早于 lineIndex 分支, 否则会占用主行槽位)
+  if (entry.backgroundLine && entry.parentIndex != null && isFinite(Number(entry.parentIndex))) return lyricBackgroundVirtualIndex(entry.parentIndex);
   if (entry.translationLine && entry.parentIndex != null && isFinite(Number(entry.parentIndex))) return lyricTranslationVirtualIndex(entry.parentIndex);
   if (entry.lineIndex != null && isFinite(Number(entry.lineIndex))) return lyricPrimaryVirtualIndex(entry.lineIndex);
   if (entry.virtualIndex != null && isFinite(Number(entry.virtualIndex))) return Number(entry.virtualIndex);
@@ -23,6 +25,7 @@ function lyricLayerVirtualIndex(entry, fallbackIndex, activeLine, usesTrack) {
   entry = entry || {};
   if (!usesTrack) {
     var localActive = activeLine != null && isFinite(Number(activeLine)) ? Number(activeLine) : 0;
+    if (entry.backgroundLine && entry.parentRole === 'current') return localActive + lyricBackgroundGapValue();
     if (entry.translationLine && entry.parentRole === 'current') return localActive + lyricTranslationVisualGapValue();
     return Number(fallbackIndex) || 0;
   }
@@ -75,6 +78,47 @@ function lyricTranslationAnchoredY(entry, fallbackIndex, activeLine, lineStepWor
   var parentDrift = currentTranslation ? 0 : ((Number(rowDrift) || 0) * clampRange(0.70 + parentAbs * 0.10, 0.65, 1.20));
   var sign = rowVirtual >= parentVirtual ? 1 : -1;
   return -parentDelta * lineStepWorld + parentDrift - sign * lyricTranslationVisualGapValue() * translationLineStepWorld;
+}
+
+// 背景人声附属行的竖向位置 (仅当同一父行确实还有译文行时才会被调用)。
+//
+// 冲突原因 (实测): bg 槽位偏移是 bgGap(≈0.75) 个"主行步长", 译文行锚点是 translationVisualGap(≈1.21)
+// 个"译文步长", 两者换算到世界坐标后几乎相等 (0.276 vs 0.334), 于是两行落在同一竖向位置互相叠字。
+// 行槽位里已经为 bg 预留了间隙 (lyricLineSlotStepValue 会加上 bgGap), 所以"译文行中心"与
+// "下一主行中心"之间必然存在空档。这里把 bg 行正放在这两者的中点: 与两行等距, 既不叠译文也不压
+// 下一主行, 并且不需要任何硬编码偏移量。没有译文行的父行完全不调用本函数 (保持原位置)。
+function lyricBackgroundAnchoredY(row, fallbackIndex, presentationLineIndex, lineStepWorld, translationLineStepWorld, scrollOffset, rowDrift, usesTrack) {
+  row = row || {};
+  var translationStep = Math.max(0.05, Number(translationLineStepWorld) || 0);
+  var baseOffset = scrollOffset == null || !isFinite(Number(scrollOffset)) ? (Number(presentationLineIndex) || 0) : Number(scrollOffset);
+  var parentIndex = row.parentIndex != null && isFinite(Number(row.parentIndex)) ? Number(row.parentIndex) : null;
+  var rowVirtual = row.virtualIndex != null && isFinite(Number(row.virtualIndex)) ? Number(row.virtualIndex) : (Number(fallbackIndex) || 0);
+  if (!usesTrack || parentIndex == null) {
+    // 非轨道模式 (或没有父行索引): 无可比的锚点, 退化为既有位置再下移一个译文步长
+    var liveDelta = rowVirtual - baseOffset;
+    var driftLocal = (Number(rowDrift) || 0) * clampRange(0.70 + Math.abs(liveDelta) * 0.10, 0.65, 1.20);
+    return -liveDelta * lineStepWorld + driftLocal - translationStep;
+  }
+  var parentVirtual = lyricPrimaryVirtualIndex(parentIndex);
+  var parentDelta = parentVirtual - baseOffset;
+  var parentAbs = Math.abs(parentDelta);
+  var parentIsCurrent = Math.abs(parentIndex - Number(presentationLineIndex)) < 0.001;
+  var parentDrift = parentIsCurrent ? 0 : ((Number(rowDrift) || 0) * clampRange(0.70 + parentAbs * 0.10, 0.65, 1.20));
+  var parentY = -parentDelta * lineStepWorld + parentDrift;
+  var translationY = parentY - lyricTranslationVisualGapValue() * translationStep;      // 同父行译文行
+  var nextY = -(lyricPrimaryVirtualIndex(parentIndex + 1) - baseOffset) * lineStepWorld + parentDrift; // 下一主行
+  return (translationY + nextY) * 0.5;
+}
+
+// 同一父行的译文行是否真的在显示 (只有这时 bg 行才需要让位; 只读取 bg 行与已存在的译文行)
+function lyricBackgroundTranslationVisibleFor(row, translationRowParents, presentationLineIndex, translationMode) {
+  if (!row || !row.isBackground || !translationRowParents || row.parentIndex == null) return false;
+  var parentIndex = Number(row.parentIndex);
+  if (!translationRowParents[parentIndex]) return false;
+  var distance = Math.abs(parentIndex - Number(presentationLineIndex || 0));
+  if (translationMode === 'multi') return true;             // 多行译文: 全部淡化可见
+  if (translationMode === 'dual') return distance < 1.001;  // 当前行 + 下一行
+  return distance < 0.001;                                  // current: 仅当前行的译文可见
 }
 
 function lyricLineAllowedForDisplayMode(lineIndex, targetLineIndex, mode) {
@@ -200,21 +244,81 @@ function lyricReadabilityColorForBrightBackdrop(strength) {
 
 function makeLyricLineMask(entry, baseMask, asActive) {
   entry = entry || {};
-  var primaryLine = !entry.translationLine;
+  // 背景人声不是主行: 用自己的更小字号绘制
+  var backgroundLine = !!entry.backgroundLine;
+  var primaryLine = !entry.translationLine && !backgroundLine;
   var drawEntry = cloneStageLyricEntryForLayer(entry, {
     role: asActive ? 'current' : (entry.role || 'context'),
     alpha: 1,
-    scale: primaryLine ? 1 : (entry.scale || lyricTranslationScaleValue())
+    scale: primaryLine ? 1 : (entry.scale || (backgroundLine ? lyricBackgroundScaleValue() : lyricTranslationScaleValue()))
   });
+  // 背景人声的官方译文 (可选): 作为同一 bg 行内的第二行绘制, 不动 bg 槽位/层序/深度
+  var backgroundTranslation = backgroundLine ? normalizeStageLyricText(entry.translation || '') : '';
+  var maskEntries = [drawEntry];
+  if (backgroundTranslation && backgroundTranslation !== normalizeStageLyricText(drawEntry.text)) {
+    maskEntries.push(cloneStageLyricEntryForLayer(entry, {
+      role: drawEntry.role,
+      alpha: 1,
+      scale: drawEntry.scale,
+      text: backgroundTranslation
+    }));
+  }
   return compactLyricLineMaskTexture(makeLyricMask({
     mode: 'single',
-    key: 'line|' + (drawEntry.role || '') + '|' + Math.round((drawEntry.scale || 1) * 1000) + '|' + drawEntry.text,
+    key: 'line|' + (drawEntry.role || '') + '|' + Math.round((drawEntry.scale || 1) * 1000) + '|' + drawEntry.text + '|' + backgroundTranslation,
     activeLine: 0,
-    entries: [drawEntry]
+    entries: maskEntries
   }, {
     fontSize: baseMask && (baseMask.logicalFontSize || baseMask.fontSize),
     lineHeight: baseMask && (baseMask.logicalLineHeight || baseMask.lineHeight)
   }));
+}
+
+// 背景人声行专用 (role === 'bg'): 计算"只让其中一行参与逐字高亮"的竖向填充带 (uv.y)。
+//
+// 背景人声把"bg 原文 + bg 官方译文"画在同一张 mask / 同一个材质 / 同一个 plane 上, 而主行 shader
+// 的逐字进度高亮是沿 x 扫过的。若不做竖向限制, 高亮会连同 bg 译文一起扫过。
+// 这里用 mask 的真实行距算出一条夹在"本行墨迹下缘"与"下一行墨迹上缘"正中的分界线, 把填充带限制在
+// 该分线以上 (含本行), 因此 bg 原文完整参与高亮 (不会被裁掉笔画), 而 bg 译文所在行 activeMix 恒为 0,
+// 保持静态基色。只有多行 mask 才需要; 单行 mask 返回 null (材质不带 band, 行为与主行一致)。
+// 纹理 v 轴: CanvasTexture 默认 flipY = true, 所以 v = 1 - y / height。
+function lyricRowFillBandForMaskLine(mask, lineIndex) {
+  mask = mask || {};
+  var lineCount = Math.max(1, Number(mask.lineCount) || (Array.isArray(mask.entries) ? mask.entries.length : 1));
+  if (lineCount < 2) return null;
+  var index = Math.round(Number(lineIndex) || 0);
+  // 只有"后面还有行"时才存在需要排除的下一行; 更靠后的行同样不参与 (整段跳过)
+  if (index < 0 || index >= lineCount - 1) return null;
+  var H = Math.max(1, Number(mask.height) || 384);
+  var fontSize = Math.max(1, Number(mask.fontSize) || 128);
+  var lineHeight = Math.max(1, Number(mask.lineHeight) || fontSize);
+  var y0 = isFinite(Number(mask.lineY0)) ? Number(mask.lineY0) : (H / 2 + fontSize * 0.36);
+  var entries = Array.isArray(mask.entries) ? mask.entries : [];
+  function entrySizeAt(i) {
+    var entry = entries[i] || {};
+    return fontSize * (isFinite(Number(entry.scale)) ? Number(entry.scale) : 1);
+  }
+  function baselineAt(i) {
+    return y0 + i * lineHeight + lyricEntryLineOffset(entries[i] || {}) * lineHeight;
+  }
+  function inkTopAt(i) {
+    return baselineAt(i) - entrySizeAt(i) * 0.92;   // 含 CJK 上缘 / 重音 / 大写
+  }
+  function inkBottomAt(i) {
+    return baselineAt(i) + entrySizeAt(i) * 0.26;   // 含降部 / 尾钩
+  }
+  var lowerBoundary = (inkBottomAt(index) + inkTopAt(index + 1)) * 0.5;
+  var upperBoundary = index > 0 ? (inkBottomAt(index - 1) + inkTopAt(index)) * 0.5 : 0;
+  var gapPx = Math.max(0, inkTopAt(index + 1) - inkBottomAt(index));
+  function toUv(y) { return clampRange(1 - y / H, 0, 1); }
+  var bandMin = toUv(lowerBoundary);
+  var bandMax = index > 0 ? toUv(upperBoundary) : 1;
+  if (!(bandMin < bandMax)) return null;   // 行距异常时不启用 (宁可不裁, 也不裁错)
+  return {
+    min: bandMin,
+    max: bandMax,
+    feather: clampRange(gapPx * 0.25 / H, 0.004, 0.02)
+  };
 }
 
 function lyricTranslationMeshScale(entry) {
@@ -351,7 +455,7 @@ function beginLyricRowLayerBuildEntry(state) {
   var virtualIndex = lyricLayerVirtualIndex(entry, i, state.activeLine, state.usesTrack);
   var delta = virtualIndex - state.activeLine;
   var entryLineIndex = entry.lineIndex != null && isFinite(Number(entry.lineIndex)) ? Number(entry.lineIndex) : null;
-  var isActive = !entry.translationLine && (state.usesTrack ? entryLineIndex === state.activeLineIndex : Math.abs(delta) < 0.001);
+  var isActive = !entry.translationLine && !entry.backgroundLine && (state.usesTrack ? entryLineIndex === state.activeLineIndex : Math.abs(delta) < 0.001);
   var lineMask = makeLyricLineMask(entry, state.mask, isActive);
   var lineWorldW = lyricRowLogicalWorldWidth(lineMask, state.worldW);
   var lineWorldH = lineWorldW * (lineMask.height / lineMask.width);
@@ -368,22 +472,48 @@ function beginLyricRowLayerBuildEntry(state) {
   var fontScale = lyricTranslationMeshScale(entry);
   if (entry.translationLine) lineScale *= fontScale;
   var lineGeo = new THREE.PlaneGeometry(lineWorldW, lineWorldH, 1, 1);
+  // 背景人声主歌词 (role === 'bg') 复用主行逐字/进度高亮 shader (makeLyricShaderMaterial), 不另建
+  // 高亮系统, 但保持既有 bg 弱化口径:
+  //   - 基色 = 改动前的 bg 基色 (palette.secondary 混合色, 不新增配色体系);
+  //   - 高亮色 = 主行高亮色向基色回混 42% (约为主行高亮强度的 58%);
+  //   - sweep/shimmer/glitch/solar 与大部分边缘发光关闭 => 高亮同样是弱风格;
+  //   - 同一张 mask 里的 bg 官方译文用 fillBand 排除在高亮之外, 保持静态 (见 lyricRowFillBandForMaskLine)。
+  // 只有背景人声行进入 bg 分支, 主歌词/译文分支逐字未变。
   var material;
-  if (!entry.translationLine) {
+  if (!entry.translationLine && !entry.backgroundLine) {
     material = makeLyricShaderMaterial(lineMask, state.pal, state.motionProfile);
     material.uniforms.uOpacity.value = 0;
     if (material.uniforms.uActiveMix) material.uniforms.uActiveMix.value = isActive ? 1 : 0;
+  } else if (entry.backgroundLine) {
+    var bgBaseColor = lyricThreeColor(state.pal.secondary || state.pal.primary, '#cfe9ff', 0.30);
+    var bgHiColor = lyricThreeColor(state.pal.highlight || state.pal.primary, '#fff0b8', 0.48).lerp(bgBaseColor, 0.42);
+    material = makeLyricShaderMaterial(lineMask, state.pal, state.motionProfile, {
+      baseColor: bgBaseColor,
+      hiColor: bgHiColor,
+      glowColor: lyricStageGlowThreeColor(state.pal, '#9cffdf', 0.18),
+      solarColor: lyricBeatGlowThreeColor(state.pal, '#fff0b8', 0.30),
+      edgeBoost: 0.42,
+      sweep: 0,
+      shimmer: 0,
+      glitch: 0,
+      glitchChroma: 0,
+      fillBand: lyricRowFillBandForMaskLine(lineMask, 0)
+    });
+    material.uniforms.uOpacity.value = 0;
+    // bg 行自身永远不是"当前主行"; 逐帧由 bgHighlightActive 驱动, 初始 0 与改动前一致
+    if (material.uniforms.uActiveMix) material.uniforms.uActiveMix.value = 0;
   } else {
     material = makeLyricBackfaceReadableMaterial({
       map: lineMask.texture,
       opacity: 0,
-      color: entry.translationLine
-        ? lyricThreeColor(state.pal.highlight || state.pal.primary, '#eaf6ff', 0.42)
-        : lyricThreeColor(state.pal.primary || state.pal.secondary, '#d6f8ff', 0.34)
+      color: lyricThreeColor(state.pal.highlight || state.pal.primary, '#eaf6ff', 0.42)
     });
   }
   var mesh = new THREE.Mesh(lineGeo, material);
-  mesh.renderOrder = isActive ? 43.4 : (42.6 - lineAbs * 0.015);
+  // 背景人声附属行在最底层: 它的 Y 槽位已与同父行译文分离, 因此必须绘制在所有主歌词
+  // 与译文行之前 (renderBase - 0.60 = 42.4), 这样两行文字压到相邻主行时不会遮住对方。
+  // 注意: 这是纯绘制顺序, 不涉及 Z/depth (所有行材质 depthTest=false)。
+  mesh.renderOrder = isActive ? 43.4 : (entry.backgroundLine ? 42.4 : (42.6 - lineAbs * 0.015));
   mesh.position.set(0, lineY, lineZ);
   mesh.scale.setScalar(lineScale);
   mesh.visible = false;
@@ -426,6 +556,7 @@ function beginLyricRowLayerBuildEntry(state) {
     isActive: isActive,
     isPrimary: !entry.translationLine,
     isTranslation: !!entry.translationLine,
+    isBackground: !!entry.backgroundLine,
     targetAlpha: targetAlpha,
     baseY: lineY,
     baseZ: lineZ,
@@ -1375,6 +1506,15 @@ function updateLyricRowLayers(data, opts) {
     revealPrewarmMinOffset = Math.min(revealPrewarmMinOffset, revealOffset);
     revealPrewarmMaxOffset = Math.max(revealPrewarmMaxOffset, revealOffset);
   }
+  // 本次 bundle 中真正存在的译文附属行所属的父行 (只有这些父行的 bg 行需要避让; 只影响 bg 行)
+  var translationRowParents = null;
+  for (var pairIndex = 0; pairIndex < data.rowLayers.length; pairIndex++) {
+    var pairRow = data.rowLayers[pairIndex];
+    if (pairRow && pairRow.isTranslation && pairRow.parentIndex != null && isFinite(Number(pairRow.parentIndex))) {
+      if (!translationRowParents) translationRowParents = {};
+      translationRowParents[Number(pairRow.parentIndex)] = true;
+    }
+  }
   for (var i = 0; i < data.rowLayers.length; i++) {
     var row = data.rowLayers[i];
     var liveDelta = (row.virtualIndex != null && isFinite(Number(row.virtualIndex)) ? Number(row.virtualIndex) : i) - scrollOffset;
@@ -1384,6 +1524,13 @@ function updateLyricRowLayers(data, opts) {
     var visibilityAbs = Math.abs((row.virtualIndex != null && isFinite(Number(row.virtualIndex)) ? Number(row.virtualIndex) : i) - visibilityScrollOffset);
     var rowLineIndex = row.lineIndex != null && isFinite(Number(row.lineIndex)) ? Number(row.lineIndex) : null;
     var isActive = !!row.isPrimary && (rowLineIndex != null ? rowLineIndex === presentationLineIndex : targetAbs < 0.015);
+    // 背景人声附属行的逐字/进度高亮: 只有当它的父行就是当前主行时才跟随高亮。
+    // 它只驱动材质 uniforms (uProgress/uActiveMix), 不参与 isActive/位移/层序,
+    // 因此 bg 行的 Y 位置、缩放与绘制顺序与改动前完全一致。
+    var bgHighlightActive = !!row.isBackground && (
+      (row.parentIndex != null && isFinite(Number(row.parentIndex)) && Math.abs(Number(row.parentIndex) - Number(presentationLineIndex)) < 0.001) ||
+      (row.parentIndex == null && row.parentRole === 'current')
+    );
     row.delta = liveDelta;
     row.isActive = isActive;
     if (isActive) activeRow = row;
@@ -1528,6 +1675,9 @@ function updateLyricRowLayers(data, opts) {
       yTarget = singleLineTranslationSwap && isFinite(Number(row.baseY))
         ? Number(row.baseY)
         : lyricTranslationAnchoredY(row, i, presentationIndex, lineStepWorld, translationLineStepWorld, scrollOffset, rowDrift, currentTranslation, !!data.usesTrack);
+    } else if (lyricBackgroundTranslationVisibleFor(row, translationRowParents, presentationLineIndex, translationMode)) {
+      // 同父行译文行正在显示时, bg 行必须让开 (否则两行落在同一竖向位置而互相叠字)
+      yTarget = lyricBackgroundAnchoredY(row, i, presentationIndex, lineStepWorld, translationLineStepWorld, scrollOffset, rowDrift, !!data.usesTrack);
     }
     var zBase = 0.055 - Math.pow(Math.min(5.5, visibilityAbs), 1.06) * 0.145;
     var zTarget = zBase - (motionAnchor ? 0 : Math.abs(rowDrift) * 0.18) + (row.isTranslation ? translationFocus * 0.065 : 0);
@@ -1559,7 +1709,10 @@ function updateLyricRowLayers(data, opts) {
       row.mesh.position.y += rowYStep;
       row.mesh.position.z += (zTarget - row.mesh.position.z) * ease;
       row.mesh.scale.setScalar(row.mesh.scale.x + (scaleTarget - row.mesh.scale.x) * ease);
-      row.mesh.renderOrder = isActive ? (renderBase + 0.40) : (row.isTranslation ? (renderBase + 0.05 + (currentTranslation ? 0.34 : translationFocus * 0.30)) : (renderBase - 0.40 - Math.min(5.5, abs) * 0.015));
+      // 背景人声附属行 (role === 'bg'): 永远画在最底层 (renderBase - 0.605 = 259.395), 位于所有
+      // 主歌词 (>= renderBase - 0.40) 与所有译文行 (>= renderBase + 0.05) 之前, 避免压住相邻
+      // 主歌词/译文。bg 与同父行译文已用 Y 分离, 因此不再需要靠层序压译文。只有 bg 行走这个分支。
+      row.mesh.renderOrder = isActive ? (renderBase + 0.40) : (row.isBackground ? (renderBase - 0.605) : (row.isTranslation ? (renderBase + 0.05 + (currentTranslation ? 0.34 : translationFocus * 0.30)) : (renderBase - 0.40 - Math.min(5.5, abs) * 0.015)));
     }
     if (row.mat && row.mat.uniforms) {
       if (row.mat.uniforms.uOpacity) {
@@ -1572,11 +1725,13 @@ function updateLyricRowLayers(data, opts) {
           }
         }
       }
-      if (row.mat.uniforms.uProgress) row.mat.uniforms.uProgress.value = isActive ? shownProgress : 0;
+      // bg 行没有"当前主行"身份 (isActive 恒为 false), 它跟随父行的逐字进度; 是否真正参与高亮
+      // 完全由 uActiveMix 决定。进度始终跟随当前行, 这样切行淡出时不会因为 uProgress 归零而整行闪亮。
+      if (row.mat.uniforms.uProgress) row.mat.uniforms.uProgress.value = (isActive || row.isBackground) ? shownProgress : 0;
       if (row.mat.uniforms.uActiveMix) {
-        var activeMixTarget = isActive ? 1 : 0;
+        var activeMixTarget = (isActive || bgHighlightActive) ? 1 : 0;
         row.mat.uniforms.uActiveMix.value += (activeMixTarget - row.mat.uniforms.uActiveMix.value) * (isActive ? 0.34 : 0.62);
-        if (!isActive && row.mat.uniforms.uActiveMix.value < 0.015) row.mat.uniforms.uActiveMix.value = 0;
+        if (activeMixTarget < 0.5 && row.mat.uniforms.uActiveMix.value < 0.015) row.mat.uniforms.uActiveMix.value = 0;
       }
       if (row.mat.uniforms.uSolar && !isActive) {
         row.mat.uniforms.uSolar.value += (0 - row.mat.uniforms.uSolar.value) * 0.48;
