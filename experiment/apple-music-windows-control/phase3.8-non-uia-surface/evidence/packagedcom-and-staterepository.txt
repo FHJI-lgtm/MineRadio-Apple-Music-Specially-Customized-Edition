@@ -1,0 +1,31 @@
+## 1. PackagedCom top-level keys
+
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package
+topLevelKeyCount=1
+-- children of HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package
+
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleDevices_1.1540.24088.0_x64__nzyj5cx40ttqa
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.iCloud_15.9.60.0_x64__nzyj5cx40ttqa
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\B9ECED6F.ASUSPCAssistant_4.0.73.0_x64__qmba6cd70vzyy
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\B9ECED6F.Glidex_4.2.1.0_x64__qmba6cd70vzyy
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\Goversoft.PrivaZer_1.0.5.0_neutral__ps1j8khqkbvfa
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\MaxInstallOrder
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\Microsoft.DesktopAppInstaller_1.29.379.0_x64__8wekyb3d8bbwe
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\Microsoft.GamingApp_2608.1001.17.0_x64__8wekyb3d8bbwe
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\Microsoft.MicrosoftOfficeHub_19.2609.37021.0_x64__8wekyb3d8bbwe
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\Microsoft.Office.ActionsServer_16.0.20326.20158_neutral__8wekyb3d8bbwe
+## 2. Apple package key tree: HKCU\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+    (Default)    REG_DWORD    0x3e
+
+## 3. PackagedCom values mentioning ProxyStub or Interface (value search, no name filter)
+
+End of search: 0 match(es) found.
+
+End of search: 0 match(es) found.
+## 4. StateRepository read-only copy + binary token scan
+srdPath=C:\ProgramData\Microsoft\Windows\AppRepository\StateRepository-Machine.srd
+srdExists=False
+no copy available
