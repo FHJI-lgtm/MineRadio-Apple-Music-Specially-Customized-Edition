@@ -116,17 +116,31 @@ function Invoke-AmPlaySong {
         if ($Url) {
           $result.mode = 'deeplink'
           $tPage = [Diagnostics.Stopwatch]::StartNew()
-          try { Start-Process $Url | Out-Null } catch { }
+          $sigBefore = Get-AmTreeSignature $root
+          $nav = Invoke-AmNavigateUrl $Url
+          $result.navMethod = $nav.method
+          $navigated = $false
+          $pick = $null; $items = @()
           do {
+            Start-Sleep -Milliseconds 300
             $items = Get-AmListItems $root
+            $sigNow = Get-AmTreeSignature $root
+            if ($sigNow -ne $sigBefore) { $navigated = $true }
             $pick = Select-AmCandidateWithGeometry $items $Title $Artist
             $a.listMs = [int]$tPage.ElapsedMilliseconds
             if ($pick.ok -and $pick.hadGeometry) { break }
-            Start-Sleep -Milliseconds 300
           } while ($tPage.ElapsedMilliseconds -lt $PageWaitMs)
           $a.settleMs = [int]$tPage.ElapsedMilliseconds
-          if (-not $pick.ok) { $stage = 'RESULT_NOT_FOUND'; $detail = ('listItems=' + $items.Count + ' page=' + $Url) }
-          elseif (-not $pick.hadGeometry) { $stage = 'RESULT_NOT_FOUND'; $detail = ('row matched but no geometry within ' + $PageWaitMs + 'ms') }
+          $result.navigated = $navigated
+          if (-not ($pick -and $pick.ok -and $pick.hadGeometry)) {
+            if (-not $navigated) {
+              $stage = 'URL_NAVIGATION_FAILED'
+              $detail = ('page unchanged within ' + $PageWaitMs + 'ms (nav=' + $nav.method + ') listItems=' + $items.Count)
+            } else {
+              $stage = 'TARGET_ROW_NOT_FOUND'
+              $detail = ('page changed but no row matched "' + $Title + '" (listItems=' + $items.Count + ')')
+            }
+          }
         } else {
           $result.mode = 'search'
           $sr = Invoke-AmSearch $root $Title $hwnd

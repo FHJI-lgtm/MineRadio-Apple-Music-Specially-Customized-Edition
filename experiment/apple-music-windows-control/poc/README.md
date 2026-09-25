@@ -40,6 +40,8 @@ powershell -ExecutionPolicy Bypass -File poc\scenario-test.ps1
 | `AM_UI_NOT_FOUND` | 拿不到 UIA 根元素 |
 | `SEARCH_FAILED` | 搜索框打不开/无法输入（仅 search 模式） |
 | `RESULT_NOT_FOUND` | 页面/结果里没有标题匹配的行（或行始终拿不到几何） |
+| `URL_NAVIGATION_FAILED` | 给了 URL 但页面内容在 `PageWaitMs` 内毫无变化（导航没生效/链接被忽略） |
+| `TARGET_ROW_NOT_FOUND` | 页面确实变了，但没有标题匹配的行（URL 指向别处或该店面无此曲） |
 | `REALIZE_FAILED` | 行元素的 BoundingRectangle 始终为空（未渲染/窗口无几何） |
 | `BOUNDS_INVALID` | rect 异常（过小/越出虚拟屏） |
 | `OUT_OF_VIEW` | rect 有效但滚动后仍在窗口可视区之外（覆盖率<0.7 或点击点不在客户区） |

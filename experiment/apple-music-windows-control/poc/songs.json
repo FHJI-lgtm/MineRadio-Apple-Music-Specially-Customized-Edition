@@ -17,9 +17,10 @@
       "artist": "周杰倫",
       "resolveArtist": "周杰倫",
       "url": "",
+      "urlSource": "NEEDS_USER_INPUT",
       "smtcTitle": "",
       "smtcArtist": "",
-      "note": "Chinese song. No usable URL could be resolved for the signed-in storefront: the cn storefront search API returns nothing, the tw link is ignored by the app, and the default storefront surfaces only cover versions. Played through the search path (search -> activate result -> double click the track row on the opened page)."
+      "note": "Chinese song. Waiting for the Apple Music song URL copied from the user's own Apple Music app (Share -> Copy Link). The URL is the deterministic locating entry: the flow opens it (navigation only, never success), waits for the target row, realizes it and double clicks it, then verifies through SMTC. What was tried and rejected: itunes cn storefront search returns nothing / HTTP 400; the Apple Music web page is client-rendered with no /cn/song/ links in the HTML; the tw-storefront link is ignored by the app; the default storefront only surfaces cover versions."
     },
     {
       "id": "C",

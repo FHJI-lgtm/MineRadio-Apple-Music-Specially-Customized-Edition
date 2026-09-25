@@ -196,6 +196,40 @@ function Invoke-AmSearch($root, [string]$Query, [IntPtr]$Hwnd = [IntPtr]::Zero, 
   return @{ ok = $true; stage = 'OK'; ms = [int]$sw.ElapsedMilliseconds; detail = ''; alreadyOpen = $alreadyOpen; submitted = $submitted }
 }
 
+# A cheap fingerprint of the current page/list content, used to tell "the URL did
+# not navigate anywhere" (URL_NAVIGATION_FAILED) apart from "the page opened but
+# the wanted row is not there" (TARGET_ROW_NOT_FOUND).
+function Get-AmTreeSignature($root) {
+  $items = Get-AmListItems $root
+  $names = @()
+  $n = 0
+  foreach ($it in $items) {
+    $n++
+    if ($n -gt 12) { break }
+    $names += (Truncate-AmText $it.name 24)
+  }
+  return ('' + $items.Count + '|' + ($names -join ';'))
+}
+
+# Navigation only - it never counts as success. Uses the previously verified form
+# `AppleMusic.exe /url "<URL>"` (execution alias of the Store package) and falls
+# back to the shell handler if the alias is unavailable.
+function Invoke-AmNavigateUrl([string]$Url) {
+  $method = ''
+  $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\AppleMusic.exe'
+  if (Test-Path $exe) {
+    try {
+      Start-Process -FilePath $exe -ArgumentList ('/url "' + $Url + '"') | Out-Null
+      $method = 'AppleMusic.exe /url'
+    } catch { $method = '' }
+  }
+  if (-not $method) {
+    try { Start-Process $Url | Out-Null; $method = 'shell-open' } catch { $method = 'failed' }
+  }
+  Start-Sleep -Milliseconds 500
+  return @{ method = $method; ok = ($method -ne 'failed') }
+}
+
 function Get-AmListItems($root) {
   $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)
   $items = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
