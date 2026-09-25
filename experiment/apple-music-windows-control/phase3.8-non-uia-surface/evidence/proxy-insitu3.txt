@@ -1,0 +1,9 @@
+GATE1 LoadLibraryW hmodule=140730377830400 GetLastError=203
+
+## try PS class id: musicIID_68E7097C (68e7097c-f969-4006-aac3-95115f0ed1c4)
+  DllGetClassObject hr=0x80004002 factory=0
+  -> PS_FACTORY_FAILED
+
+## try PS class id: manifestProxyStub_F707A913 (f707a913-e0ce-4fd4-bce3-425dd153285b)
+  DllGetClassObject hr=0x80004002 factory=0
+  -> PS_FACTORY_FAILED

@@ -1,0 +1,8 @@
+## GATE 1: copy + LoadLibraryW(temp proxy)
+  copy -> C:\Users\limin\AppData\Local\Temp\ampproxy-38c.dll exists=True bytes=42872
+  LoadLibraryW hmodule=140730046087168 GetLastError=0
+  GATE1_RESULT = LOADED
+
+## GATE 2: DllGetClassObject(PS CLSID F707A913, IID_IClassFactory)
+  hr=0x80004002 factory=0
+  GATE2_RESULT = PS_FACTORY_FAILED
