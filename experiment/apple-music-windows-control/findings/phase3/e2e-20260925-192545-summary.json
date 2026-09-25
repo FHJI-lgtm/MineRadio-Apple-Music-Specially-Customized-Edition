@@ -1,0 +1,47 @@
+{
+    "stamp":  "20260925-192545",
+    "total":  22,
+    "resolveSuccess":  9,
+    "playbackAttempted":  9,
+    "playbackSuccess":  8,
+    "e2eSuccess":  8,
+    "wrongArtistAcceptances":  8,
+    "editionDifferent":  0,
+    "resolveMs":  {
+                      "p50":  3228,
+                      "max":  19416,
+                      "p95":  16195,
+                      "mean":  6169,
+                      "n":  22
+                  },
+    "playbackMs":  {
+                       "p50":  0,
+                       "max":  0,
+                       "p95":  0,
+                       "mean":  0,
+                       "n":  9
+                   },
+    "e2eMs":  {
+                  "p50":  4331,
+                  "max":  34285,
+                  "p95":  20672,
+                  "mean":  8514,
+                  "n":  22
+              },
+    "taxonomy":  {
+                     "CLICK_FAILED":  0,
+                     "TARGET_ROW_NOT_FOUND":  0,
+                     "RESOLVE_AMBIGUOUS":  4,
+                     "REALIZE_FAILED":  0,
+                     "RESOLVE_WRONG_ARTIST":  0,
+                     "URL_NAVIGATION_FAILED":  0,
+                     "RESOLVE_NOT_FOUND":  2,
+                     "RESOLVE_WRONG_ALBUM":  0,
+                     "RESOLVE_LOW_CONFIDENCE":  7,
+                     "SMTC_TIMEOUT":  0,
+                     "SMTC_WRONG_TRACK":  1,
+                     "LOOKUP_FAILED":  0,
+                     "BOUNDS_INVALID":  0,
+                     "APP_NOT_RUNNING":  0
+                 }
+}
