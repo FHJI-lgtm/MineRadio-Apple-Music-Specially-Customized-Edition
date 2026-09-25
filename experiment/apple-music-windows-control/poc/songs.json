@@ -1,0 +1,47 @@
+{
+  "note": "Frozen test songs for the Apple Music UIA play experiment. 'artist' is what SMTC is expected to report (and what narrows search candidates); 'resolveArtist' is what the public iTunes Search API knows the catalog artist as (they differ when Apple Music credits a real name, e.g. Abel Tesfaye vs The Weeknd). 'url' is resolved once during discovery and frozen, so the stability runs need no network.",
+  "songs": [
+    {
+      "id": "A",
+      "title": "How Do I Make You Love Me?",
+      "artist": "Abel Tesfaye",
+      "resolveArtist": "The Weeknd",
+      "url": "https://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530",
+      "smtcTitle": "How Do I Make You Love Me?",
+      "smtcArtist": "Abel Tesfaye — Dawn FM",
+      "note": "Recon-verified song (Dawn FM). SMTC credits the artist's real name."
+    },
+    {
+      "id": "B",
+      "title": "晴天",
+      "artist": "周杰倫",
+      "resolveArtist": "周杰倫",
+      "url": "",
+      "smtcTitle": "",
+      "smtcArtist": "",
+      "note": "Chinese song. No usable URL could be resolved for the signed-in storefront: the cn storefront search API returns nothing, the tw link is ignored by the app, and the default storefront surfaces only cover versions. Played through the search path (search -> activate result -> double click the track row on the opened page)."
+    },
+    {
+      "id": "C",
+      "title": "Shape of You",
+      "artist": "Ed Sheeran",
+      "resolveArtist": "Ed Sheeran",
+      "url": "https://music.apple.com/us/album/shape-of-you/1193701079?i=1193701392",
+      "smtcTitle": "",
+      "smtcArtist": "",
+      "note": "Second English song. URL resolved through the public iTunes Search API."
+    }
+  ],
+  "candidates": {
+    "B": [
+      { "title": "晴天", "artist": "周杰倫", "note": "resolved (tw storefront)" },
+      { "title": "富士山下", "artist": "陳奕迅", "note": "not resolved by the public API" },
+      { "title": "突然好想你", "artist": "五月天", "note": "not tried" }
+    ],
+    "C": [
+      { "title": "Shape of You", "artist": "Ed Sheeran", "note": "resolved (cn)" },
+      { "title": "Blinding Lights", "artist": "The Weeknd", "note": "resolved (cn)" },
+      { "title": "bad guy", "artist": "Billie Eilish", "note": "not tried" }
+    ]
+  }
+}

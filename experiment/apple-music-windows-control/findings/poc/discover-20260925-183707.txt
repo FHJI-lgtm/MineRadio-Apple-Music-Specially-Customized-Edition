@@ -1,0 +1,20 @@
+=== discover/verify 3 songs   2026-09-25T10:37:07.6356102Z ===
+  [A] "How Do I Make You Love Me?" / Abel Tesfaye
+      ok=True stage=OK mode=deeplink attempts=2 e2e=9263ms (smtc=275)
+      row="音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟" candidates=1 ambiguous=False pickedByPosition=False
+      smtc: title="How Do I Make You Love Me?" artist="Abel Tesfaye — Dawn FM" status=Playing
+  [B] "晴天" / 周杰倫
+      ok=False stage=RESULT_NOT_FOUND mode=deeplink attempts=2 e2e=25238ms (smtc=0)
+      row="" candidates=0 ambiguous=False pickedByPosition=False
+      smtc: title="" artist="" status=
+      detail: listItems=27 page=https://music.apple.com/tw/album/%E6%99%B4%E5%A4%A9/535824731?i=535824738
+  [C] "Shape of You" / Ed Sheeran
+      ok=False stage=SMTC_WRONG_TRACK mode=deeplink attempts=2 e2e=15476ms (smtc=6109)
+      row="音轨 1 Shape of You 3 分钟，56 秒钟" candidates=1 ambiguous=False pickedByPosition=False
+      smtc: title="Shape of You" artist="Fame on Fire — Shape of You - Single" status=Playing
+      detail: playing="Shape of You" status=Playing sawWrong=True
+
+=== measured SMTC strings (copy into songs.json to freeze) ===
+  A: title="How Do I Make You Love Me?" artist="Abel Tesfaye — Dawn FM"
+  B: title="" artist=""
+  C: title="Shape of You" artist="Fame on Fire — Shape of You - Single"
