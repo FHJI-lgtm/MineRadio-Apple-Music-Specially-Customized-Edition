@@ -1,0 +1,18 @@
+{
+  "note": "Phase 3.6 offline pure-test fixtures (UTF-8 on purpose; the .ps1 stays ASCII-only).",
+  "guangnian": {
+    "title": "光年之外",
+    "artist": "邓紫棋",
+    "titleLiveParen": "光年之外(Live)",
+    "albumSingle": "光年之外 - Single",
+    "albumLive": "光年之外 (Live)",
+    "albumShow": "嗨,唱起來 第5期 - EP",
+    "titleFilmHk": "光年之外 (電影《Passengers》中國區主題曲)",
+    "albumFilmHk": "光年之外 (電影《Passengers》中國區主題曲) - Single",
+    "titleFilmCn": "光年之外 (电影《太空旅客》主题曲)"
+  },
+  "ten": { "title": "十年", "artist": "陈奕迅", "albumA": "Special Thanks To...", "albumB": "十年 - Single" },
+  "bohemian": { "title": "Bohemian Rhapsody", "artist": "Queen", "albumStudio": "A Night at the Opera", "albumLive": "Live at Wembley", "titleLive": "Bohemian Rhapsody (Live)" },
+  "albums": { "liveCjk": "現場演唱會", "show": "第5期", "compilationCjk": "經典合輯", "compilationAscii": "Greatest Hits" },
+  "titles": { "albumYehui": "叶惠美", "albumYehuiTraditional": "葉惠美", "ordinaryCjk": "二十年", "filmThemeAsciiCjk": "Song (電影《X》主題曲)" }
+}

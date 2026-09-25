@@ -1,0 +1,25 @@
+{
+  "note": "Phase 3.6 real-song version matrix. Resolve-only (no playback). Expectations are policy invariants, not assumptions that a given version exists.",
+  "cases": [
+    { "id": "M01", "tag": "studio-vs-live", "title": "光年之外", "artist": "邓紫棋", "album": "", "expect": "prefer-canonical", "note": "the E22 regression case: live/variety-show editions exist" },
+    { "id": "M02", "tag": "studio-vs-live-multiple", "title": "Bohemian Rhapsody", "artist": "Queen", "album": "", "expect": "prefer-canonical", "note": "many live releases" },
+    { "id": "M03", "tag": "studio-vs-live", "title": "Hotel California", "artist": "Eagles", "album": "", "expect": "prefer-canonical" },
+    { "id": "M04", "tag": "original-vs-rerecorded", "title": "Love Story", "artist": "Taylor Swift", "album": "", "expect": "prefer-canonical" },
+    { "id": "M05", "tag": "original-vs-rerecorded", "title": "Shake It Off", "artist": "Taylor Swift", "album": "", "expect": "prefer-canonical" },
+    { "id": "M06", "tag": "studio-vs-live", "title": "Someone Like You", "artist": "Adele", "album": "", "expect": "prefer-canonical" },
+    { "id": "M07", "tag": "studio-vs-live", "title": "Yellow", "artist": "Coldplay", "album": "", "expect": "prefer-canonical" },
+    { "id": "M08", "tag": "album-vs-single", "title": "Shape of You", "artist": "Ed Sheeran", "album": "÷ (Deluxe)", "expect": "album-locked" },
+    { "id": "M09", "tag": "album-vs-compilation", "title": "Viva La Vida", "artist": "Coldplay", "album": "Viva la Vida or Death and All His Friends", "expect": "album-locked" },
+    { "id": "M10", "tag": "studio-vs-remix", "title": "Blinding Lights", "artist": "The Weeknd", "album": "", "expect": "prefer-canonical" },
+    { "id": "M11", "tag": "explicit-live-request", "title": "光年之外 (Live)", "artist": "邓紫棋", "album": "", "expect": "requested-version", "note": "user explicitly asked for the live version" },
+    { "id": "M12", "tag": "explicit-live-album-request", "title": "光年之外", "artist": "邓紫棋", "album": "金曲撈第二季 第5期", "expect": "album-locked", "note": "explicit live-album request must beat the version heuristic" },
+    { "id": "M13", "tag": "traditional-vs-simplified", "title": "晴天", "artist": "周杰伦", "album": "叶惠美", "expect": "album-locked" },
+    { "id": "M14", "tag": "album-vs-single", "title": "青花瓷", "artist": "周杰伦", "album": "我很忙", "expect": "album-locked" },
+    { "id": "M15", "tag": "chinese-studio-vs-live", "title": "十年", "artist": "陈奕迅", "album": "", "expect": "prefer-canonical" },
+    { "id": "M16", "tag": "known-not-found", "title": "后来", "artist": "刘若英", "album": "", "expect": "not-found-allowed", "note": "documented limitation, no per-song patch" },
+    { "id": "M17", "tag": "studio-vs-acoustic", "title": "Shape of You", "artist": "Ed Sheeran", "album": "", "expect": "prefer-canonical" },
+    { "id": "M18", "tag": "studio-vs-remastered", "title": "Rolling in the Deep", "artist": "Adele", "album": "", "expect": "prefer-canonical" },
+    { "id": "M19", "tag": "ost-vs-studio", "title": "My Heart Will Go On", "artist": "Celine Dion", "album": "", "expect": "prefer-canonical" },
+    { "id": "M20", "tag": "album-vs-compilation", "title": "Viva La Vida", "artist": "Coldplay", "album": "", "expect": "prefer-canonical" }
+  ]
+}

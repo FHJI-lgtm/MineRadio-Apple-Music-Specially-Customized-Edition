@@ -1,0 +1,20 @@
+{
+  "note": "Phase 3.6 version-marker data. Kept out of the .ps1 on purpose: PowerShell 5.1 parses BOM-less scripts as ANSI, so all non-ASCII data lives in UTF-8 JSON.",
+  "markers": {
+    "live": ["現場", "现场", "演唱會", "演唱会", "音樂會", "音乐会", "跨年"],
+    "show": ["期"],
+    "acoustic": ["不插電", "不插电", "木吉他版"],
+    "remix": ["混音", "舞曲版"],
+    "remaster": ["重製", "重制", "復刻", "复刻", "數位修復", "数位修复"],
+    "rerecorded": ["重錄", "重录", "新版", "重生版", "全新版本"],
+    "instrumental": ["伴奏", "純音樂", "纯音乐", "伴唱"],
+    "karaoke": ["卡拉ok"],
+    "demo": ["試唱", "试唱"],
+    "radio": ["電台版", "电台版"],
+    "extended": ["加長版", "加长版"],
+    "ost": ["原聲帶", "原声带", "電視原聲", "电视原声", "電影原聲", "电影原声"],
+    "compilation": ["合輯", "合辑", "精選", "精选"]
+  },
+  "contextAnnotations": ["電影", "电影", "電視劇", "电视剧", "主題曲", "主题曲", "插曲", "片尾曲", "片頭曲", "片头曲", "from the", "feat", "ft.", "with "],
+  "showEpisodeRegex": "第\\s*[0-9０-９一二三四五六七八九十]+\\s*期"
+}

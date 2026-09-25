@@ -1,14 +1,20 @@
 # ============================================================
-# phase3-resolve/lib/resolve35.ps1   (Phase 3.5 hardened resolver)
+# phase3-resolve/lib/resolve35.ps1   (Phase 3.6: version semantics + precision)
 # (title, artist[, album]) -> correct Apple Music Song ID + canonical URL, WITHOUT
-# a hardcoded URL and WITHOUT ever returning a knowingly wrong song.
+# a hardcoded URL and WITHOUT ever returning a knowingly wrong song/version.
 #
 # Layered, evidence-based decisions (no unbounded fuzzy matching):
-#   title  : exact > prefix > contains      (title must match - never optional)
-#   artist : exact > normalized > catalog alias > CJK credit variant
-#            (NO contains, NO edit distance - a different artist is never accepted)
-#   album  : normalized exact > contains    (an exact album always outranks a merely
-#            contained one, even when the contained one came back first)
+#   title   : exact > exact-context > prefix > contains   (title is mandatory)
+#   artist  : exact > normalized > catalog alias > CJK credit variant (never contains)
+#   album   : normalized exact > exact-CJK > contains     (exact beats contained)
+#   version : canonical (studio) > requested-version match > weak context > other
+#             (see version36.ps1; explicit title markers vs context annotations)
+#   evidence: the authoritative lookup(id, country) metadata is re-scored and, when a
+#             real candidate exists, outranks the search-time score.  A lookup that
+#             contradicts the request refuses the result (WRONG_ARTIST/ALBUM/VERSION).
+#
+# Selection is done by the pure comparator Select-AmBestCandidate (version36.ps1):
+# equal evidence across different recordings is AMBIGUOUS - never array order.
 #
 # Discovery strategies (general, no per-song patches):
 #   S1 title+artist+album   S2 title+artist   S3 title   S4 title+album
@@ -25,6 +31,7 @@
 $script:P3Root = $PSScriptRoot | Split-Path -Parent
 $script:P3ExpRoot = $script:P3Root | Split-Path -Parent
 . (Join-Path $script:P3ExpRoot 'poc\lib\am-common.ps1')
+. (Join-Path $script:P3Root 'lib\version36.ps1')
 
 $script:AmStorefrontLadder = @('cn', 'tw', 'hk', 'us', '')
 
@@ -105,7 +112,7 @@ function Get-AmCanonicalSongUrl([string]$SongId, [string]$Storefront = 'cn', [st
 function Get-AmItunesHttp([string]$Uri, [int]$Retries = 3) {
   for ($i = 1; $i -le $Retries; $i++) {
     try {
-      $raw = (Invoke-WebRequest -Uri $Uri -TimeoutSec 25 -UseBasicParsing -Headers @{ 'User-Agent' = 'mineradio-phase35' }).Content
+      $raw = (Invoke-WebRequest -Uri $Uri -TimeoutSec 25 -UseBasicParsing -Headers @{ 'User-Agent' = 'mineradio-phase36' }).Content
       return @{ ok = $true; json = ($raw | ConvertFrom-Json); uri = $Uri; error = '' }
     } catch {
       if ($i -eq $Retries) { return @{ ok = $false; json = $null; uri = $Uri; error = $_.Exception.Message } }
@@ -181,32 +188,21 @@ function Resolve-AmSong {
       if ($r.ok) {
         foreach ($it in $r.results) {
           if (('' + $it.kind) -ne 'song') { continue }
-          $t = Get-AmTitleLayer $Title ('' + $it.trackName)
+          $t = Get-AmTitleLayer36 $Title ('' + $it.trackName)
           if (-not $t.ok) { continue }                                  # title is mandatory
-          $a = Test-AmArtistLayer $Artist ('' + $it.artistName)
-          if (-not $a.ok) { continue }                                  # other artists never accepted
-          $al = Get-AmAlbumLayer $Album ('' + $it.collectionName)
-          $score = $t.score + $a.score + $al.score
-          if ($sf -eq $Storefront) { $score += 1 }
           $found++
-          $cands += , @{
-            trackId = ('' + $it.trackId); collectionId = ('' + $it.collectionId)
-            title = ('' + $it.trackName); artist = ('' + $it.artistName); album = ('' + $it.collectionName)
-            titleLayer = $t.layer; titleScore = $t.score
-            artistLayer = $a.layer; artistScore = $a.score
-            albumLayer = $al.layer; albumScore = $al.score; albumExact = $al.exact
-            storefront = $sf; strategy = $st.name; score = $score
-            trackViewUrl = ('' + $it.trackViewUrl); trackNumber = [int]('0' + ('' + $it.trackNumber))
-          }
+          $cands += , (New-AmCandidate -TrackId ('' + $it.trackId) -CollectionId ('' + $it.collectionId) `
+              -Title ('' + $it.trackName) -Artist ('' + $it.artistName) -Album ('' + $it.collectionName) `
+              -Storefront $sf -Strategy $st.name -TrackNumber ([int]('0' + ('' + $it.trackNumber))) `
+              -RequestTitle $Title -RequestArtist $Artist -RequestAlbum $Album)
         }
       }
       $ev['candidates'] = $found
       $evidence.Add([pscustomobject]$ev)
-      # Early exit: as soon as a HIGH-confidence candidate is in hand there is no
-      # reason to keep hammering the public API (it rate-limits with 403/429).
+      # Early exit: a canonical, fully matching candidate is enough; keep the API bounded.
       $good = @($cands | Where-Object {
-          $_.titleLayer -eq 'exact' -and $_.artistLayer -in @('exact', 'normalized') -and
-          ($_.albumExact -or -not $Album)
+          $_.titleLayer -in @('exact', 'exact-context') -and $_.artistLayer -in @('exact', 'normalized') -and
+          $_.versionCanonical -and ($_.albumExact -or -not $Album)
         })
       if ($good.Count -gt 0) { $stop = $true; break }
     }
@@ -229,23 +225,13 @@ function Resolve-AmSong {
           if (-not ($lk.ok -and $lk.count -gt 0)) { continue }
           foreach ($it in $lk.results) {
             if (('' + $it.kind) -ne 'song') { continue }
-            $t = Get-AmTitleLayer $Title ('' + $it.trackName)
+            $t = Get-AmTitleLayer36 $Title ('' + $it.trackName)
             if (-not $t.ok) { continue }
-            $a = Test-AmArtistLayer $Artist ('' + $it.artistName)
-            if (-not $a.ok) { continue }
-            $al = Get-AmAlbumLayer $Album ('' + $it.collectionName)
-            $score = $t.score + $a.score + $al.score
-            if ($sf -eq $Storefront) { $score += 1 }
             $added++
-            $cands += , @{
-              trackId = ('' + $it.trackId); collectionId = ('' + $it.collectionId)
-              title = ('' + $it.trackName); artist = ('' + $it.artistName); album = ('' + $it.collectionName)
-              titleLayer = $t.layer; titleScore = $t.score
-              artistLayer = $a.layer; artistScore = $a.score
-              albumLayer = $al.layer; albumScore = $al.score; albumExact = $al.exact
-              storefront = $sf; strategy = 'S6-album->lookup'; score = $score
-              trackViewUrl = ('' + $it.trackViewUrl); trackNumber = [int]('0' + ('' + $it.trackNumber))
-            }
+            $cands += , (New-AmCandidate -TrackId ('' + $it.trackId) -CollectionId ('' + $it.collectionId) `
+                -Title ('' + $it.trackName) -Artist ('' + $it.artistName) -Album ('' + $it.collectionName) `
+                -Storefront $sf -Strategy 'S6-album->lookup' -TrackNumber ([int]('0' + ('' + $it.trackNumber))) `
+                -RequestTitle $Title -RequestArtist $Artist -RequestAlbum $Album)
           }
         }
       }
@@ -257,9 +243,9 @@ function Resolve-AmSong {
   $byId = @{}
   foreach ($c in $cands) {
     if (-not $c.trackId) { continue }
-    if ((-not $byId.ContainsKey($c.trackId)) -or ($c.score -gt $byId[$c.trackId].score)) { $byId[$c.trackId] = $c }
+    if ((-not $byId.ContainsKey($c.trackId)) -or ($c.scoreWithEvidence -gt $byId[$c.trackId].scoreWithEvidence)) { $byId[$c.trackId] = $c }
   }
-  $sorted = @($byId.Values | Sort-Object -Property @{ Expression = { $_.score }; Descending = $true }, @{ Expression = { $_.trackNumber }; Ascending = $true })
+  $all = @($byId.Values)
 
   $out = @{
     ok = $false; reason = 'RESOLVE_NOT_FOUND'; confidence = 'NOT_FOUND'
@@ -267,51 +253,82 @@ function Resolve-AmSong {
     matched = @{ title = ''; artist = ''; album = ''; trackId = '' }
     runnerUp = @{ songId = ''; title = ''; artist = ''; album = ''; score = 0 }
     lookup = @{ performed = $false; ok = $false; storefront = ''; inRequested = $false; title = ''; artist = ''; album = '' }
-    evidence = $evidence; candidateCount = $sorted.Count; ts = (Get-AmIsoNow)
+    version = @{ classes = @(); canonical = $false; layer = ''; reason = ''; requestClasses = @((Get-AmVersionRequest $Title $Album).classes) }
+    evidence = $evidence; candidateCount = 0; totalCandidates = 0
+    ambiguous = $false; tie = $false; distinctRecordings = 0; choseCanonical = $false; selectionNotes = @()
+    autoPlayable = $false; ts = (Get-AmIsoNow)
   }
-  if ($sorted.Count -eq 0) { return $out }
+  $out.totalCandidates = $all.Count
+  if ($all.Count -eq 0) { return $out }
 
-  $pool = $sorted
-  if ($Album) {
-    $exactAlbums = @($sorted | Where-Object { $_.albumExact })
-    if ($exactAlbums.Count -gt 0) { $pool = $exactAlbums }
-  }
-  $top = $pool[0]
-  $second = $null
-  if ($pool.Count -gt 1) { $second = $pool[1] } elseif ($sorted.Count -gt 1) { $second = $sorted[1] }
+  $sel = Select-AmBestCandidate -Candidates $all -RequestAlbum $Album -RequestTitle $Title -Storefront $Storefront -Ladder $ladder
+  $out.ambiguous = $sel.ambiguous
+  $out.tie = $sel.tie
+  $out.distinctRecordings = $sel.distinctRecordings
+  $out.choseCanonical = $sel.choseCanonical
+  $out.selectionNotes = @($sel.notes)
+  $out.candidateCount = $sel.poolSize
+  $top = $sel.winner
+  if ($top -eq $null) { return $out }
+  $second = $sel.runnerUp
+  $out.score = $top.scoreWithEvidence
+  $out.matched = @{ title = $top.title; artist = $top.artist; album = $top.album; trackId = $top.trackId
+                    titleLayer = $top.titleLayer; artistLayer = $top.artistLayer; albumLayer = $top.albumLayer
+                    albumExact = $top.albumExact; versionLayer = $top.versionLayer }
+  if ($second) { $out.runnerUp = @{ songId = $second.trackId; title = $second.title; artist = $second.artist; album = $second.album; score = $second.scoreWithEvidence; versionLayer = $second.versionLayer } }
+  $out.version = @{ classes = @($top.versionClasses); canonical = $top.versionCanonical; layer = $top.versionLayer
+                    reason = $top.versionReason; policy = ($sel.notes -join '; '); requestClasses = @((Get-AmVersionRequest $Title $Album).classes) }
 
-  if ($second -and ($second.score -eq $top.score) -and ($second.trackId -ne $top.trackId) -and (-not $top.albumExact)) {
+  if ($sel.ambiguous) {
     $out.reason = 'RESOLVE_AMBIGUOUS'
     $out.confidence = 'AMBIGUOUS'
-    $out.score = $top.score
-    $out.matched = @{ title = $top.title; artist = $top.artist; album = $top.album; trackId = $top.trackId }
-    $out.runnerUp = @{ songId = $second.trackId; title = $second.title; artist = $second.artist; album = $second.album; score = $second.score }
     return $out
+  }
+
+  # ---- accepted winner: let the authoritative catalog lookup decide ----
+  $lookupOk = $false
+  $lvTitle = ''; $lvArtist = ''; $lvAlbum = ''
+  if (-not $NoLookup) {
+    $lv = Test-AmSongIdAlive -SongId $top.trackId -PreferredStorefront $Storefront
+    $lookupOk = $lv.ok
+    $lvTitle = $lv.title; $lvArtist = $lv.artist; $lvAlbum = $lv.album
+    $out.lookup = @{ performed = $true; ok = $lv.ok; storefront = $lv.storefront; inRequested = $lv.inRequested; title = $lv.title; artist = $lv.artist; album = $lv.album }
+    if ($lv.ok) {
+      $win2 = New-AmCandidate -TrackId $top.trackId -CollectionId $top.collectionId -Title $top.title -Artist $top.artist `
+        -Album $top.album -Storefront $top.storefront -Strategy $top.strategy -TrackNumber $top.trackNumber `
+        -RequestTitle $Title -RequestArtist $Artist -RequestAlbum $Album `
+        -LookupConfirmed $true -LookupTitle $lv.title -LookupArtist $lv.artist -LookupAlbum $lv.album
+      $out.score = $win2.scoreWithEvidence
+      $out.matched = @{ title = $lv.title; artist = $lv.artist; album = $lv.album; trackId = $top.trackId
+                        titleLayer = $win2.titleLayer; artistLayer = $win2.artistLayer; albumLayer = $win2.albumLayer
+                        albumExact = $win2.albumExact; versionLayer = $win2.versionLayer }
+      $out.version = @{ classes = @($win2.versionClasses); canonical = $win2.versionCanonical; layer = $win2.versionLayer
+                        reason = $win2.versionReason; policy = ($sel.notes -join '; '); requestClasses = @($out.version.requestClasses) }
+      # deterministic guard: catalog truth must never contradict the request
+      $tl = Get-AmTitleLayer36 $Title $lv.title
+      $at = Test-AmArtistLayer $Artist $lv.artist
+      $al = Get-AmAlbumLayer $Album $lv.album
+      $vg = Get-AmVersionLayer $lv.title $lv.album $Title $Album
+      if (-not $tl.ok) { $out.reason = 'RESOLVE_NOT_FOUND'; $out.confidence = 'LOW'; return $out }
+      if ($Artist -and -not $at.ok) { $out.reason = 'RESOLVE_WRONG_ARTIST'; $out.confidence = 'LOW'; return $out }
+      if ($Album -and ($al.layer -eq 'none')) { $out.reason = 'RESOLVE_WRONG_ALBUM'; $out.confidence = 'LOW'; return $out }
+      if (-not $vg.ok) { $out.reason = 'RESOLVE_WRONG_VERSION'; $out.confidence = 'LOW'; return $out }
+      $top = $win2
+    }
   }
 
   $out.ok = $true
   $out.reason = 'OK'
   $out.songId = $top.trackId
   $out.storefront = $top.storefront
-  $out.score = $top.score
   $out.slug = ConvertTo-AmSongSlug $top.title
   $out.canonicalUrl = Get-AmCanonicalSongUrl $top.trackId $Storefront $top.title
-  $out.matched = @{ title = $top.title; artist = $top.artist; album = $top.album; trackId = $top.trackId; titleLayer = $top.titleLayer; artistLayer = $top.artistLayer; albumLayer = $top.albumLayer }
-  if ($second) { $out.runnerUp = @{ songId = $second.trackId; title = $second.title; artist = $second.artist; album = $second.album; score = $second.score } }
-
-  $exactTitle = ($top.titleLayer -eq 'exact')
-  $goodArtist = ($top.artistLayer -in @('exact', 'normalized'))
-  $albumOk = ($top.albumLayer -in @('exact', 'not-requested'))
-  $noTie = ((-not $second) -or ($second.score -lt $top.score))
-  if ($exactTitle -and $goodArtist -and $albumOk -and $noTie) { $out.confidence = 'HIGH' }
-  elseif ($exactTitle -and $top.artistLayer -in @('alias', 'cjk') -and $albumOk) { $out.confidence = 'MEDIUM' }
-  elseif ($exactTitle -and $top.albumLayer -eq 'contains') { $out.confidence = 'MEDIUM' }
-  else { $out.confidence = 'LOW' }
-
-  if (-not $NoLookup) {
-    $lv = Test-AmSongIdAlive -SongId $top.trackId -PreferredStorefront $Storefront
-    $out.lookup = @{ performed = $true; ok = $lv.ok; storefront = $lv.storefront; inRequested = $lv.inRequested; title = $lv.title; artist = $lv.artist; album = $lv.album }
-    if (-not $lv.ok) { $out.confidence = 'LOW' }
-  }
+  $out.confidence = Get-AmConfidence -Winner $top -Selection $sel -RequestTitle $Title -RequestArtist $Artist -RequestAlbum $Album `
+    -LookupPerformed (-not $NoLookup) -LookupOk $lookupOk -LookupTitle $lvTitle -LookupArtist $lvArtist -LookupAlbum $lvAlbum
+  # auto-play policy: a strong result that is also the plain version (or an explicitly
+  # requested version).  A lone live/remix recording is reported but never auto-played.
+  $versionOkForPlay = ($top.versionLayer -in @('canonical', 'requested-version'))
+  $out.version['canonical'] = $top.versionCanonical
+  $out.autoPlayable = (($out.confidence -in @('HIGH', 'MEDIUM')) -and $versionOkForPlay)
   return $out
 }
