@@ -1,0 +1,72 @@
+FILE=StateRepository-Machine.srd exists=True
+  bytes=7340032
+  PATTERN=IAMPLibrary_LE hits=0
+  PATTERN=IAMPLibrary_BE hits=0
+  PATTERN=IAMPMusicLibrary_LE hits=0
+  PATTERN=IAMPMusicLibrary_BE hits=0
+  PATTERN=IAMPLibrary_nodash_ascii hits=0
+  PATTERN=IAMPMusicLibrary_nodash_ascii hits=0
+  TOKEN=proxyStub hits=284
+    offset=215141 neighbours=[proxyStub] guidBytesInWindow=0
+      vis=ion__WorkIdPackageExtension..CREATE INDEX IDX_PackageExtension__WorkId ON PackageExtension(_WorkId) WHERE _WorkId<>0.G-.indexIDX_PackageExtension_CategoryPackageExtension..CREATE INDEX IDX_PackageExtension_Category ON PackageExtension(Category).W-..?indexIDX_PackageExtension_Package_CategoryPackageExtension..CREATE INDEX IDX_PackageExtension_Package_Category ON PackageExtension(Package, Category).%.+n.j.8.p.D.%.!.7.windows.firewallRules.'.Q.windows.activatableClass.proxyStub.-.].windows.activatableClass.inProcessServer.z.~-.].windows.activatableClass.inProcessServer.-.].windows.activatableClass.inProcessServer.-.].windows.activatableClass.inProcessServer.4-.].windows.activatableClass.inProcessServer. -.].windows.activatableClass.inProcessServer.-.].windows.activatableClass.inProcessServer.-.].windows.activatableClass.inProcessServer.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<.<. . . . .x.x.x.x.x.
+    offset=1077032 neighbours=[proxyStub] guidBytesInWindow=0
+      vis=tr-trr.O.3$sv-see.N.3$pt-brr.M.3$pl-pll.L.3$nl-nll.K.3$nb-noo.J.3$ja-jpp.I.3$it-itt.H.3$fr-frr.G.3$fi-fii.F.3$es-uss.1.g.3.f.1.!. .0..].0..].0..]..;windows.activatableClass.inProcessServer.j.0..]..5windows.activatableClass.inProcessServer.0..]..2windows.activatableClass.inProcessServer.0..].windows.activatableClass.inProcessServer.?.)..Q.1windows.activatableClass.proxyStub.p/..].1windows.activatableClass.inProcessServer.]. windows.activatableClass.inProcessServerJ.]..windows.activatableClass.inProcessServer@.]..windows.activatableClass.inProcessServer.oft.MicrosoftStickyNotes_6.1.4.0_neutral_split.scale-150_8wekyb3d8bbwe.bwe.+..bwe.F.
+    offset=1337655 neighbours=[proxyStub] guidBytesInWindow=0
+      vis=`.,-.].windows.activatableClass.inProcessServer.*-.].windows.activatableClass.inProcessServer.%-.].windows.activatableClass.inProcessServer.$-.].windows.activatableClass.inProcessServer.(.m.B.Y.(.0..]..ywindows.activatableClass.inProcessServer._0..]..ywindows.activatableClass.inProcessServer.^0..]..ywindows.activatableClass.inProcessServer.\0..]..ywindows.activatableClass.inProcessServer.[*..Q..Swindows.deploymentExtensionHandler..*..Q..Swindows.activatableClass.proxyStub..*..Q..Swindows.activatableClass.proxyStub..0..]..Swindows.activatableClass.inProcessServer..0..]..Swindows.activatableClass.inProcessServer..0..]..ywindows.activatableClass.inProcessServer.`.m.<.x.G.*..Q..ywindows.activatableClass.proxyStub.]0..]..ywindows.activatableClass.inProcessServer.i0..]..ywindows.activatableClass.inProcessServer.h0..]..ywindows.activatableClass.inProcessServer.g0..]..ywindows.activatableClass.inProcessServer.f0..]..ywindows.activatableClass.inProcessSer
+  TOKEN=AppleMusicWin hits=67
+    offset=336562 neighbours=[AppleMusicWin] guidBytesInWindow=0
+      vis=.,.4.,.&.fB.fB.B.+.3.,.'.fB.g..fB.B..C.+.2.,.&.fB.g..fB.B..C.\..,.1.,.#.fB..n.fB.B.73..,.0.,.".fB..n.fB.B.(..,./.,.fB..[5..fB.B.,.,.fB..N.fB.B.R.k.=.R.:.ag/.c.=.AppUp.IntelOptan/.c.AppUp.IntelGraphicsExperience_8j3eq9eme6cttk".G.AppleInc.iCloud_nzyj5cx40ttqa..).U.AppleInc.AppleMusicWin_nzyj5cx40ttqa..(.S.AppleInc.AppleDevices_nzyj5cx40ttqa.3.aimgr_8wekyb3d8bbwe..+.Y.63265WXRIW.193470E81A0DE_8ybqz4qm5hwha..-.].4651ED44255E.47979655102CE_k6txddmbb6c52..).U.3AD8A913.49937325EFC59_j4r74wbqry4cc..4.k.28017CharlesMilette.TranslucentTB_v826wp6bftszj..5.q.1527c705-839a-4832-9118-54d4Bd6a0c89_cw5n1h2txyewy.V..A.V.h.W.-'s\..Microsoft.MicrosoftEdgeDevToolsClientCN=Microsoft Corporation, O=Microsoft Cor
+    offset=344755 neighbours=[AppleMusicWin] guidBytesInWindow=0
+      vis=on, C=US8wekyb3d8bbweMicrosoft.WindowsAppRuntime.CBS.1.6_8wekyb3d8bbwe.,.|..<.hT..<.[.\.O.%'k\..Microsoft.Windows.XGpuEjectDialogCN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=UScw5n1h2txyewyMicrosoft.Windows.XGpuEjectDialog_cw5n1h2txyewy.4h.T..&.$.Ce.A8.\.^..\.1.R.k.=.R.:.mageE/.=.c'.AppUp.IntelOpta/.G'.AppUp.IntelGraphicsExperience8j3eq9eme6cttk".+'.AppleInc.iCloudnzyj5cx40ttqa..).9'.AppleInc.AppleMusicWinnzyj5cx40ttqa..(.7'.AppleInc.AppleDevicesnzyj5cx40ttqa.'.aimgr8wekyb3d8bbwe..+.='.63265WXRIW.193470E81A0DE8ybqz4qm5hwha..-.A'.4651ED44255E.47979655102CEk6txddmbb6c52..).9'.3AD8A913.49937325EFC59j4r74wbqry4cc..4.O'.28017CharlesMilette.TranslucentTBv826wp6bftszj..5.U'.1527c705-839a-4832-9118-54d4Bd6a0c89cw5n1h2txyewy.K.S.w.K..g-g-.].Microsoft.AIFabric.CBS.1.6_8wekyb3d8bbwe..+.[.Microsoft.AccountsControl_cw5n1h2txyewy.,.].Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy.(.S.MdOdrMcpFil
+    offset=394611 neighbours=[AppleMusicWin] guidBytesInWindow=0
+      vis=ndows.61869721.Livtop_cw5n1h2txyewy..3.i.MicrosoftWindows.61869720.Voiess_cw5n1h2txyewy.M..a.MicrosoftWindows.Client.OOBE_cw5n1h2txyewy$.\.6.O['k\..28017CharlesMilette.TranslucentTBCN=04797BBC-C7BB-462F-9B66-331C81E27C0Ev826wp6bftszj28017CharlesMilette.TranslucentTB_v826wp6bftszj.%.E.5d?.N.[.=A.`. .9['U\..AppleInc.AppleMusicWinCN=5BD5593D-A41B-4F89-884E-B4F3E0FBAA75nzyj5cx40ttqaAppleInc.AppleMusicWin_nzyj5cx40ttqa.j.>QTY..8I!.?.xp.;.2.2.Z.I.-'e\..Microsoft.Office.ActionsServerCN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US8wekyb3d8bbweMicrosoft.Office.ActionsServer_8wekyb3d8bbwe.,.6.<.q \.."h.z.e.l.[.-'w\..Microsoft.OfficePushNotificationUtilityCN=Microsoft Corporation, O=Microsoft Corpora
+  TOKEN=AMPLibraryAgent hits=7
+    offset=581482 neighbours=[AMPLibraryAgent] guidBytesInWindow=0
+      vis=entHost.exeBioEnrollmentHost.Appt.u..I5.2a54mn11e08yj050w8at3wf44w8wbhkzq4tvr5ydpa10swa2z7p0..Microsoft.AsyncTextService.exeAsyncTextService.App.(._.(.a.(.I.#..7.Q.2..8.-E.AppleDevices.exeWindows.FullTrustApplication..H.ME.AppInstallerPythonRedirector.exeWindows.FullTrustApplication..D.EE.AppInstallerProtocolShim.exeAppInstallerProtocolShim.App.a8.-E.AppInstaller.exeWindows.FullTrustApplication._6.)E.AppActions.exeWindows.FullTrustApplication.4;.3E.AMPLibraryAgent.exeWindows.FullTrustApplication.S;.3E.AMPDevicesAgent.exeWindows.FullTrustApplication..(.E.Windows.FullTrustApplication.".V.c.".@.=E.CrossDeviceFilesHost.exeWindows.FullTrustApplication..E.GE.ClockWidgets\ClockWidgets.exeWindows.FullTrustApplication..?.;E.Clipchamp\Clipchamp.exeWindows.FullTrustApplication.n5.'E.ClickToDo.exeWindows.FullTrustApplication.?6.)E.AsusBridge.exeWindows.FullTrustApplication..,.--.ArmouryCr
+    offset=668625 neighbours=[AMPLibraryAgent] guidBytesInWindow=0
+      vis=exeManagement.SecureAssessment.Browser.App..k.6.=.=.n.V.u../E.1byz398w8n9ahr3yv4p7avthp3hgq1ssf0sbmmbr5fvy59d9pf9g.TranslucentTB.exeWindows.FullTrustApplicationl.U.u..+E.k7aece2jpwf0fwvs1chj4q03e3q84j561gvxww9yp3se05vp3g6g.appdefaults.exeWindows.FullTrustApplicationm.T.u..-E.ga9bsr7zgt4g859n4ycgrvch9w3r1hx117s80h4frzk9xjn2m6g0.SharedHelper.exeWindows.FullTrustApplicationp.S.u..3E.qv9rr915971mmdx22gy5pzzgezyb1c8ct3w7r03kgythc2fq2r80.AMPLibraryAgent.exeWindows.FullTrustApplication.*.\.~.t.j.`.V.L.B.8.$.z.p.f.\.(<.^.(;.].(:.\.(9.[.(8.Z.(7.Y.(6.X.(5.W.(4.V.(3.U.(2.T.(1.S.(0.R.(/.Q.(..P.(-.O.(,.N.(+.M.(*.L.().K.((.J.('.I.(&.H.(%.G.($.F.(#.E.(".D.(!.C.( .B.(..A.(..@.(..?.(..>.(..=.(..<.(..;.(..:.
+    offset=1405810 neighbours=[AppleMusicWin,AMPLibraryAgent] guidBytesInWindow=0
+      vis=Images\Wide310x150Logo.pngImages\LargeTile.pngImages\SmallTile.pnglight.RAppleMusic.exeWindows.FullTrustApplicationImages\SplashScreen.png.k.W&.%o##EA.-E.SharedHelperAppleInc.AppleMusicWin_nzyj5cx40ttqa!SharedHelperApple MusicApple MusicImages\Square150x150Logo.pngImages\Square44x44Logo.pnglight.TSharedHelper.exeWindows.FullTrustApplication.w.V&.'q++EA.3E.LibraryServerAppleInc.AppleMusicWin_nzyj5cx40ttqa!LibraryServerAMPLibraryAgentAMPLibraryAgentImages\Square150x150Logo.pngImages\Square44x44Logo.pnglight.SAMPLibraryAgent.exeWindows.FullTrustApplication.#.G.^.#.Microsof:.w.Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic.`*.W.Microsoft.YourPhone_8wekyb3d8bbwe!App..8.s.Microsoft.XboxSpeechToTextOverlay_8wekyb3d8bbwe!App..Q..#.Microsoft.XboxIdentityProvider_8wekyb3d8bbwe!Microsoft.XboxIdentityProvider.M2.g.Microsoft.XboxGamingOverlay_8wekyb3d8bbwe!App..L.Microsoft.XboxGameCallableUI_cw5n1h2tx
+  TOKEN=ClassId hits=0
+  TOKEN=Interface hits=68
+    offset=1790529 neighbours=[Interface] guidBytesInWindow=0
+      vis=.x.p.o.?$^.?$].?$\.?$[.?$Z.?$Y.?$X.?$W.?$V.?$U.?$T.?$S.?$R.?$Q.?$P.?$O.?$N.?$M.?$L.?$K.?$J.?$I.?$H.?$G.?$B.?$A.?$@.?$?.>$>.>$=.>$<.>$;.>$:.>$9.>$7.=$6.=$5.=$4.=$3.=$2.=$1.=$/.7#.7#.7#.5#.4#.4#.4#.@$_.M..i.M./.l.5.*.windows.comInterface.X.5.H.(windows.appExtension=.SRD1.L.@.C.a.t.e.g.o.r.y.*.w.i.n.d.o.w.s.a.p.p.E.x.t.e.n.s.i.o.n.A.p.p.E.x.t.e.n.s.i.o.n.^.SRD1^.@.N.a.m.e.n.c.o.m.m.i.c.r.o.s.o.f.t.w.i.n.d.o.w.s.e.x.t.e.n.s.i.o.n.s.W.5.D.(windows.appExtension=.SRD1\.L.@.C.a.t.e.g.o.r.y.*.w.i.n.d.o.w.s.a.p.p.E.x.t.e.n.s.i.o.n.#.Z.f.#.).'.'.Q.B.com.microsoft.windows.ext
+    offset=2004045 neighbours=[Interface] guidBytesInWindow=0
+      vis=.cs-CZ..j.#.chr-Cher-US..i.).ca-Es-VALENCIA..h.ca-ES..g.!.bs-Latn-BA..f.bn-IN..e.bn-BD..d.bg-BG..c.be-BY..b.!.az-Latn-AZ..a.as-IN..`.ar-SA.._.am-ET..^.af-ZA..].en-US..\.mzu-ZA..[.lzh-TW..Z.kzh-CN..Y.jyo-NG..X.ixh-ZA..W.hwo-SN..V.gvi-VN.'.Y.'.0/.5.X.windows.comInterface.5.Xwindows.comInterface.+./.Xwindows.comServer.5.1.W.windows.mediaCodec..SRD1.H.@.C.a.t.e.g.o.r.y.&.w.i.n.d.o.w.s.m.e.d.i.a.C.o.d.e.c.M.e.d.i.a.C.o.d.e.c.SRD1.`.@.D.i.s.p.l.a.y.N.a.m.e.8.M.i.c.r.o.s.o.f.t. .H.E.V.C. .D.X.1.2. .E.n.c.o.d.e.r.X.@.D.e.s.c.r.i.p.t.i.o.n.0.T.h.!8u.E.{.h.U.B./.~.k.X.E.
+    offset=2004094 neighbours=[Interface] guidBytesInWindow=0
+      vis=.ca-Es-VALENCIA..h.ca-ES..g.!.bs-Latn-BA..f.bn-IN..e.bn-BD..d.bg-BG..c.be-BY..b.!.az-Latn-AZ..a.as-IN..`.ar-SA.._.am-ET..^.af-ZA..].en-US..\.mzu-ZA..[.lzh-TW..Z.kzh-CN..Y.jyo-NG..X.ixh-ZA..W.hwo-SN..V.gvi-VN.'.Y.'.0/.5.X.windows.comInterface.5.Xwindows.comInterface.+./.Xwindows.comServer.5.1.W.windows.mediaCodec..SRD1.H.@.C.a.t.e.g.o.r.y.&.w.i.n.d.o.w.s.m.e.d.i.a.C.o.d.e.c.M.e.d.i.a.C.o.d.e.c.SRD1.`.@.D.i.s.p.l.a.y.N.a.m.e.8.M.i.c.r.o.s.o.f.t. .H.E.V.C. .D.X.1.2. .E.n.c.o.d.e.r.X.@.D.e.s.c.r.i.p.t.i.o.n.0.T.h.!8u.E.{.h.U.B./.~.k.X.E.%hu-HU.$hr-HR.#hi-IN
+  TOKEN=Path hits=26
+    offset=7355 neighbours=[Path] guidBytesInWindow=0
+      vis=oud.microsoft.+AppX4rxazk27mcsbjexmeg656gzn56y6jgy6E!.7..U..outlook.office365.com.+AppX9tfg5pbwd0mhg8wjzgqqhq66gr5ns2beB .1..U..outlook.office.com.+AppX46v45b2bc0czcb5ywe959rqvy8z17cs4D.5..U..buy.itunes.apple.com.TAppX38426mhf6ejwtpyrg4088rqwcrrfg96z?.+..U..music.apple.com.TAppXa4mz9mg2mbs26bt1vz0vq2szeqx.#.CREATE TABLE AppUriHandler(_AppUriHandlerID INTEGER PRIMARY KEY NOT NULL,_Revision INTEGER NOT NULL DEFAULT 1,_WorkId INTEGER NOT NULL DEFAULT 0,HostName TEXT NOT NULL COLLATE NOCASE,Path TEXT COLLATE NOCASE,Extension INTEGER NOT NULL,ProgID TEXT COLLATE NOCASE,AppUriHandlerGroup INTEGER NOT NULL DEFAULT 0,_Dictionary BLOB,FOREIGN KEY(Extension) REFERENCES ApplicationExtension(_ApplicationExtensionID),FOREIGN KEY(AppUriHandlerGroup) REFERENCES AppUriHandlerGroup(_AppUriHandlerGroupID)).
+    offset=10548 neighbours=[Path] guidBytesInWindow=0
+      vis=nt TEXT,StartPage TEXT COLLATE NOCASE,ResourceGroup TEXT COLLATE NOCASE,LockScreenNotification INTEGER NOT NULL DEFAULT 0,LockScreenBadgeLogo TEXT COLLATE NOCASE,SplashScreenImage TEXT COLLATE NOCASE,Spla.shScreenBackgroundColor INTEGER NOT NULL DEFAULT 0,InitialRotationPreference INTEGER NOT NULL DEFAULT 0,ApplicationViewMinWidth INTEGER NOT NULL DEFAULT 0,AppListEntry INTEGER NOT NULL DEFAULT 0,EditionId TEXT COLLATE NOCASE,VisualGroup TEXT COLLATE NOCASE,Parameters TEXT COLLATE NOCASE,CurrentDirectoryPath TEXT COLLATE NOCASE,_Dictionary BLOB,FOREIGN KEY(Package) REFERENCES Package(_PackageID),FOREIGN KEY(Activation) REFERENCES Activation(_ActivationID)).}.g.Q.9.#.systemEvent.#.systemEvent(.#.systemEvent'.#.systemEvent&.timer%.#.systemEvent$.timer#.-.pushNotification".#.systemEvent!.timer .timer.#.systemEvent.
+    offset=13608 neighbours=[Path] guidBytesInWindow=0
+      vis=.~.>./.*.).(. ..2..d..0M./..@.z.-.<.,.R.5.2.-..%.J..2.0M.&..,..%.4.*.LT 0,HostId TEXT COLLATE NOCASE,Executable TEXT COLLATE NOCASE,Entrypoint TEXT,RuntimeType TEXT COLLATE NOCASE,StartPage TEXT COLLATE NOCASE,ResourceGroup TEXT COLLATE NOCASE,Flags INTEGER NOT NULL DEFAULT 0,Subsystem INTEGER NOT NULL DEFAULT 0,Parameters TEXT COLLATE NOCASE,CurrentDirectoryPath TEXT COLLATE NOCASE,Id TEXT COLLATE NOCASE,_LocalizedDictionary BLOB,_Dictionary BLOB,FOREIGN KEY(Application) REFERENCES Application(_ApplicationID),FOREIGN KEY(Activation) REFERENCES Activation(_ActivationID)).z.z.r.M.55..=tableApplicationExtensionApplicationExtension.CREATE TABLE ApplicationExtension(_ApplicationExtensionID INTEGER PRIMARY KEY NOT NULL,_Revision INTEGER NOT NULL DEFA
+FILE=StateRepository-Machine.srd-wal exists=True
+  bytes=6464
+  PATTERN=IAMPLibrary_LE hits=0
+  PATTERN=IAMPLibrary_BE hits=0
+  PATTERN=IAMPMusicLibrary_LE hits=0
+  PATTERN=IAMPMusicLibrary_BE hits=0
+  PATTERN=IAMPLibrary_nodash_ascii hits=0
+  PATTERN=IAMPMusicLibrary_nodash_ascii hits=0
+  TOKEN=proxyStub hits=0
+  TOKEN=AppleMusicWin hits=0
+  TOKEN=AMPLibraryAgent hits=0
+  TOKEN=ClassId hits=0
+  TOKEN=Interface hits=0
+  TOKEN=Path hits=0
+FILE=StateRepository-Machine.srd-shm exists=True
+  bytes=32768
+  PATTERN=IAMPLibrary_LE hits=0
+  PATTERN=IAMPLibrary_BE hits=0
+  PATTERN=IAMPMusicLibrary_LE hits=0
+  PATTERN=IAMPMusicLibrary_BE hits=0
+  PATTERN=IAMPLibrary_nodash_ascii hits=0
+  PATTERN=IAMPMusicLibrary_nodash_ascii hits=0
+  TOKEN=proxyStub hits=0
+  TOKEN=AppleMusicWin hits=0
+  TOKEN=AMPLibraryAgent hits=0
+  TOKEN=ClassId hits=0
+  TOKEN=Interface hits=0
+  TOKEN=Path hits=0
