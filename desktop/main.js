@@ -5674,12 +5674,17 @@ function openLyricsSourceWindow(order) {
     try { lyricsSourceWindow.webContents.send('mineradio-lyrics-source-state', { order }); } catch (_) {}
     return;
   }
-  const W = 320, H = 272;
+  // 内容区高度必须放得下"说明 + 4 行排序列表"(37 + 156 = 193px): 旧窗口 320x272
+  // 只能露出 155px 内容区, 最后一行排序项被裁在可视区外, 拖都抓不到。
+  // 这里用 useContentSize 明确按"内容尺寸"给值 (320x372): 内容区 = 标题栏 40 + 内容 279 + 底栏 53,
+  // 排序列表完整可见, 下方 Apple Music 说明块仍可滚动查看。
+  const W = 320, H = 372;
   const saved = readLyricsSourceWindowPosition();
   const initial = saved ? clampLyricsSourceWindowPosition(saved.x, saved.y, W, H) : null;
   const win = new BrowserWindow({
     width: W,
     height: H,
+    useContentSize: true,
     resizable: false,
     maximizable: false,
     fullscreenable: false,
