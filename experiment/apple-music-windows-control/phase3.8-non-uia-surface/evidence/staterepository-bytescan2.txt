@@ -1,0 +1,25 @@
+FILE=StateRepository-Machine.srd bytes=7340032
+  PATTERN=F707A913_LE hits=0
+  PATTERN=F707A913_BE hits=0
+  PATTERN=68E7097C_LE hits=0
+  PATTERN=68E7097C_BE hits=0
+FILE=StateRepository-Machine.srd-wal bytes=6464
+  PATTERN=F707A913_LE hits=0
+  PATTERN=F707A913_BE hits=0
+  PATTERN=68E7097C_LE hits=0
+  PATTERN=68E7097C_BE hits=0
+FILE=StateRepository-Machine.srd-shm bytes=32768
+  PATTERN=F707A913_LE hits=0
+  PATTERN=F707A913_BE hits=0
+  PATTERN=68E7097C_LE hits=0
+  PATTERN=68E7097C_BE hits=0
+## proxyStub offset count=284
+## neighbourhood of all 284 proxyStub offsets (+/-512 B)
+nearby AppleMusicWin = 0
+nearby AMPLibraryAgent = 0
+nearby Interface = 21
+nearby Path = 0
+nearby F707A913_LE = 0
+nearby F707A913_BE = 0
+nearby 68E7097C_LE = 0
+nearby 68E7097C_BE = 0
