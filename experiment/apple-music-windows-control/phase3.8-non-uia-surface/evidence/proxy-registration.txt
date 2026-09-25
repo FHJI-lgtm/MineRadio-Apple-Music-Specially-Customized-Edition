@@ -1,0 +1,37 @@
+# 3.8.2-A proxy registration mechanism (read-only) 2026-09-25T21:00:34
+
+=== HKCR\Interface IID 68E7097C (IAMPMusicLibrary) - machine ===
+
+=== HKCR\Interface IID 68E7097C - per user ===
+
+=== HKCR\Interface IID F707A913 (IAMPLibrary) - machine ===
+
+=== ProxyStubClsid32 for 68E7097C under Classes\Interface (HKLM, search) ===
+
+End of search: 0 match(es) found.
+
+=== ActivatableClasses package tree (HKCU) ===
+
+=== PackagedCom ClassIndex full ===
+
+=== PackagedCom package key full export ===
+
+HKEY_CURRENT_USER\SOFTWARE\Classes\PackagedCom\Package\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa
+    (Default)    REG_DWORD    0x3e
+
+
+=== AppModel package registry (HKLM) for AppleMusicWin ===
+
+=== MIDL proxy/stub provider evidence in AMPLibraryAgent.Proxies.dll ===
+  DllGetClassObject present: True
+  DllRegisterServer present: False
+  DllUnregisterServer present: False
+  DllCanUnloadNow present: True
+  NdrDllGetClassObject present: True
+  NdrDllRegisterProxy present: False
+  MIDL_user_allocate present: False
+  rpc/system module mentions: RPCRT4
+
+=== our client process package identity ===
+  current process: powershell (unpackaged powershell; no AppContainer/package identity)
+  => package-aware marshalling is NOT automatic for an unpackaged client
