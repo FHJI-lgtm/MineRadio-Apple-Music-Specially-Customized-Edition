@@ -1,0 +1,25 @@
+=== G2 negative-path test (proposed W3 state substitution) ===
+tag=g2-control-20260926-100406 mode=ForceSatisfied timeoutMs=350 requestedPollMs=10 target=196682
+s1Satisfied=true stage=S1_SATISFIED waitMs=3 polls=1
+downstreamReached=9/9 order=[geometryRead > setCursorPos > w4Sleep200 > mouseDown > mouseUp > w5Sleep130 > mouseDown2 > mouseUp2 > smtcVerify]
+counters: geometryRead=1 setCursorPos=1 w4Sleep200=1 mouseDown=1 mouseUp=1 w5Sleep130=1 mouseDown2=1 mouseUp2=1 smtcVerify=1
+cursorBefore=(1383,578) cursorAfter=(1383,578) cursorUnchanged=true
+foregroundBefore=854844 foregroundAfter=854844 foregroundUnchanged=true mouseMoved=false
+lastInputTickBefore=6026718 lastInputTickAfter=6026718 anyInputInjected=false keyboardInjected=false
+smtcBefore=status:Paused title:Mutual
+smtcAfter =status:Paused title:Mutual
+playbackOccurred=false playbackMeasured=true
+--- static self-scan (code lines only) ---
+  forbidden 'SetCursorPos' = 0 (expect 0)
+  forbidden 'mouse_event' = 0 (expect 0)
+  forbidden 'SendInput' = 0 (expect 0)
+  forbidden 'SendKeys' = 0 (expect 0)
+  forbidden 'keybd_event' = 0 (expect 0)
+  forbidden 'GetCurrentPattern' = 0 (expect 0)
+  forbidden 'InvokePattern' = 0 (expect 0)
+  forbidden 'SetFocus(' = 0 (expect 0)
+  forbidden 'Click(' = 0 (expect 0)
+  forbidden 'BringWindowToTop' = 0 (expect 0)
+  activation 'ShowWindow(' = 0 (expect 0)
+  activation 'SetForegroundWindow(' = 0 (expect 0)
+VERDICT_ForceSatisfied=PASS
