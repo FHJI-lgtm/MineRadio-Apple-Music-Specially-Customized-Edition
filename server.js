@@ -5481,18 +5481,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pn === '/api/apple/search') {
-    try {
-      const kw = url.searchParams.get('keywords') || '';
-      const limit = Math.max(4, Math.min(25, parseInt(url.searchParams.get('limit') || '10', 10) || 10));
-      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
-      sendJSON(res, await handleAppleSearch(kw, limit, offset));
-    } catch (err) {
-      console.error('[AppleMusicSearch]', err);
-      sendJSON(res, { provider: 'apple', configured: getAppleConfig().configured, error: err.message, songs: [] }, 500);
-    }
-    return;
-  }
 
   if (pn === '/api/apple/song/url') {
     try {
