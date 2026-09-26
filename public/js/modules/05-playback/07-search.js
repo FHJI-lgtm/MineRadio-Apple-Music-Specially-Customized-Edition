@@ -1429,6 +1429,33 @@ async function amcPlayRow(rowEl, model) {
   try {
     var res = await window.mineradio.amc.playTrack({ result: model });
     console.log('[amc] playTrack result', res);
+  // E-A step 4: THE single publish point for the external single-play context.
+  // Three-state rule: publish only when the chain navigated (ok) AND SMTC produced no explicit
+  // contradiction. artistLayer is evidence only - it never gates the publish and never upgrades to
+  // verified. The UI context changes here and nothing touches playQueue / currentIdx.
+  var amcContextContradicted = !!(res && res.disagreement === true && res.verified === false);
+  if (res && res.ok === true && !amcContextContradicted && model) {
+    var amcCatalogId = model.trackId != null ? String(model.trackId) : (model.catalogId != null ? String(model.catalogId) : null);
+    setCurrentPlaybackContext({
+      provider: 'apple',
+      identitySource: 'amc',
+      identityConfidence: 'evidence-only',
+      catalogId: amcCatalogId,
+      name: String(model.trackName || model.name || ''),
+      artist: String(model.artistName || model.artist || ''),
+      album: String(model.collectionName || model.album || ''),
+      artworkUrl: String(model.artworkUrl || model.cover || ''),
+      durationMs: Number(model.trackTimeMillis || model.durationMs) || 0,
+      external: true,
+      evidence: { verified: !!res.verified, artistLayer: res.artistLayer || '', artistObserved: res.artistObserved || '', stage: res.stage || res.chainStage || '' },
+    }, 'amc-publish');
+    // step 7: never let the two players sound at once - use the existing pause path, never touch `playing` directly.
+    // step 7: pause only if MineRadio is actually sounding (togglePlay is a TOGGLE - calling it blindly
+    // would START playback). Goes through the normal play/pause path; playing is never written here.
+    try { if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow() && typeof togglePlay === 'function') togglePlay(); } catch (_) { }
+    // step 6 (partial): repaint the player bar through its single writer, not by writing DOM by hand.
+    try { if (typeof updateControlTrackInfo === 'function') updateControlTrackInfo(currentPlaybackContext); } catch (_) { }
+  }
     setAmcRowStatus(rowEl, amcVerdictText(res), res && res.verified === true ? 'ok' : 'err');
   } catch (err) {
     console.warn('amc playTrack failed:', err);
