@@ -1459,12 +1459,19 @@ function publishAmcPlaybackContext(res, model) {
 async function playAmcTrackFromSong(song) {
   if (!(song && song.provider === 'apple' && song.catalogId)) return false;
   if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) return false;
+  // The chain consumes the ITUNES result shape (desktop/apple-music-control.js#normalizeItunesTrack):
+  // trackId as a NUMBER, artworkUrl100, trackTimeMillis. Built ONLY from explicit fields - no id decoding.
   var amModel = {
+    wrapperType: 'track',
+    kind: 'song',
+    trackId: Number(song.catalogId),
+    collectionId: song.collectionId != null ? Number(song.collectionId) : undefined,
     trackName: String(song.name || ''),
     artistName: String(song.artist || ''),
     collectionName: String(song.albumName || song.album || ''),
-    artworkUrl: String(song.cover || ''),
-    trackId: String(song.catalogId),
+    artworkUrl100: String(song.cover || ''),
+    trackTimeMillis: Number(song.durationMs) || undefined,
+    country: 'US',
   };
   var res = await window.mineradio.amc.playTrack({ result: amModel });
   console.log('[amc] playlist track playTrack result', res);
