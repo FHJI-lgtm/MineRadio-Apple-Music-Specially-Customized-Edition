@@ -319,6 +319,19 @@ function initSmtcStore() {
   api.onSmtcState(function (state) {
     console.log('[Renderer][' + Date.now() + '] SMTC state received (T5): title=' + String(state && state.title || '') + ' artist=' + String(state && state.artist || ''));
     smtcApplyBridgeState(state);
+  // E-A step 5: lifecycle only - when the external Apple Music session is GONE (never merely paused),
+  // drop the context this project published from the AMC path. This is not an identity mirror: it never
+  // creates or rewrites a context, and it never touches the queue. Predicate uses the Windows SMTC
+  // vocabulary (Playing/Paused/Stopped/Closed/Opened/Changing): Paused deliberately keeps the context.
+  try {
+    if (typeof clearCurrentPlaybackContext === 'function' && typeof currentPlaybackContext !== 'undefined' && currentPlaybackContext
+      && currentPlaybackContext.identitySource === 'amc') {
+      var smtcEndedStatus = String((typeof smtcStore === 'object' && smtcStore && smtcStore.status) || '');
+      var smtcSessionGone = (typeof smtcStore === 'object' && smtcStore && smtcStore.active === false)
+        || smtcEndedStatus === 'Stopped' || smtcEndedStatus === 'Closed';
+      if (smtcSessionGone) clearCurrentPlaybackContext('external-session-ended:' + (smtcEndedStatus || 'inactive'));
+    }
+  } catch (_) { }
   });
   // Phase 4A: 专辑封面 (专用低带宽事件, 仅 identity 变化时到达)
   if (typeof api.onSmtcThumbnail === 'function') {
