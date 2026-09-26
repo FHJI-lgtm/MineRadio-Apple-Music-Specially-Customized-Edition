@@ -48,7 +48,9 @@ function Get-AmBenchEnv {
   $am = Find-AmVdAppleMusicWindow
   $fg = [AmNav.Native]::GetForegroundWindow()
   $fgPid = 0
-  [void][AmNav.Native]::GetWindowThreadProcessId($fg, [ref]$fgPid)
+  # GetWindowThreadProcessId lives on AmVd.Native (vd-common), not on AmNav.Native.
+  # This is the ONLY harness fix made before the 20-run baseline; nothing else changed.
+  [void][AmVd.Native]::GetWindowThreadProcessId($fg, [ref]$fgPid)
   $fgProc = ''
   if ($fgPid -gt 0) { $p = Get-Process -Id $fgPid -ErrorAction SilentlyContinue; if ($p) { $fgProc = $p.ProcessName } }
   $fgDid = Get-AmVdWindowDesktopId $fg
