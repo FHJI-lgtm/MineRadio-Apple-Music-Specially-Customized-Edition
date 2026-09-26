@@ -30,18 +30,24 @@ function loginProviderOfficialModeText(provider) {
   if (provider === 'kugou') return { title: '官网', sub: '弹出酷狗官方窗口' };
   return { title: '扫码', sub: '连接后弹出官方窗口' };
 }
+// Apple has no cookie import, but its second mode node (网页登录) needs a real flag so the
+// node graph can mark it active and draw the workflow edge to it.
+var appleWebLoginModeOpen = false;
+
 function setManualCookieOpenForProvider(provider, open) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'netease') neteaseManualCookieOpen = !!open;
   else if (provider === 'qq') qqManualCookieOpen = !!open;
   else if (provider === 'kugou') kugouManualCookieOpen = !!open;
   else if (provider === 'qishui') qishuiManualCookieOpen = false;
+  else if (provider === 'apple') appleWebLoginModeOpen = !!open;
 }
 function isManualCookieOpenForProvider(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'netease') return !!neteaseManualCookieOpen;
   if (provider === 'qq') return !!qqManualCookieOpen;
   if (provider === 'kugou') return !!kugouManualCookieOpen;
+  if (provider === 'apple') return !!appleWebLoginModeOpen;
   if (provider === 'qishui') return false;
   return false;
 }
@@ -468,7 +474,7 @@ function updateLoginNodeGraphUi() {
       ? '登录 Apple Music 网页账号；在连线后的按钮中打开登录页面'
       : (loginProviderSupportsCookieMode(loginProvider) ? '连接后打开手动导入' : '该平台不支持 Cookie 导入');
     cookie.disabled = appleWebLoginEntry ? false : !loginProviderSupportsCookieMode(loginProvider);
-    cookie.classList.toggle('active', appleWebLoginEntry ? false : isManualCookieOpenForProvider(loginProvider));
+    cookie.classList.toggle('active', isManualCookieOpenForProvider(loginProvider));
   }
   var copy = graph && graph.querySelector('.login-node-copy');
   if (copy) {
@@ -488,7 +494,9 @@ function connectLoginProvider(provider) {
 }
 function selectLoginMode(mode) {
   if (mode === 'cookie' && loginProvider === 'apple') {
-    // Apple's node 2 is the 网页登录 mode entry: it only reveals the panel, never opens a page by itself.
+    // Apple's node 2 is the 网页登录 mode entry: it only selects the mode and reveals the panel,
+    // it never opens a page by itself.
+    setManualCookieOpenForProvider('apple', true);
     setLoginAuthDrawerOpen(true);
     updateLoginProviderUi();
     return;
@@ -515,6 +523,7 @@ function connectLoginMode(mode) {
   if (mode === 'cookie') {
     if (loginProvider === 'apple') {
       // 网页登录 mode: the login page is opened only from the explicit button after the connection.
+      setManualCookieOpenForProvider('apple', true);
       setLoginAuthDrawerOpen(true);
       updateLoginProviderUi();
       return;
