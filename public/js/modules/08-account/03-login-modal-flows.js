@@ -34,6 +34,9 @@ function loginProviderOfficialModeText(provider) {
 // node graph can mark it active and draw the workflow edge to it.
 // Web login is Apple's primary mode; the developer-credential flow is the second mode.
 var appleWebLoginModeOpen = true;
+// Set when a workflow drop has already decided the mode: the gesture may emit one more click on the
+// mode row, which must not flip the decision back.
+var loginModeSelectSuppressedUntil = 0;
 
 function setManualCookieOpenForProvider(provider, open) {
   provider = normalizeLoginProviderKey(provider);
@@ -269,14 +272,19 @@ function selectLoginProviderNode(provider) {
   setLoginAuthDrawerOpen(hasLoginWorkflowConnection(provider) || loginWorkflowPendingProvider === provider);
   updateLoginProviderUi();
 }
-function connectLoginProviderToMr(provider) {
+function connectLoginProviderToMr(provider, preferredMode) {
   provider = normalizeLoginProviderKey(provider);
   if (provider !== loginProvider) setLoginProvider(provider, true);
   loginWorkflowPendingProvider = provider;
   setLoginAuthDrawerOpen(true);
   markLoginNodeConnecting();
   updateLoginProviderUi();
-  connectLoginMode(loginWorkflowActiveMode());
+  connectLoginMode(preferredMode || loginWorkflowActiveMode());
+  // A drop decides the mode; re-assert it after the connect path so nothing downstream flips it back.
+  if (preferredMode && provider === 'apple') {
+    setManualCookieOpenForProvider('apple', preferredMode === 'cookie');
+    updateLoginProviderUi();
+  }
 }
 function finishLoginWorkflowDrag(e) {
   var graph = document.getElementById('login-node-graph');
@@ -296,8 +304,9 @@ function finishLoginWorkflowDrag(e) {
   if ((port && graph.contains(port)) || (mrNode && graph.contains(mrNode)) || nearDrop) {
     var mrTarget = port && port.getAttribute('data-login-mr-target');
     if (drag.source === 'provider' && (mrTarget || mrNode || nearDrop)) {
-      if (droppedMode) setManualCookieOpenForProvider('apple', droppedMode === 'cookie');
-      connectLoginProviderToMr(drag.provider);
+      if (droppedMode) loginModeSelectSuppressedUntil = Date.now() + 700;
+      console.log('[login] drop', drag.provider, droppedMode || '(near-mr, keep current mode)', e.clientX, e.clientY);
+      connectLoginProviderToMr(drag.provider, droppedMode);
     }
   }
   loginWorkflowDrag = null;
@@ -565,6 +574,8 @@ function connectLoginProvider(provider) {
   selectLoginProviderNode(provider);
 }
 function selectLoginMode(mode) {
+  // A workflow drop already decided the mode; ignore the click the same gesture may emit afterwards.
+  if (Date.now() < loginModeSelectSuppressedUntil) return;
   if (mode === 'cookie' && loginProvider === 'apple') {
     // Apple's node 2 is the 网页登录 mode entry: it only selects the mode and reveals the panel,
     // it never opens a page by itself.
