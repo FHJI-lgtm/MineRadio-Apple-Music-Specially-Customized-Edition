@@ -188,3 +188,15 @@ window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.classList.add('desktop-shell-root');
   document.body.classList.add('desktop-shell');
 });
+
+
+// ============================================================
+// Apple Music App (Windows) control - additive exposure, parallel to `desktopWindow`.
+// Nothing above this line is modified.
+// ============================================================
+contextBridge.exposeInMainWorld('mineradio', {
+  amc: {
+    searchTracks: (payload) => ipcRenderer.invoke('amc:search', payload || {}),
+    playTrack: (payload) => ipcRenderer.invoke('amc:play', payload || {}),
+  },
+});

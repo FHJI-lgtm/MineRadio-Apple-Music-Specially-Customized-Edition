@@ -6,6 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const systemMemory = require('./system-memory');
+const appleMusicControl = require('./apple-music-control');
 const {
   WallpaperEngineLibrary,
   registerWallpaperEngineScheme,
@@ -4893,6 +4894,27 @@ ipcMain.handle('apple-music-open-login', async (event) => {
 
 ipcMain.handle('apple-music-clear-login', async () => {
   return clearAppleMusicLoginSession();
+});
+
+// ============================================================
+// Apple Music App (Windows) search + playback - additive, parallel path.
+// Does NOT touch the existing `apple` search provider, provider-fallback, or the
+// credentials-based Apple Music API route. The handlers only TRANSPORT calls and results:
+// they never rewrite the chain's stage and never adjudicate between chainOk and verified.
+// ============================================================
+ipcMain.handle('amc:search', async (_event, payload = {}) => {
+  const query = payload && payload.query ? String(payload.query) : '';
+  const opts = {
+    country: (payload && payload.country) || 'us',
+    limit: (payload && payload.limit) || 12,
+  };
+  return { results: await appleMusicControl.searchTracks(query, opts) };
+});
+
+ipcMain.handle('amc:play', async (_event, payload = {}) => {
+  const result = (payload && payload.result) ? payload.result : payload;
+  const opts = (payload && payload.opts) || {};
+  return await appleMusicControl.playTrack(result || {}, opts);
 });
 
 // ============================================================
