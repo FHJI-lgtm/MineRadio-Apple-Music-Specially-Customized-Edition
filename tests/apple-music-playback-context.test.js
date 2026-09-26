@@ -146,3 +146,14 @@ test('9. publish stays three-state and alias/normalized never becomes verified',
   assert.equal(/identityConfidence: 'confirmed'/.test(searchSrc), false);
   assert.match(searchSrc, /disagreement === true && res\.verified === false/);
 });
+test('11. an Apple playlist play action is scoped to its button (never intercepts other panel clicks)', () => {
+  const panelSrc = read('public/js/modules/06-lyrics/02-playlist-detail.js');
+  // the AM branch must sit INSIDE the playDetail block ...
+  assert.match(panelSrc, /if \(playDetail\) \{[\s\S]{0,900}?amcPlaylistFirst/);
+  // ... and must never appear before the detection line (that would swallow every panel click)
+  const detectionAt = panelSrc.indexOf('var playDetail = e.target');
+  const firstAmcAt = panelSrc.indexOf('amcPlaylistFirst');
+  assert.ok(detectionAt >= 0 && firstAmcAt > detectionAt, 'the AM branch must come after the detection');
+  assert.match(panelSrc, /amcCand\.provider === 'apple' && amcCand\.catalogId/);
+  assert.match(panelSrc, /playPlaylistPanelDetail\(\);/);
+});

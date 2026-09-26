@@ -740,13 +740,23 @@ document.getElementById('pl-list').addEventListener('click', function (e) {
     scrollPlaylistPanelToTop();
     return;
   }
-  var playDetail = e.target && e.target.closest ? e.target.closest('[data-pl-detail-play]') : null;
-  if (playDetail) {
-    e.preventDefault();
-    e.stopPropagation();
-    playPlaylistPanelDetail();
-    return;
-  }
+    var playDetail = e.target && e.target.closest ? e.target.closest('[data-pl-detail-play]') : null;
+    if (playDetail) {
+      e.preventDefault();
+      e.stopPropagation();
+      // E-A F6-③: an APPLE playlist's "播放歌单" hands its first playable Apple track to Apple Music instead
+      // of loading the whole playlist into MineRadio's internal queue. Same identity rule and same normalised
+      // model as the row path (provider 'apple' AND an explicit catalogId; playAmcTrackFromSong).
+      // SCOPED to this button only - no other click in the panel is ever intercepted.
+      var amcPlaylistFirst = null;
+      for (var amcPi = 0; amcPi < ((playlistPanelDetailState.tracks || []).length); amcPi++) {
+        var amcCand = playlistPanelDetailState.tracks[amcPi];
+        if (amcCand && amcCand.provider === 'apple' && amcCand.catalogId) { amcPlaylistFirst = amcCand; break; }
+      }
+      if (amcPlaylistFirst && typeof playAmcTrackFromSong === 'function') { playAmcTrackFromSong(amcPlaylistFirst); return; }
+      playPlaylistPanelDetail();
+      return;
+    }
   var collection = e.target && e.target.closest ? e.target.closest('[data-pl-detail-collection]') : null;
   if (collection) {
     e.preventDefault();
