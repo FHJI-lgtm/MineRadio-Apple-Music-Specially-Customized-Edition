@@ -23,6 +23,8 @@ const webApi = require('./apple-music-web-api');
 const lyricsCredential = require('./apple-music-lyrics-credential');
 const devApi = require('../apple-music-api');
 const APPLE_LIKED_PLAYLIST_ID = devApi.APPLE_LIKED_PLAYLIST_ID;
+// Pure mappers/helpers reused from the Developer module (no credential access on that side).
+const { mapAppleTrack, mapAppleLibraryPlaylist, appleErrorDetails } = devApi._test;
 
 // Mirrors of the Developer module's own page caps / storefront default (values, not credentials).
 const APPLE_LIBRARY_PAGE_LIMIT = 100;
