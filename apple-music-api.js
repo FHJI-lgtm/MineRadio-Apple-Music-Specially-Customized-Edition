@@ -706,8 +706,8 @@ function getAppleConfig() {
     : (credentials.configured
       ? 'Apple Music 开发者凭据已保存，可打开官方登录窗口连接 Apple ID。'
       : (localConfigMissing
-        ? 'Apple Music 未连接：请先粘贴 Team ID、Key ID 与 P8 私钥保存配置。'
-        : 'Apple Music 开发者凭据不完整，请补全 Team ID、Key ID 与 P8 私钥。'));
+        ? 'Apple Music 未连接：请先登录 Apple Music 网页账号（推荐），或粘贴 Team ID、Key ID 与 P8 私钥配置开发者凭据。'
+        : 'Apple Music 凭据不完整：请登录 Apple Music 网页账号，或补全 Team ID、Key ID 与 P8 私钥。'));
   return {
     provider: 'apple',
     configured: !!(credentials.configured || tokenConfigured()),
