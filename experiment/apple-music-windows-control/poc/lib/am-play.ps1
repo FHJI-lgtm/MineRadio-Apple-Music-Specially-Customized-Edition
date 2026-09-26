@@ -24,6 +24,16 @@
 # ASCII-only on purpose.
 # ============================================================
 
+# Minimize the Apple Music window (SW_MINIMIZE = 6) so the automation does not leave it in front
+# of the user.  Called only after the song click has landed: SMTC verification is a system API and
+# does not need the window visible, and every retry attempt restores/foregrounds the window first.
+function Minimize-AmWindow([IntPtr]$Hwnd) {
+  if (-not $Hwnd -or $Hwnd -eq [IntPtr]::Zero) { return $false }
+  if (-not ('AmPlayNative.Win' -as [type])) {
+    Add-Type -Namespace AmPlayNative -Name Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' | Out-Null
+  }
+  try { [void][AmPlayNative.Win]::ShowWindow($Hwnd, 6); return $true } catch { return $false }
+}
 function Invoke-AmPlaySong {
   [CmdletBinding()]
   param(
@@ -295,6 +305,9 @@ function Invoke-AmPlaySong {
             $result.clickRecomputed = $ck.recomputed
             if (-not $ck.ok) { $stage = 'CLICK_FAILED'; $detail = $ck.detail }
             else {
+              # ---- 6b. click landed: hand the screen back before the SMTC wait ----
+              Start-Sleep -Milliseconds 250
+              $result.minimizedAfterClick = Minimize-AmWindow $hwnd
               # ---- 7. SMTC is the only success criterion ----
               $v = Wait-AmPlayback $Title $Artist $TimeoutMs
               $a.smtcMs = $v.elapsedMs
