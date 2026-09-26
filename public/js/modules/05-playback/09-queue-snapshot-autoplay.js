@@ -101,7 +101,7 @@ function restoreLastPlaybackSnapshot() {
     currentIdx = idx;
     currentLocalSong = null;
   }
-  var shownSong = currentCoverSong() || current;
+  var shownSong = currentQueueSong() || current;
   if (shownSong) {
     updateControlTrackInfo(shownSong);
     var titleEl = document.getElementById('thumb-title');
