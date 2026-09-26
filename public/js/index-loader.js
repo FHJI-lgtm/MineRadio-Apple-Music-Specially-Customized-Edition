@@ -111,6 +111,7 @@
     'js/modules/12-smtc/04-smtc-audio.js',
     'js/modules/12-smtc/05-smtc-lyric-sources.js',
     'js/modules/12-smtc/06-smtc-builtin-timer.js',
+    'js/modules/05-playback/19-amc-app-search-panel.js',
     'js/modules/11-main-loop.js',
   ];
 
