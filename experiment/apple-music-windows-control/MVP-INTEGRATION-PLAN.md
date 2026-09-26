@@ -223,3 +223,13 @@ app 模式无法加载运行时，在任何 JS 之前以 `0x80000003 STATUS_BREA
 未覆盖：逐 provider 的实际搜索请求（本次未输入查询）；`amc:playTrack` 的 IPC 跳（面板按设计无播放按钮）。
 
 最终架构：5 个原生 provider（netease/qq/kugou/qishui/spotify）+ 独立 `amc` 通道（iTunes Search API → Apple Music Windows → SMTC → `verifyAgainstSmtc`）。
+
+## 16. 搜索栏 AM 标签：运行时已验证（2026-09-26 12:31）
+
+标签栏 `All NE QQ KG QS SP AM Podcast`；AM 标签下查询返回仅 Apple Music App 分区（4 条，含封面/trackId/storefront/时长）；无播放按钮；浮动按钮已移除。
+
+链路：搜索栏 → AM 模式 → `window.mineradio.amc.searchTracks()` → preload → `ipcMain('amc:search')` → `apple-music-control.js` → iTunes Search API → 自有 AM 结果模型 → 结果区。
+
+本刀修掉两个自身缺陷：`b442b3c`（AM 分支使用了声明在之后的 `requestSeq`，导致结果被守卫全部丢弃、永远停在加载文案）、`b056ed8`（换行丢失的格式瑕疵）。
+
+边界未变：provider 注册表仍只有 5 个；无 `searchProviderUrl('amc')`、无 song 模型转换、`07-search.js` 内无 `playTrack`；frozen `poc/lib` 与 `0170bca` byte-identical。
