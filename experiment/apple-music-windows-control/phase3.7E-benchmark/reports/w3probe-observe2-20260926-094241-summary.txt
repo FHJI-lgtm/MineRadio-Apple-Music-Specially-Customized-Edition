@@ -1,0 +1,63 @@
+=== W3 G1 PROBE (read-only foreground object semantics) ===
+tag=observe2-20260926-094241 seconds=300 requestedPollMs=10
+jsonl=C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\phase3.7E-benchmark\reports\w3probe-observe2-20260926-094241.jsonl
+appleMusicProcessCount=1 topLevelWindowCount=6 enumError=
+primaryHwnd=196682 primaryRoot=196682 title=Apple Music class=WinUIDesktopWin32WindowClass visible=True iconic=True
+AM top-level windows:
+  hwnd=330374 root=330374 pid=8312 visible=False iconic=False class=WinUIDesktopWin32WindowClass title=WinUI Desktop
+  hwnd=264534 root=264534 pid=8312 visible=False iconic=False class=GDI+ Hook Window Class title=GDI+ Window (AppleMusic.exe)
+  hwnd=196682 root=196682 pid=8312 visible=True iconic=True class=WinUIDesktopWin32WindowClass title=Apple Music
+  hwnd=196982 root=196982 pid=8312 visible=False iconic=False class=MSCTFIME UI title=MSCTFIME UI
+  hwnd=197288 root=197288 pid=8312 visible=False iconic=False class=IME title=Default IME
+  hwnd=328342 root=328342 pid=8312 visible=False iconic=False class=IME title=Default IME
+selection convention: first visible window with a non-empty title, else first enumerated
+samples=18938 measuredSampleGapMs: n=18937 median=16 mean=16 max=60
+nullForegroundSamples=4 directEqualSamples=2875 rootEqualOnlySamples=0 foregroundIsAmProcessSamples=2875
+foreground episodes (start-end ms | hwnd | root | pid | amDirect | amRoot | null | amProcess | duration):
+       2- 34345 |  30870248 |  30870248 |  23804 | false | false | false | false | 34343ms
+   34345- 34424 |     65970 |     65970 |  17340 | false | false | false | false |    79ms
+   34424- 36451 |    196682 |    196682 |   8312 |  true |  true | false |  true |  2027ms
+   36451- 43451 |  30870248 |  30870248 |  23804 | false | false | false | false |  7000ms
+   43451- 43528 |     65970 |     65970 |  17340 | false | false | false | false |    77ms
+   43528- 44244 |    196682 |    196682 |   8312 |  true |  true | false |  true |   716ms
+   44244- 76029 |  30870248 |  30870248 |  23804 | false | false | false | false | 31785ms
+   76029- 76093 |     65970 |     65970 |  17340 | false | false | false | false |    64ms
+   76093- 78240 |    196682 |    196682 |   8312 |  true |  true | false |  true |  2147ms
+   78240- 78334 |     65970 |     65970 |  17340 | false | false | false | false |    94ms
+   78334- 80170 |  30870248 |  30870248 |  23804 | false | false | false | false |  1836ms
+   80170- 80233 |     65970 |     65970 |  17340 | false | false | false | false |    63ms
+   80233- 85008 |    196682 |    196682 |   8312 |  true |  true | false |  true |  4775ms
+   85008- 85039 |         0 |         0 |      0 | false | false |  true | false |    31ms
+   85039- 85087 |     65970 |     65970 |  17340 | false | false | false | false |    48ms
+   85087- 87982 |  30870248 |  30870248 |  23804 | false | false | false | false |  2895ms
+   87982- 91783 |    196682 |    196682 |   8312 |  true |  true | false |  true |  3801ms
+   91783- 91861 |     65970 |     65970 |  17340 | false | false | false | false |    78ms
+   91861- 95083 |  30870248 |  30870248 |  23804 | false | false | false | false |  3222ms
+   95083- 95252 |     65970 |     65970 |  17340 | false | false | false | false |   169ms
+   95252- 97253 |   6097916 |   6097916 |  26752 | false | false | false | false |  2001ms
+   97253- 97345 |     65970 |     65970 |  17340 | false | false | false | false |    92ms
+   97345-100768 |    196682 |    196682 |   8312 |  true |  true | false |  true |  3423ms
+  100768-102758 |   6097916 |   6097916 |  26752 | false | false | false | false |  1990ms
+  102758-105279 |    196682 |    196682 |   8312 |  true |  true | false |  true |  2521ms
+  105279-107562 |  30870248 |  30870248 |  23804 | false | false | false | false |  2283ms
+  107562-107654 |     65970 |     65970 |  17340 | false | false | false | false |    92ms
+  107654-109596 |    196682 |    196682 |   8312 |  true |  true | false |  true |  1942ms
+  109596-111201 |   6097916 |   6097916 |  26752 | false | false | false | false |  1605ms
+  111201-113022 |    196682 |    196682 |   8312 |  true |  true | false |  true |  1821ms
+  113022-183794 |  30870248 |  30870248 |  23804 | false | false | false | false | 70772ms
+  183794-184480 |     67024 |     67024 |   2988 | false | false | false | false |   686ms
+  184480-235573 |  30870248 |  30870248 |  23804 | false | false | false | false | 51093ms
+  235573-235667 |     65970 |     65970 |  17340 | false | false | false | false |    94ms
+  235667-235682 |         0 |         0 |      0 | false | false |  true | false |    15ms
+  235682-238610 |    196682 |    196682 |   8312 |  true |  true | false |  true |  2928ms
+  238610-241362 |  30870248 |  30870248 |  23804 | false | false | false | false |  2752ms
+  241362-245155 |    196682 |    196682 |   8312 |  true |  true | false |  true |  3793ms
+  245155-247489 |  30870248 |  30870248 |  23804 | false | false | false | false |  2334ms
+  247489-250201 |    196682 |    196682 |   8312 |  true |  true | false |  true |  2712ms
+  ... (truncated)
+CASE_A_foregroundEqualsTargetHwnd=true CASE_B_rootEqualsButHwndDiffers=false
+static self-scan (0 expected):
+  probe-w3-foreground.ps1: 0 injection-API call sites
+  w3probe.ps1: 0 injection-API call sites
+NOTE: no injection API was called by this probe; it cannot activate anything. A transition must come from a human action or a separately authorised run.
+NOTE: P=10 ms belongs to this probe only; it is not a production recommendation and does not participate in any W3 optimizability conclusion.

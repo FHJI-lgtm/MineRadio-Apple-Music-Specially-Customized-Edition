@@ -229,3 +229,39 @@ deadline 到，前台仍不是 AppleMusic
 | 只读取数所用数据 | `.../reports/bench-20260926-090320.jsonl`（④）、`...-090905.jsonl`（⑤）、`...-092741.jsonl`（⑥） |
 | 目标代码位置 | `poc/lib/am-uia.ps1:511-541`（W3 = 行 517） |
 | 负路径测试可复用审计 | `phase3.7B-uia-no-mouse/lib/instrumentation.ps1`（`New-AmNmAudit / Compare-AmNmAudit`） |
+
+---
+
+## 10. G1 只读探测结果（2026-09-26）与本设计的修订
+
+结果报告：`phase3.7E-benchmark/REPORT-G1-W3-FOREGROUND-OBJECT.md`。
+两轮观测 = 12 s 校验 + 300 s + 300 s；实测采样 gap median 15–16 / mean 16 / max 50–60 ms（`P=10 ms` 仅属探测协议）。
+
+**§5 的 Q1 —— 观测范围内已有答案**
+
+- Apple Music 有 **6 个顶层窗口**，且**每一个的 root 都等于自身**（彼此无父子关系）；`196682` 是"首个 visible 且有 title"的那一个，
+  也正是 benchmark 一直报的 `hwnd=196682`。
+- 22 次 AM 前台 episode（两轮共 4006 个 AM 前台样本）**全部**是 `foregroundHwnd == 196682`；
+  `amProcessButNotDirectSamples = 0`、`rootEqualOnlySamples = 0`。
+- 因此：**直接相等（`foregroundHwnd == targetHwnd`）是观测到的正确 S1 定义，不采用 `GA_ROOT` 归一化。**
+  `GA_ROOT` 只有在"前台是 196682 的子窗口"时才会与直接比较不同，这类样本一个都没有出现。
+- **仍未闭合的部分**：22 次全部由操作者产生（Alt+Tab / 任务栏 / 鼠标）。链路自己的
+  `ShowWindow(SW_RESTORE) + SetForegroundWindow` **程序化过渡未被观测**（G1 被明确禁止激活）。
+  要闭合它需要**单独授权**，因为它本身是一次激活。
+
+**§5 的 Q3 —— 已从"防御性假设"变为实证**
+
+前台**确实会经过 `hwnd=0`**：两轮共 5 个 null 样本，其中一次（15 ms）**紧接着就是 AM 成为前台**。
+所以"`HWND == 0` ⇒ S1 NOT SATISFIED、不得当 wildcard、不得 fallback 到 root"是有数据支撑的规则。
+
+**第二轮新增事实，直接修订 §4.4 与 §5**
+
+- 在 2875 个"前台 = 196682"的样本里，有 **3 个样本同时 `IsIconic(196682) == true`**（都在本轮最早三次
+  "恢复被最小化窗口"的激活上）→ **S1 不蕴含"已恢复、已布局"**。
+- 修订 §4.4：新增指标 **`w3TargetIconicAtSatisfied`**（S1 成立瞬间目标的 `IsIconic` 状态）。**只记录，不改变条件。**
+- 修订 §7：**`S1 AND NOT IsIconic($Hwnd)` 列为"已声明的候选条件"**，仅当 W3 实验出现失败、或出现可归因于
+  "过早恢复"的点错行时才启用；**不得静默并入 S1**——那会变成"一次实验、两个假设"，违反 §7.2。
+- run 1 的原始文件**没有** `targetIconic` 字段（该字段在第二轮之前才加入），因此 run 1 **不报告**该字段的任何计数。
+
+**字段可靠性（随结论引用）**：`activeDesktop` 在 100 ms 刷新节奏下不可靠——run 1 `unavailable` 5.7% 且全零 GUID 6.6%，
+run 2 `unavailable` 4.8%。`unavailable` 与全零 GUID 一律视为"无可用值"，**任何结论都不得把它们当作桌面身份**。
