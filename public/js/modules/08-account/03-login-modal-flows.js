@@ -692,7 +692,82 @@ function openQishuiPublicSearch() {
   }
   showToast('汽水搜索已切换为匹配源');
 }
-function appleLoginStatusText(info) {
+// ------------------------------------------------------------
+// Apple Music Web login axis (primary) - separate from the official API axis below.
+// State source: window.desktopWindow.getAppleLyricsCredentialStatus() -> { configured }.
+// The official Apple Music API credentials (Team ID / Key ID / P8) keep their own axis and are
+// shown next to it; neither one gates the other any more.
+// ------------------------------------------------------------
+var appleWebLoginStatus = { ready: false, refreshing: false, configured: false, busy: false, lastError: '' };
+function appleWebLoginBridge() {
+  return (window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.openLogin === 'function')
+    ? window.mineradio.amc
+    : null;
+}
+function appleWebLoginStatusText() {
+  if (!appleWebLoginStatus.ready) return 'Apple Music 登录状态检查中…';
+  return appleWebLoginStatus.configured ? 'Apple Music 已登录' : 'Apple Music 未登录';
+}
+function appleOfficialApiAxisText() {
+  var api = appleLoginStatus || {};
+  if (api.privateKeyConfigured && api.tokenConfigured) return '官方 API：已配置';
+  if (api.privateKeyConfigured) return '官方 API：凭据已保存';
+  if (api.configured) return '官方 API：部分配置';
+  return '官方 API：未配置';
+}
+function appleCardStatusLine() {
+  var line = appleWebLoginStatusText() + ' · ' + appleOfficialApiAxisText();
+  if (appleWebLoginStatus.lastError) line += '（' + appleWebLoginStatus.lastError + '）';
+  return line;
+}
+async function refreshAppleWebLoginStatus() {
+  if (appleWebLoginStatus.refreshing) return;
+  appleWebLoginStatus.refreshing = true;
+  try {
+    if (!(window.desktopWindow && typeof window.desktopWindow.getAppleLyricsCredentialStatus === 'function')) {
+      appleWebLoginStatus.configured = false;
+      appleWebLoginStatus.lastError = '登录状态桥不可用';
+      appleWebLoginStatus.ready = true;
+      return;
+    }
+    var st = await window.desktopWindow.getAppleLyricsCredentialStatus();
+    appleWebLoginStatus.configured = !!(st && st.ok !== false && st.configured === true);
+    appleWebLoginStatus.lastError = '';
+    appleWebLoginStatus.ready = true;
+  } catch (e) {
+    appleWebLoginStatus.configured = false;
+    appleWebLoginStatus.lastError = '登录状态读取失败';
+    appleWebLoginStatus.ready = true;
+  } finally {
+    appleWebLoginStatus.refreshing = false;
+    if (typeof updateLoginProviderUi === 'function') updateLoginProviderUi();
+  }
+}
+async function openAmcAppleWebLogin() {
+  if (appleWebLoginStatus.busy) return;
+  var bridge = appleWebLoginBridge();
+  var statusEl = document.getElementById('qr-status');
+  if (!bridge) {
+    appleWebLoginStatus.lastError = 'mineradio.amc.openLogin 桥不可用';
+    if (statusEl) { statusEl.textContent = appleWebLoginStatus.lastError; statusEl.className = 'fail'; }
+    return;
+  }
+  appleWebLoginStatus.busy = true;
+  appleWebLoginStatus.lastError = '';
+  if (statusEl) { statusEl.textContent = '等待 Apple Music 网页登录…'; statusEl.className = 'preview'; }
+  if (typeof updateLoginProviderUi === 'function') updateLoginProviderUi();
+  try {
+    var res = await bridge.openLogin();
+    if (res && res.ok === false) {
+      appleWebLoginStatus.lastError = String(res.message || res.error || '登录未完成');
+    }
+  } catch (e) {
+    appleWebLoginStatus.lastError = (e && e.message) ? e.message : '登录调用失败';
+  } finally {
+    appleWebLoginStatus.busy = false;
+    await refreshAppleWebLoginStatus();
+  }
+}function appleLoginStatusText(info) {
   info = info || appleLoginStatus || {};
   if (info.loggedIn) return 'Apple Music 已连接 / ' + (info.nickname || 'Apple Music') + ' / 可同步用户歌单与资料库；播放按匹配源自动换源';
   if (info.reauthRequired) return 'Apple Music 登录态已失效，请重新连接官方登录窗口';
@@ -842,7 +917,7 @@ function updateLoginProviderUi() {
   }
   var isApple = loginProvider === 'apple';
   var appleBtn = document.getElementById('login-provider-apple');
-  var canOpenAppleLogin = !!(window.desktopWindow && typeof window.desktopWindow.openAppleMusicLogin === 'function');
+  var canOpenAppleLogin = !!appleWebLoginBridge();
   var appleBusy = !!(appleConfigBusy || appleOAuthBusy);
   if (isApple) {
     if (neteaseBtn) neteaseBtn.classList.toggle('active', false);
@@ -851,9 +926,9 @@ function updateLoginProviderUi() {
     if (qishuiBtn) qishuiBtn.classList.toggle('active', false);
     if (spotifyBtn) spotifyBtn.classList.toggle('active', false);
     if (appleBtn) appleBtn.classList.toggle('active', true);
-    if (title) title.textContent = '连接 Apple Music';
+    if (title) title.textContent = 'Apple Music';
     if (desc) desc.innerHTML = canOpenAppleLogin
-      ? '先粘贴 <b>Apple 开发者凭据</b>（Team ID / Key ID / P8 私钥）保存，然后打开官方登录窗口登录 Apple ID，自动获取 music user token。'
+      ? '登录 Apple Music 网页账号即可使用（自动获取登录态）。<b>官方 API</b> 为高级可选能力，仅在需要歌单 / 收藏等官方接口时再配置。'
       : '当前环境不支持桌面授权桥；请在 Mineradio 桌面版中连接 Apple Music。';
     if (shell) {
       shell.classList.add('web-login-preview');
@@ -864,10 +939,10 @@ function updateLoginProviderUi() {
     }
     if (qqCookieToggle) qqCookieToggle.classList.remove('show');
     if (qqCookieInput) qqCookieInput.placeholder = appleLoginStatus.privateKeyConfigured
-      ? '已保存开发者凭据；可粘贴新的 Team ID / Key ID / 私钥 覆盖（每行一项，或粘贴 JSON）'
-      : '粘贴 Apple 开发者凭据：Team ID、Key ID、P8 私钥（每行一项，或粘贴 JSON）';
+      ? '官方 API 配置（高级）：已保存凭据；可粘贴新的 Team ID / Key ID / 私钥 覆盖（每行一项，或粘贴 JSON）'
+      : '官方 API 配置（高级）：粘贴 Team ID、Key ID、P8 私钥（每行一项，或粘贴 JSON）';
     if (qqCookieNote) qqCookieNote.innerHTML =
-      '<div class="spotify-guide-title">Apple Music 接入三步</div>' +
+      '<div class="spotify-guide-title">官方 API 配置（高级，可选）</div>' +
       '<div class="spotify-guide-steps">' +
         '<span>1. 在 Apple 开发者后台创建 MusicKit Key（ES256），下载 .p8 私钥</span>' +
         '<span>2. 把 Team ID、Key ID、P8 私钥内容粘贴到输入框并保存</span>' +
@@ -876,7 +951,7 @@ function updateLoginProviderUi() {
       '<div class="spotify-guide-actions">' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleDeveloperCertificates()">开发者证书页</button>' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleSetupGuide()">官方接入文档</button>' +
-        '<span>搜索只用开发者凭据；歌单/收藏需要登录 Apple ID</span>' +
+        '<span>仅官方 API（歌单 / 收藏 / 资料库）需要此配置</span>' +
       '</div>' +
       '<div class="apple-manual-token-row">' +
         '<small>备用：粘贴 music user token（浏览器登录 music.apple.com 后取 Cookie 中的 media-user-token）</small>' +
@@ -885,24 +960,32 @@ function updateLoginProviderUi() {
       '</div>';
     if (qqCookieSaveBtn) {
       qqCookieSaveBtn.disabled = appleBusy;
-      qqCookieSaveBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : '保存并连接');
+      qqCookieSaveBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : '保存开发者凭据');
     }
     if (qqCard) {
       qqCard.style.display = '';
-      qqCard.disabled = appleBusy || !canOpenAppleLogin || !appleLoginStatus.privateKeyConfigured;
+      qqCard.disabled = appleBusy || !canOpenAppleLogin;
       var amCardMark = qqCard.querySelector('b');
       var amCardLabel = qqCard.querySelector('span');
       if (amCardMark) amCardMark.textContent = 'AM';
-      if (amCardLabel) amCardLabel.textContent = appleOAuthBusy ? '等待 Apple Music 登录' : (appleLoginStatus.privateKeyConfigured ? '打开 Apple Music 登录' : '先保存开发者凭据');
+      if (amCardLabel) amCardLabel.textContent = appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '登录 Apple Music';
     }
     if (st) {
       st.className = 'preview';
-      st.textContent = appleLoginStatusText();
+      st.textContent = appleCardStatusLine();
     }
     if (refreshBtn) {
-      refreshBtn.disabled = appleBusy || !canOpenAppleLogin;
-      refreshBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : (appleLoginStatus.privateKeyConfigured ? '连接 Apple Music' : '保存并连接'));
-      refreshBtn.onclick = appleLoginStatus.privateKeyConfigured ? openAppleWebLogin : submitAppleConfigLogin;
+      refreshBtn.disabled = appleWebLoginStatus.busy || !canOpenAppleLogin;
+      refreshBtn.textContent = appleWebLoginStatus.busy ? '等待登录…' : (appleWebLoginStatus.configured ? '重新登录 Apple Music' : '登录 Apple Music');
+      refreshBtn.onclick = openAmcAppleWebLogin;
+    }
+    if (!appleWebLoginStatus.ready) {
+      appleWebLoginStatus.ready = true;
+      refreshAppleWebLoginStatus();
+    }
+    if (appleBtn && !appleBtn.__amcWebRefreshBound) {
+      appleBtn.__amcWebRefreshBound = true;
+      appleBtn.addEventListener('click', function () { refreshAppleWebLoginStatus(); });
     }
     updateLoginNodeGraphUi();
     return;
