@@ -85,3 +85,49 @@ internal helpers: `getLibrary`/`getCatalog` call the module's internal closure, 
 
 Developer API removal, UI changes, `appleLoginStatus` / auth-axis switch, like/favorite writes,
 old `/api/apple/*` endpoints, SMTC, AMC, `poc/lib/*`.
+## Capability baseline addition (2026-09-26): library songs + library albums (GET only)
+
+Write / favourite operations were removed from the retirement scope; only reads were probed.
+Run: `node scripts/apple-music-web-mapper-compat.js --token-file="<path>"` (GET only, token never printed).
+
+### /v1/me/library/songs
+
+| check | result |
+|---|---|
+| HTTP | 200, meta.total=913 (5 requested) |
+| legacy mapper | `_test.mapAppleTrack` -> object, 30 canonical keys for all 5 items, undefinedKeys: (none) |
+| canonical completeness | same key set as playlist tracks (appleId, appleUrl, artist, albumName, cover, durationMs, isrc, name, provider, storefront, ...) |
+| ID semantics | id = `i.<librarySongId>` (type library-songs), playParams.catalogId present (6789678128 / 258926790 / 1613700117) |
+| web-specific gaps | isrc absent, url absent (same as playlist tracks) |
+
+### /v1/me/library/albums
+
+| check | result |
+|---|---|
+| HTTP | 200, meta.total=549 (5 requested) |
+| legacy mapper | NONE EXISTS - apple-music-api.js has catalog-only handleAppleAlbumDetail; no library-album mapper to feed |
+| web attributes present | 8 keys: artistName, artwork, dateAdded, genreNames, name, playParams, releaseDate, trackCount |
+| ID semantics | id = `l.<libraryAlbumId>` (type library-albums, kind album), playParams.catalogId = undefined |
+| implication | migrating library albums needs a NEW mapper (implementation work, NOT an auth blocker), and the catalog album link is not carried in this payload |
+
+### Hard constraint for any future migration work
+
+| source endpoint | id shape | catalog id |
+|---|---|---|
+| /v1/me/library/playlists/<id>/tracks | `a.<catalogId>` | playParams.catalogId (same number) |
+| /v1/me/library/songs | `i.<librarySongId>` | playParams.catalogId (independent field) |
+| /v1/me/library/albums | `l.<libraryAlbumId>` | undefined |
+
+library ID != catalog ID. `a.*` and `i.*` are distinct namespaces and must never be merged; whenever a
+catalog id is required, take it from playParams.catalogId. Recorded as evidence only - no mapper or
+playback code was changed on the strength of it.
+
+### Capability baseline (with 5014d4c)
+
+```
+auth coverage        : Web (AMPWeb bearer + media-user-token)  OK
+read API coverage    : Web  OK
+existing mapper      : playlist OK | tracks OK | songs OK | albums -> needs a NEW mapper
+Developer API        : no read capability that MineRadio still requires
+write operations     : out of scope (not needed)
+```

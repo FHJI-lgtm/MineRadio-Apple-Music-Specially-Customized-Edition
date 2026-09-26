@@ -268,3 +268,10 @@ Developer 退役 / UI 认证轴切换 / 写操作探测（`POST|DELETE /v1/me/li
 ### 下一阶段候选（需批准后才动）
 
 只读扩大 shadow：`GET /v1/me/library/albums` 与 `GET /v1/me/library/songs`（判断收藏/资料库读取能否迁到 Web 轴），**仍不碰写操作**。
+
+### 19c. Web API capability baseline（含 19b 探测结果）
+
+Web 只读轴已验证覆盖：歌词 ✓、用户歌单 ✓、歌单曲目 ✓、资料库歌曲 ✓、资料库专辑 ✓（**仅缺 MineRadio mapper**，属实现工作、非鉴权阻塞）。
+`5014d4c` + 本次 songs/albums 探测共同构成「Web API capability baseline」，作为以后删 Developer 时可回看的证据。
+硬约束（写入迁移设计）：**library ID ≠ catalog ID**；`a.<catalogId>`（歌单曲目）与 `i.<librarySongId>`（资料库歌曲）是不同命名空间，禁止归并；需要 catalog id 时一律取 `playParams.catalogId`；`l.<libraryAlbumId>` 的 `playParams.catalogId` 为 undefined。
+结论：Developer API 已无 MineRadio 必需的只读能力缺口；写操作（收藏/资料库写入）已移出退役范围。
