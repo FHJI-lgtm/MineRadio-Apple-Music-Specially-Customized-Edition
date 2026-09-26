@@ -592,6 +592,9 @@ async function refreshAppleLoginStatus() {
   }
 }
 function startAppleLoginStatusAutoRefresh() {
+  // Step 3A fix: the web axis must be known BEFORE the first render/panel fetch, not only on the
+  // 45s tick - otherwise the playlist gate sees ready=false at startup and never lets the list load.
+  if (typeof refreshAppleWebLoginStatus === 'function') { try { refreshAppleWebLoginStatus(); } catch (_) { } }
   if (appleLoginAutoRefreshTimer) clearInterval(appleLoginAutoRefreshTimer);
   appleLoginAutoRefreshTimer = setInterval(function () {
     // Same tick, no extra timer: keep the web axis fresh as well (single source of truth).
