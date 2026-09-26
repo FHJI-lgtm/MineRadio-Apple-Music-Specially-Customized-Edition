@@ -1,0 +1,24 @@
+=== W3 G1 PROBE (read-only foreground object semantics) ===
+tag=validate-20260926-093656 seconds=12 requestedPollMs=10
+jsonl=C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\phase3.7E-benchmark\reports\w3probe-validate-20260926-093656.jsonl
+appleMusicProcessCount=1 topLevelWindowCount=6 enumError=
+primaryHwnd=196682 primaryRoot=196682 title=Apple Music class=WinUIDesktopWin32WindowClass visible=True iconic=True
+AM top-level windows:
+  hwnd=330374 root=330374 pid=8312 visible=False iconic=False class=WinUIDesktopWin32WindowClass title=WinUI Desktop
+  hwnd=264534 root=264534 pid=8312 visible=False iconic=False class=GDI+ Hook Window Class title=GDI+ Window (AppleMusic.exe)
+  hwnd=196682 root=196682 pid=8312 visible=True iconic=True class=WinUIDesktopWin32WindowClass title=Apple Music
+  hwnd=196982 root=196982 pid=8312 visible=False iconic=False class=MSCTFIME UI title=MSCTFIME UI
+  hwnd=197288 root=197288 pid=8312 visible=False iconic=False class=IME title=Default IME
+  hwnd=328342 root=328342 pid=8312 visible=False iconic=False class=IME title=Default IME
+selection convention: first visible window with a non-empty title, else first enumerated
+samples=748 measuredSampleGapMs: n=747 median=16 mean=16 max=48
+nullForegroundSamples=0 directEqualSamples=0 rootEqualOnlySamples=0 foregroundIsAmProcessSamples=0
+foreground episodes (start-end ms | hwnd | root | pid | amDirect | amRoot | null | amProcess | duration):
+       2- 12010 |  15469384 |  15469384 |  22704 | false | false | false | false | 12008ms
+CASE_A_foregroundEqualsTargetHwnd=false CASE_B_rootEqualsButHwndDiffers=false
+NEITHER CASE OBSERVED: the target window was never the foreground during this window (no activation happened).
+static self-scan (0 expected):
+  probe-w3-foreground.ps1: 0 injection-API call sites
+  w3probe.ps1: 0 injection-API call sites
+NOTE: no injection API was called by this probe; it cannot activate anything. A transition must come from a human action or a separately authorised run.
+NOTE: P=10 ms belongs to this probe only; it is not a production recommendation and does not participate in any W3 optimizability conclusion.
