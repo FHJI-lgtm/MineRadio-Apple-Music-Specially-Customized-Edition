@@ -1373,6 +1373,7 @@ function renderAmcSearchSection(results) {
 // The verdict always comes from the chain + SMTC (verifyAgainstSmtc), never from the trackId.
 var amcCurrentResults = [];
 var amcPlayBusy = false;
+var amcPlayWatchdog = null;
 function ensureAmcResultClickHandler() {
   if (window.__amcRowClickBound || !$results) return;
   window.__amcRowClickBound = true;
@@ -1416,9 +1417,12 @@ async function amcPlayRow(rowEl, model) {
     setAmcRowStatus(rowEl, '播放通道不可用（window.mineradio.amc.playTrack 不存在）', 'err');
     return;
   }
-  if (amcPlayBusy) return;
+  if (amcPlayBusy) { setAmcRowStatus(rowEl, '上一次播放仍在等待 SMTC 判定…（返回后可再次点击）', 'busy'); return; }
   amcPlayBusy = true;
   setAmcRowStatus(rowEl, '正在播放并等待 SMTC 判定…', 'busy');
+  amcPlayWatchdog = setTimeout(function () {
+    setAmcRowStatus(rowEl, '仍在等待 SMTC 判定…若 Apple Music 里目标歌曲尚未出现在可视区域，请先滚动到它（此等待不计失败）', 'busy');
+  }, 20000);
   try {
     var res = await window.mineradio.amc.playTrack({ result: model });
     console.log('[amc] playTrack result', res);
@@ -1427,6 +1431,7 @@ async function amcPlayRow(rowEl, model) {
     console.warn('amc playTrack failed:', err);
     setAmcRowStatus(rowEl, '播放调用失败：' + (err && err.message ? err.message : String(err)), 'err');
   } finally {
+    if (amcPlayWatchdog) { clearTimeout(amcPlayWatchdog); amcPlayWatchdog = null; }
     amcPlayBusy = false;
   }
 }async function appendAmcSearchSection(q, requestSeq) {
