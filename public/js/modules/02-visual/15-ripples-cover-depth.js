@@ -531,12 +531,12 @@ function setControlCoverSrc(src) {
   cover.classList.remove('cover-empty');
 }
 
-function updateControlTrackInfo(song) {
-  // E-A F1-GUARD-BEGIN
-  // While an external Apple Music context owns the UI, queue-driven repaints must NOT overwrite it.
-  // This changes only the rendering path: playQueue / currentIdx are never touched.
-  if (typeof currentPlaybackContext === 'object' && currentPlaybackContext) return;
-  // E-A F1-GUARD-END
+// The painter itself. Split out of updateControlTrackInfo so an external Apple Music context can be
+// painted through the SAME single writer: the F1 guard keeps blocking queue-driven repaints, but it must
+// not block the context's OWN repaint - its call used to hit the guard and paint nothing at all
+// (chain: publishAmcPlaybackContext -> updateControlTrackInfo -> early return, so control-title/
+// control-artist kept the previous internal song while the cover already showed Apple Music).
+function applyControlTrackInfo(song) {
   song = song || {};
   var title = document.getElementById('control-title');
   var artist = document.getElementById('control-artist');
@@ -559,6 +559,19 @@ function updateControlTrackInfo(song) {
   if (artist) artist.textContent = song.artist || '';
   updatePlaybackQualityUi();
   if (typeof updateLyricTimingOffsetUi === 'function') updateLyricTimingOffsetUi(song);
+}
+
+function updateControlTrackInfo(song) {
+  // E-A F1-GUARD-BEGIN
+  // While an external Apple Music context owns the UI, queue-driven repaints must NOT overwrite it.
+  // This changes only the rendering path: playQueue / currentIdx are never touched.
+  if (typeof currentPlaybackContext === 'object' && currentPlaybackContext) return;
+  // E-A F1-GUARD-END
+  // Step 3: an ACTIVE external SMTC session owns the bar even when no context was ever published (the
+  // context is a click-time snapshot; the session is the live fact). Deliberately OUTSIDE the F1 markers:
+  // that block must stay reference-free for the F1 regression test, which evals it in isolation.
+  if (typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()) return;
+  applyControlTrackInfo(song);
 }
 
 function applyCoverCanvas(cv, thumbSrc, opts) {

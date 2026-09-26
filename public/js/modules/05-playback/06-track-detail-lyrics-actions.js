@@ -4,10 +4,42 @@ function currentQueueSong() {
   if (currentIdx >= 0 && playQueue[currentIdx]) return playQueue[currentIdx];
   return currentLocalSong || null;
 }
-// THE unified current-track accessor (E-A): an external single-play context wins over the internal queue,
-// and a null context reproduces the exact previous behaviour.
+// The LIVE external identity, straight from SMTC (12-smtc): the track Apple Music is playing RIGHT NOW.
+// The published playback context is a CLICK-TIME snapshot and goes stale as soon as Apple Music advances,
+// so it cannot answer "what is playing now" - SMTC can, and the control bar already mirrors it.
+// Built in ONE place: the bar mirror, the detail modal and every currentCoverSong() consumer share it.
+// Returns null unless an external session owns the UI (active SMTC session, MineRadio's deck silent).
+function externalLiveSong() {
+  if (typeof smtcExternalOwnsUi !== 'function' || !smtcExternalOwnsUi()) return null;
+  if (typeof smtcStore !== 'object' || !smtcStore) return null;
+  var title = String(smtcStore.title || '');
+  if (!title) return null;
+  // Apple Music's SMTC artist string is "Artist <em/en dash> Album" (the bridge passes $props.Artist
+  // through raw), so split on a dash SURROUNDED BY SPACES - never on a plain hyphen, because Jay-Z /
+  // T-Pain are single names. No dash -> the whole string is the artist.
+  var rawArtist = String(smtcStore.artist || '');
+  var parts = rawArtist.split(/\s+[\u2014\u2013]\s+/);
+  var artistOnly = (parts[0] || '').trim() || rawArtist;
+  var albumFromArtist = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
+  // No durationMs / positionMs on purpose: the SMTC timeline belongs to the Apple Music player, while the
+  // seek bar still drives MineRadio's own audio element - exporting the external timeline would make the
+  // bar promise a scrub it cannot honour.
+  return {
+    provider: 'apple',
+    source: 'apple',
+    name: title,
+    artist: artistOnly,
+    album: String(smtcStore.album || '') || albumFromArtist,
+    artworkUrl: String(smtcStore.thumbnail || ''),
+    external: true,
+    identitySource: 'smtc-live',
+  };
+}
+// THE unified current-track accessor (E-A + Step 3): a published single-play context wins (it carries the
+// chain's verdict), then the LIVE external session, then the internal queue. A null context and no session
+// reproduce the exact previous behaviour. Reads only - playQueue / currentIdx are never touched.
 function currentCoverSong() {
-  return currentPlaybackContext || currentQueueSong();
+  return currentPlaybackContext || externalLiveSong() || currentQueueSong();
 }
 function songDurationLabel(song) {
   var sec = playbackDurationFromSong(song);
@@ -17,6 +49,9 @@ function songDurationLabel(song) {
 }
 function songSourceLabel(song) {
   if (!song) return '未知';
+  // The external Apple Music identity (live SMTC, or a published AMC context) is provider 'apple';
+  // without this branch it fell through to the netease default and the detail modal said 网易云音乐.
+  if (song.provider === 'apple' || song.source === 'apple') return 'Apple Music';
   if (song.provider === 'spotify' || song.source === 'spotify' || song.type === 'spotify' || song.spotifyId || song.spotifyUri) return 'Spotify';
   if (song.provider === 'qq' || song.source === 'qq' || song.type === 'qq') return 'QQ 音乐';
   if (song.provider === 'qishui' || song.source === 'qishui' || song.type === 'qishui') return '汽水音乐';
@@ -108,6 +143,110 @@ function currentAlbumKey(song) {
   }
   return '';
 }
+// ---- Step 3b: resolve a CATALOG album id for an external Apple Music identity -----------------------
+// SMTC carries no album id, so the album page had nothing to fetch and fell back to its empty state. The id
+// is resolved through the PUBLIC iTunes search plane this app already uses for L1 Resolve
+// (window.mineradio.amc.searchTracks -> iTunes Search API, no credentials), and the answer is accepted only
+// on a STRICT album+artist match. An ambiguous or mismatched answer is rejected: showing another edition's
+// track list would be a fabrication, and MEASURED 2026-09-26 the user's bar/detail work depends on this
+// being honest. Nothing here infers an id FROM an id (the library-vs-catalog rule is untouched).
+var appleAlbumIdLookup = {};
+function appleAlbumMatchToken(text) {
+  // Comparison only: case/punctuation-insensitive, keeps CJK. Bracketed decorations are KEPT on purpose
+  // (see the note below) - they mark a DIFFERENT release, not the same album.
+  var s = String(text || '');
+  try { s = s.normalize('NFKC'); } catch (_) { }
+  // NOTE: bracketed decorations are KEPT (only punctuation is dropped): "After Hours (Deluxe)" and
+  // "After Hours (Remixes) - EP" are different releases, not the same album. Measured 2026-09-26.
+  s = s.toLowerCase().replace(/[^\p{L}\p{Nd}]+/gu, ' ');
+  return s.trim().replace(/\s+/g, ' ');
+}
+function appleAlbumLookupKey(song) {
+  if (!song) return '';
+  return appleAlbumMatchToken(song.album || song.albumName) + '|' + appleAlbumMatchToken(song.artist);
+}
+function appleAlbumLookupQuery(song) {
+  var album = String((song && (song.album || song.albumName)) || '').trim();
+  var artist = String((song && song.artist) || '').trim();
+  return (artist + ' ' + album).trim();
+}
+// Artist identity for the album lookup. The canonical pair table lives in the MAIN process
+// (desktop/apple-music-control.js ARTIST_ALIASES) and mirrors the resolver's validated table
+// (phase3-resolve/lib/resolve35.ps1): exactly ONE pair, observed in real storefront data. The renderer
+// cannot import that module, so the pair is repeated here - grow BOTH if it ever grows.
+var APPLE_ALBUM_ARTIST_ALIASES = [['the weeknd', 'abel tesfaye']];
+function appleAlbumArtistKey(text) { return appleAlbumMatchToken(text).replace(/ /g, ''); }
+function appleAlbumArtistMatches(candidate, wanted) {
+  var c = appleAlbumMatchToken(candidate);
+  var w = appleAlbumMatchToken(wanted);
+  if (!w) return true;                                // nothing to check against
+  if (!c) return false;                               // a candidate without an artist is not trustworthy
+  if (c === w || c.indexOf(w) === 0 || w.indexOf(c) === 0) return true;   // containment either way
+  var ck = appleAlbumArtistKey(candidate);
+  var wk = appleAlbumArtistKey(wanted);
+  for (var i = 0; i < APPLE_ALBUM_ARTIST_ALIASES.length; i++) {
+    var a = appleAlbumArtistKey(APPLE_ALBUM_ARTIST_ALIASES[i][0]);
+    var b = appleAlbumArtistKey(APPLE_ALBUM_ARTIST_ALIASES[i][1]);
+    if ((ck === a && wk === b) || (ck === b && wk === a)) return true;
+  }
+  return false;
+}
+function pickAppleCatalogAlbumId(tracks, song) {
+  var wantAlbum = appleAlbumMatchToken(song && (song.album || song.albumName));
+  var wantArtist = appleAlbumMatchToken(song && song.artist);
+  if (!wantAlbum) return '';
+  var matches = [];
+  (tracks || []).forEach(function (t) {
+    if (!t) return;
+    var id = t.collectionId != null ? String(t.collectionId) : '';
+    if (!id) return;
+    if (appleAlbumMatchToken(t.album) !== wantAlbum) return;      // exact name (decorations included)
+    if (!appleAlbumArtistMatches(t.artist, wantArtist)) return;
+    matches.push({ id: id, row: t });
+  });
+  if (!matches.length) return '';
+  // Strongest evidence first: only the rows that carry the track playing right now (guards against a
+  // compilation that merely shares the album name). Falls back to all album matches if the search window
+  // did not include the track.
+  var wantTrack = appleAlbumMatchToken(song && (song.name || song.title));
+  var withTrack = wantTrack ? matches.filter(function (m) { return appleAlbumMatchToken(m.row.trackName) === wantTrack; }) : [];
+  var pool = withTrack.length ? withTrack : matches;
+  // MEASURED 2026-09-26: the same release can exist under SEVERAL catalog ids. "After Hours" has
+  // 1499385848 and 1499378108, "My Dear Melancholy," has 1363308558 and 1363309866 - and in both cases the
+  // two entries are byte-identical (same trackCount, releaseDate, country, track list). Picking either
+  // cannot produce a wrong track list, so they are NOT treated as ambiguous: a deterministic lowest id is
+  // used. Candidates that differ in that signature ARE a real ambiguity (standard vs deluxe, different
+  // release) and are refused - that is the line between "duplicate entry" and "a different album".
+  var signature = null;
+  var picked = '';
+  var seen = {};
+  for (var i = 0; i < pool.length; i++) {
+    var t = pool[i].row;
+    var sig = [Number(t.trackCount) || 0, String(t.releaseDate || ''), String(t.country || '')].join('|');
+    if (signature === null) signature = sig;
+    else if (signature !== sig) return '';
+    if (seen[pool[i].id]) continue;
+    seen[pool[i].id] = true;
+    if (!picked || pool[i].id < picked) picked = pool[i].id;
+  }
+  return picked;
+}
+function resolveAppleCatalogAlbumId(song, done) {
+  var key = appleAlbumLookupKey(song);
+  var query = appleAlbumLookupQuery(song);
+  if (!key) { done(''); return; }
+  if (Object.prototype.hasOwnProperty.call(appleAlbumIdLookup, key)) { done(appleAlbumIdLookup[key]); return; }
+  var amc = window.mineradio && window.mineradio.amc;
+  if (!amc || typeof amc.searchTracks !== 'function' || !query) { done(''); return; }
+  Promise.resolve(amc.searchTracks({ query: query, country: 'us', limit: 25 }))
+    .then(function (res) {
+      var id = pickAppleCatalogAlbumId((res && res.results) || [], song);
+      appleAlbumIdLookup[key] = id;      // cache both hits and misses: one lookup per album per session
+      done(id);
+    })
+    .catch(function () { appleAlbumIdLookup[key] = ''; done(''); });
+}
+
 function albumDetailUrlForSong(song) {
   var provider = songProviderKey(song);
   if (provider === 'qq') {
@@ -251,10 +390,12 @@ function renderAlbumSongList(songs) {
   return '<div class="detail-scroll">' + detailAlbumSongs.map(function (s, i) {
     var cover = songCoverSrc(s, 80);
     var coverHtml = cover ? '<img class="artist-song-cover" src="' + escHtml(cover) + '" alt="" onerror="this.style.opacity=0.18">' : '<div class="artist-song-cover"></div>';
-    var actionsHtml = '<div class="artist-song-actions">' +
+    // Apple rows get no row actions (see appleDetailActionsVisibleForSong): their click plays them in the
+    // Apple Music app, and these two buttons only address MineRadio's own world.
+    var actionsHtml = appleDetailActionsVisibleForSong(s) ? ('<div class="artist-song-actions">' +
       '<button class="artist-song-action collect" type="button" title="收藏到歌单" aria-label="收藏到歌单" onclick="event.stopPropagation();collectAlbumDetailSong(' + i + ')">' + artistCollectTrayIconSvg() + '</button>' +
       '<button class="artist-song-action next" type="button" title="下一首播放" aria-label="下一首播放" onclick="event.stopPropagation();queueAlbumDetailSongNext(' + i + ')">' + artistNextPlusIconSvg() + '</button>' +
-      '</div>';
+      '</div>') : '';
     return '<div class="artist-song-item" onclick="playAlbumDetailSong(' + i + ')">' +
       '<div class="artist-song-rank">' + String(i + 1).padStart(2, '0') + '</div>' +
       coverHtml +
@@ -267,6 +408,16 @@ function renderAlbumSongList(songs) {
 function playAlbumDetailSong(i) {
   var song = detailAlbumSongs[i];
   if (!song) return;
+  // E-A F6 rule, the same one the Apple playlist rows already follow: an Apple track with an EXPLICIT
+  // catalogId is handed to Apple Music through the verified UIA chain instead of MineRadio's own deck.
+  // playQueue / currentIdx are deliberately NOT touched - the internal queue is not what plays it, and the
+  // album's own tracks stay where they are. No id is inferred: the catalog identity is carried by the album
+  // handler (desktop/apple-music-web-reads-api.js) from the catalog object itself.
+  if (song.provider === 'apple' && song.catalogId && typeof playAmcTrackFromSong === 'function') {
+    closeTrackDetailModal();
+    Promise.resolve(playAmcTrackFromSong(song)).catch(function (e) { console.warn('[AlbumDetailPlayAmc]', e); });
+    return;
+  }
   var taggedSongs = tagAlbumSongsForGapless(detailAlbumSongs, detailAlbumContext);
   playQueue = taggedSongs;
   currentIdx = i;
@@ -344,6 +495,20 @@ function detailCommentsConfig(song) {
     };
   }
   return null;
+}
+// Apple Music has no comment interface in this app, so the section is not rendered AT ALL rather than
+// showing a placeholder that only says so (measured: it was the one visible artefact of the live SMTC
+// identity in the song-detail modal). Every other provider keeps its previous behaviour exactly.
+function detailCommentsEnabledForSong(song) {
+  return songProviderKey(song) !== 'apple';
+}
+// Apple Music identities (a live SMTC track, or an album/track served by the catalog axis) have no
+// MineRadio-side album/track actions: 收藏 to a netease/QQ playlist needs a provider id they do not have,
+// 下一首播放 would push an Apple track into the INTERNAL deck, 收藏专辑 could even write to the library,
+// and 无缝衔接 is an internal-deck feature that means nothing while Apple Music does the playing.
+// So the row and header actions are not rendered for them. Every other provider keeps them.
+function appleDetailActionsVisibleForSong(song) {
+  return songProviderKey(song) !== 'apple';
 }
 function renderDetailCommentComposer(config) {
   if (!config || !config.canWrite) return '';
@@ -475,6 +640,24 @@ function openTrackDetailModal(type, songOverride) {
     // (The empty-URL path already renders the app empty state and guards the fetch, see the album branch below.)
     var amcExternalContext = !!(typeof currentPlaybackContext === 'object' && currentPlaybackContext && currentPlaybackContext.identitySource === 'amc');
     var albumUrl = amcExternalContext ? '' : albumDetailUrlForSong(song);
+    // Step 3b: the LIVE external identity has no album id. Resolve it once (strict public-catalog match) and
+    // re-enter this function with the id, so the page fetches through the existing web catalog axis.
+    // `__amAlbumLookupMissed` makes the retry one-shot: no id -> the normal empty state, never a loop.
+    if (!albumUrl && !amcExternalContext && !song.__amAlbumLookupMissed && songProviderKey(song) === 'apple'
+        && !(song.albumId || song.appleAlbumId) && typeof resolveAppleCatalogAlbumId === 'function') {
+      heading.textContent = '专辑详情';
+      body.innerHTML = '<div class="detail-loading">正在匹配 Apple Music 专辑…</div>';
+      bindTrackDetailScrollers();
+      openGsapModal(document.getElementById('track-detail-modal'));
+      var amAlbumLookupSeq = seq;
+      resolveAppleCatalogAlbumId(song, function (albumId) {
+        if (amAlbumLookupSeq !== trackDetailSeq) return;   // a newer modal replaced this one
+        openTrackDetailModal('album', Object.assign({}, song, albumId
+          ? { albumId: albumId, provider: 'apple' }
+          : { __amAlbumLookupMissed: true }));
+      });
+      return;
+    }
     var albumTitle = song.album || (song.type === 'podcast' ? (song.radioName || 'Podcast') : '未知专辑');
     var albumKey = currentAlbumKey(song);
     detailAlbumGaplessUserTouched = false;
@@ -504,10 +687,10 @@ function openTrackDetailModal(type, songOverride) {
       '<span class="detail-chip">' + escHtml(songSourceLabel(song)) + '</span>' +
       '<span class="detail-chip">按专辑顺序播放</span>' +
       '</div>' +
-      '<div class="detail-section"><div class="detail-section-head"><div class="detail-section-title">专辑曲目</div><div class="detail-section-actions">' + renderAlbumCollectionButton(song) + renderAlbumGaplessButton() + '</div></div><div id="album-song-list">' +
+      '<div class="detail-section"><div class="detail-section-head"><div class="detail-section-title">专辑曲目</div>' + (appleDetailActionsVisibleForSong(song) ? ('<div class="detail-section-actions">' + renderAlbumCollectionButton(song) + renderAlbumGaplessButton() + '</div>') : '') + '</div><div id="album-song-list">' +
       (albumUrl ? '<div class="detail-loading">正在载入专辑曲目...</div>' : '<div class="detail-empty">' + escHtml(albumDetailMissingText(song)) + '</div>') +
       '</div></div>';
-    syncAlbumCollectionState(song);
+    if (appleDetailActionsVisibleForSong(song)) syncAlbumCollectionState(song);
     if (albumUrl) {
       apiJson(albumUrl).then(function (r) {
         if (seq !== trackDetailSeq) return;
@@ -528,11 +711,17 @@ function openTrackDetailModal(type, songOverride) {
         if (!detailAlbumContext.albumKey && albumInfo) {
           detailAlbumContext.albumKey = (r.provider || songProviderKey(song)) + ':' + (albumInfo.albumId || albumInfo.id || albumInfo.albumMid || albumInfo.mid || albumTitle);
         }
-        if (!detailAlbumGaplessUserTouched && typeof albumGaplessDefaultEnabledForContext === 'function') {
-          detailAlbumGaplessEnabled = albumGaplessDefaultEnabledForContext(detailAlbumContext);
-        }
-        if (detailAlbumGaplessEnabled && typeof setAlbumGaplessPlaybackContext === 'function') {
-          setAlbumGaplessPlaybackContext(true, detailAlbumContext);
+        // Gapless is an internal-deck feature: for an Apple album it is neither offered nor engaged (the
+        // internal deck is not what plays these tracks).
+        if (appleDetailActionsVisibleForSong(song)) {
+          if (!detailAlbumGaplessUserTouched && typeof albumGaplessDefaultEnabledForContext === 'function') {
+            detailAlbumGaplessEnabled = albumGaplessDefaultEnabledForContext(detailAlbumContext);
+          }
+          if (detailAlbumGaplessEnabled && typeof setAlbumGaplessPlaybackContext === 'function') {
+            setAlbumGaplessPlaybackContext(true, detailAlbumContext);
+          }
+        } else {
+          detailAlbumGaplessEnabled = false;
         }
         var titleEl = document.getElementById('album-detail-title');
         var subEl = document.getElementById('album-detail-sub');
@@ -549,7 +738,7 @@ function openTrackDetailModal(type, songOverride) {
           }
         }
         if (target) target.innerHTML = renderAlbumSongList(songs);
-        syncAlbumGaplessButton();
+        if (appleDetailActionsVisibleForSong(song)) syncAlbumGaplessButton();
         bindTrackDetailScrollers();
       }).catch(function () {
         var target = document.getElementById('album-song-list');
@@ -621,10 +810,16 @@ function openTrackDetailModal(type, songOverride) {
     }
   } else {
     heading.textContent = '歌曲详情';
-    var commentConfig = detailCommentsConfig(song);
+    var detailCommentsEnabled = detailCommentsEnabledForSong(song);
+    var commentConfig = detailCommentsEnabled ? detailCommentsConfig(song) : null;
     var detailCommentTitle = commentConfig ? commentConfig.title : (songSourceLabel(song) + '评论');
-    var detailCanLoadComments = !!(commentConfig && commentConfig.readUrl);
+    var detailCanLoadComments = !!(detailCommentsEnabled && commentConfig && commentConfig.readUrl);
     var detailEmptyText = detailCanLoadComments ? '暂无评论' : '当前平台暂无评论接口';
+    var detailCommentSectionHtml = detailCommentsEnabled
+      ? ('<div class="detail-section"><div class="detail-section-head"><div class="detail-section-title">' + detailCommentTitle + '</div></div>' +
+         renderDetailCommentComposer(commentConfig) +
+         '<div id="song-comments">' + (detailCanLoadComments ? '<div class="detail-loading">正在载入评论...</div>' : '<div class="detail-empty">' + detailEmptyText + '</div>') + '</div></div>')
+      : '';
     body.innerHTML =
       '<div class="detail-hero">' + coverHtml +
       '<div style="min-width:0;flex:1"><div class="detail-title">' + escHtml(title) + '</div>' +
@@ -644,9 +839,7 @@ function openTrackDetailModal(type, songOverride) {
       (getCustomCoverForSong(song) ? '<span class="detail-chip">自定义封面</span>' : '') +
       (hasCustomLyricForSong(song) ? '<span class="detail-chip">自定义歌词</span>' : '') +
       '</div>' +
-      '<div class="detail-section"><div class="detail-section-head"><div class="detail-section-title">' + detailCommentTitle + '</div></div>' +
-      renderDetailCommentComposer(commentConfig) +
-      '<div id="song-comments">' + (detailCanLoadComments ? '<div class="detail-loading">正在载入评论...</div>' : '<div class="detail-empty">' + detailEmptyText + '</div>') + '</div></div>';
+      detailCommentSectionHtml;
     if (detailCanLoadComments) {
       loadDetailComments(song, seq);
     }

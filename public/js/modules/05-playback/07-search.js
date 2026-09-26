@@ -1415,7 +1415,16 @@ function amcVerdictText(res) {
   if (v.artistObserved) bits.push('SMTC 实际艺人：' + v.artistObserved + (v.artistObservedAlbum ? ' — ' + v.artistObservedAlbum : ''));
   return bits.join(' · ');
 }
-function publishAmcPlaybackContext(res, model) {
+// The three-state rule's middle state, in ONE place: the chain navigated (ok) but SMTC explicitly
+// contradicted it. Computed at the call site and PASSED IN, because the guard used to read a variable
+// that only existed inside amcPlayRow: every publish threw
+//   ReferenceError: amcContextContradicted is not defined
+// before the context setter could run, so the external context was never established and
+// applyControlTrackInfo() never executed - the whole external-context UI was silently inert.
+function amcContextContradictedOf(res) {
+  return !!(res && res.disagreement === true && res.verified === false);
+}
+function publishAmcPlaybackContext(res, model, amcContextContradicted) {
   if (res && res.ok === true && !amcContextContradicted && model) {
     var amcCatalogId = model.trackId != null ? String(model.trackId) : (model.catalogId != null ? String(model.catalogId) : null);
     setCurrentPlaybackContext({
@@ -1423,7 +1432,10 @@ function publishAmcPlaybackContext(res, model) {
       identitySource: 'amc',
       identityConfidence: 'evidence-only',
       catalogId: amcCatalogId,
-      name: String(model.trackName || model.name || ''),
+      // `title` FIRST: the normalised AMC/web model (and every amModel built here) carries `title`;
+      // trackName/name only exist on raw iTunes rows. Reading only the latter made name '' for every
+      // Apple Music publish - which is exactly why the artist showed and the title did not.
+      name: String(model.title || model.trackName || model.name || ''),
       artist: String(model.artistName || model.artist || ''),
       album: String(model.collectionName || model.album || ''),
       artworkUrl: String(model.artworkUrl || model.cover || ''),
@@ -1448,7 +1460,9 @@ function publishAmcPlaybackContext(res, model) {
     } catch (_) { }
     // E-A F1-PAUSE-END
     // step 6 (partial): repaint the player bar through its single writer, not by writing DOM by hand.
-    try { if (typeof updateControlTrackInfo === 'function') updateControlTrackInfo(currentPlaybackContext); } catch (_) { }
+    // The context's own repaint goes through the unguarded painter: updateControlTrackInfo would hit the
+    // F1 guard (a context exists by definition here) and paint nothing.
+    try { if (typeof applyControlTrackInfo === 'function') applyControlTrackInfo(currentPlaybackContext); } catch (_) { }
   }
   // E-A F4: drop the previous internal track's cover background - stale visual state must never stand in
   // for the Apple Music track that is now the current context.
@@ -1476,7 +1490,7 @@ async function playAmcTrackFromSong(song) {
   };
   var res = await window.mineradio.amc.playTrack({ result: amModel });
   console.log('[amc] playlist track playTrack result', res);
-  publishAmcPlaybackContext(res, amModel);
+  publishAmcPlaybackContext(res, amModel, amcContextContradictedOf(res));
   return true;
 }
 async function amcPlayRow(rowEl, model) {
@@ -1497,8 +1511,7 @@ async function amcPlayRow(rowEl, model) {
   // Three-state rule: publish only when the chain navigated (ok) AND SMTC produced no explicit
   // contradiction. artistLayer is evidence only - it never gates the publish and never upgrades to
   // verified. The UI context changes here and nothing touches playQueue / currentIdx.
-  var amcContextContradicted = !!(res && res.disagreement === true && res.verified === false);
-  publishAmcPlaybackContext(res, model);
+  publishAmcPlaybackContext(res, model, amcContextContradictedOf(res));
     setAmcRowStatus(rowEl, amcVerdictText(res), res && res.verified === true ? 'ok' : 'err');
   } catch (err) {
     console.warn('amc playTrack failed:', err);

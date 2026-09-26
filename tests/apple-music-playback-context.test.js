@@ -33,9 +33,13 @@ function grab(name) {
 }
 
 function sandbox() {
-  const box = { currentPlaybackContext: null, currentIdx: -1, playQueue: [], currentLocalSong: null };
+  const box = {
+    currentPlaybackContext: null, currentIdx: -1, playQueue: [], currentLocalSong: null,
+    // no external session by default -> the live branch of the unified accessor must stay inert
+    smtcExternalOwnsUi: () => false,
+  };
   vm.createContext(box);
-  vm.runInContext([grab('currentQueueSong'), grab('currentCoverSong'), grab('currentLyricSong')].join('\n'), box);
+  vm.runInContext([grab('currentQueueSong'), grab('externalLiveSong'), grab('currentCoverSong'), grab('currentLyricSong')].join('\n'), box);
   return box;
 }
 
@@ -73,14 +77,20 @@ test('4. the context is written by one owner only and never by the queue world',
   const all = readAll();
   const writes = all.match(/currentPlaybackContext\s*=(?!=)/g) || [];
   assert.equal(writes.length, 2, 'expected the declaration plus the single writer');
-  assert.match(detail, /function currentCoverSong\(\) \{\s*return currentPlaybackContext \|\| currentQueueSong\(\);/);
+  // Step 3 widened the chain: published context -> LIVE external session -> queue. The queue-only
+  // accessor is untouched, so statistics/snapshot/like stay queue-only (test 3).
+  assert.match(detail, /function currentCoverSong\(\) \{\s*return currentPlaybackContext \|\| externalLiveSong\(\) \|\| currentQueueSong\(\);/);
   assert.match(detail, /function currentLyricSong\(\) \{\s*return currentCoverSong\(\);/);
   assert.equal(/playQueue\s*=/.test(search), false, '07-search must never replace the queue');
   assert.equal(/currentIdx\s*=/.test(search), false, '07-search must never move the queue index');
 });
 
 test('5. publishing is three-state, evidence-only, and pauses MineRadio first', () => {
-  const publishes = search.match(/setCurrentPlaybackContext\(/g) || [];
+  // comment-proof: count CODE lines only. A comment that merely MENTIONS the call text used to fail this
+  // (it did, during the amcContextContradicted fix) - the same class of false signal as the shipped-bug
+  // assertion below.
+  const codeOnly = search.split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
+  const publishes = codeOnly.match(/setCurrentPlaybackContext\(/g) || [];
   assert.equal(publishes.length, 1, 'exactly one publish point');
   assert.match(search, /res\.ok === true && !amcContextContradicted/);
   assert.match(search, /disagreement === true && res\.verified === false/);
@@ -162,4 +172,382 @@ test('11. an Apple playlist play action is scoped to its button (never intercept
   // quietly replaced by the first-track path (that fallback is only for a missing IPC bridge).
   const wholeAt = panelSrc.indexOf('playApplePlaylistInAppleMusic(detailName');
   assert.ok(wholeAt > detectionAt && wholeAt < firstAmcAt, 'the whole-playlist branch must precede the first-track fallback');
+});
+test('12. the control bar is painted from the published context, title included', () => {
+  // The painter must exist separately from the guarded writer: the guard blocks QUEUE repaints while an
+  // external context owns the UI, so the context's own repaint has to bypass it (it used to hit the guard
+  // and paint nothing, leaving control-title/control-artist on the previous internal song).
+  assert.match(renderSrc, /function applyControlTrackInfo\(song\) \{/);
+  const utStart = renderSrc.indexOf('function updateControlTrackInfo(song) {');
+  const utEnd = renderSrc.indexOf('\n}', utStart);
+  assert.ok(utStart >= 0 && utEnd > utStart, 'updateControlTrackInfo must exist');
+  const utBody = renderSrc.slice(utStart, utEnd);
+  assert.match(utBody, /E-A F1-GUARD-BEGIN[\s\S]*E-A F1-GUARD-END/, 'the guard block must stay intact');
+  assert.match(utBody, /applyControlTrackInfo\(song\);/, 'the guarded writer must delegate to the painter');
+  assert.match(searchSrc, /applyControlTrackInfo\(currentPlaybackContext\)/);
+  // The title source: the normalised AMC/web model carries `title`, not trackName/name.
+  assert.match(searchSrc, /name: String\(model\.title \|\| model\.trackName \|\| model\.name \|\| ''\)/);
+});
+
+test('13. publishAmcPlaybackContext RUNS and reaches the bar painter (a ReferenceError used to kill it)', () => {
+  // Regression the source-string tests could not see: the guard read `amcContextContradicted`, which only
+  // existed as a local var inside amcPlayRow, so every publish threw
+  // ReferenceError before setCurrentPlaybackContext() - the context was never established and
+  // applyControlTrackInfo() never ran. This test EXECUTES the function with stubs and watches what happens.
+  const start = searchSrc.indexOf('function publishAmcPlaybackContext(res, model, amcContextContradicted) {');
+  const end = searchSrc.indexOf('// E-A F6: hand a canonical Apple playlist track');
+  assert.ok(start >= 0 && end > start, 'publishAmcPlaybackContext must take the contradiction flag explicitly');
+  const fnSrc = searchSrc.slice(start, end);
+  const box = {
+    internalAudioPlayingNow: () => false,
+    audio: null,
+    syncPlaybackStateFromAudioEvent: () => {},
+    setAlbumBackground: () => {},
+    currentPlaybackContext: null,
+    calls: [],
+  };
+  box.setCurrentPlaybackContext = function (ctx) { box.calls.push(['context', ctx]); box.currentPlaybackContext = ctx; return ctx; };
+  box.applyControlTrackInfo = function (song) { box.calls.push(['paint', song]); };
+  vm.createContext(box);
+  vm.runInContext(fnSrc + '\nthis.__publish = publishAmcPlaybackContext;', box);
+  // publish case: the context is established AND the painter is reached with it
+  box.__publish({ ok: true, verified: true, disagreement: false, artistLayer: 'exact' },
+    { title: 'Kiss Land', artist: 'Abel Tesfaye', artworkUrl: 'u', trackId: 1 }, false);
+  assert.equal(box.calls.length, 2, 'both setCurrentPlaybackContext and applyControlTrackInfo must run');
+  assert.equal(box.calls[0][0], 'context');
+  assert.equal(box.calls[0][1].name, 'Kiss Land');
+  assert.equal(box.calls[0][1].artist, 'Abel Tesfaye');
+  assert.equal(box.calls[0][1].provider, 'apple');
+  assert.equal(box.calls[0][1].identitySource, 'amc');
+  assert.equal(box.calls[1][0], 'paint');
+  assert.equal(box.calls[1][1].name, 'Kiss Land', 'the painter must receive the context, not null');
+  // three-state: an explicit contradiction must not publish at all
+  box.calls.length = 0;
+  box.__publish({ ok: true, verified: false, disagreement: true }, { title: 'X' }, true);
+  assert.equal(box.calls.length, 0, 'a contradicted verdict must not publish');
+  // and both call sites must pass the flag explicitly - that IS the fix
+  assert.match(searchSrc, /publishAmcPlaybackContext\(res, model, amcContextContradictedOf\(res\)\)/);
+  assert.match(searchSrc, /publishAmcPlaybackContext\(res, amModel, amcContextContradictedOf\(res\)\)/);
+  assert.match(searchSrc, /function amcContextContradictedOf\(res\) \{/);
+});
+
+test('14. the bar mirrors the LIVE SMTC identity while an external session owns it', () => {
+  const uiSrc = read('public/js/modules/12-smtc/03-smtc-ui.js');
+  const start = uiSrc.indexOf('var smtcBarMirrorKey');
+  const end = uiSrc.indexOf('function smtcUpdateControls() {');
+  assert.ok(start >= 0 && end > start, 'the mirror must sit above smtcUpdateControls');
+  const src = uiSrc.slice(start, end);
+  const box = {
+    smtcStore: { active: true, title: 'Out of Time', artist: 'Abel Tesfaye', album: 'Dawn FM' },
+    internalAudioPlayingNow: () => false,
+    calls: [],
+  };
+  box.applyControlTrackInfo = (song) => box.calls.push(song);
+  vm.createContext(box);
+  // the mirror builds its identity through externalLiveSong() (the same builder the unified accessor uses)
+  vm.runInContext(grab('externalLiveSong') + '\n' + src + '\nthis.__own = smtcExternalOwnsUi; this.__mirror = smtcMirrorControlBarIdentity;', box);
+  assert.equal(box.__own(), true, 'an active session with a silent deck owns the bar');
+  assert.equal(box.__mirror(), true);
+  assert.equal(box.calls.length, 1);
+  assert.equal(box.calls[0].name, 'Out of Time');
+  assert.equal(box.calls[0].artist, 'Abel Tesfaye');
+  assert.equal(box.calls[0].provider, 'apple', 'the bar must keep its AM badge');
+  assert.equal(box.__mirror(), false, 'the same identity must not rebuild the badges again');
+  assert.equal(box.calls.length, 1);
+  box.smtcStore.title = 'Kiss Land';
+  assert.equal(box.__mirror(), true);
+  assert.equal(box.calls.length, 2);
+  assert.equal(box.calls[1].name, 'Kiss Land');
+  // Apple Music hands SMTC "Artist <em dash> Album": the bar must show the ARTIST only, and keep the album
+  // in its own field. A plain hyphen is never a separator (Jay-Z / T-Pain are single names).
+  box.smtcStore.title = 'Out of Time';
+  box.smtcStore.artist = 'Abel Tesfaye \u2014 Dawn FM';
+  box.smtcStore.album = '';
+  assert.equal(box.__mirror(), true);
+  assert.equal(box.calls[2].artist, 'Abel Tesfaye');
+  assert.equal(box.calls[2].album, 'Dawn FM');
+  box.smtcStore.title = 'Blinding Lights';
+  box.smtcStore.artist = 'The Weeknd';
+  assert.equal(box.__mirror(), true);
+  assert.equal(box.calls[3].artist, 'The Weeknd');
+  box.smtcStore.title = 'Jay-Z Song';
+  box.smtcStore.artist = 'Jay-Z';
+  assert.equal(box.__mirror(), true);
+  assert.equal(box.calls[4].artist, 'Jay-Z', 'a plain hyphen must never split an artist name');
+  const painted = box.calls.length;   // every identity change above painted exactly once
+  box.internalAudioPlayingNow = () => true;
+  assert.equal(box.__own(), false, 'internal playback takes the bar back');
+  assert.equal(box.__mirror(), false);
+  assert.equal(box.calls.length, painted, 'yielding must not repaint');
+  box.smtcStore.active = false;
+  box.internalAudioPlayingNow = () => false;
+  assert.equal(box.__mirror(), false, 'no session -> no mirror');
+  assert.equal(box.calls.length, painted);
+});
+
+test('15. queue repaints cannot steal the bar back while the external session owns it', () => {
+  const start = renderSrc.indexOf('function updateControlTrackInfo(song) {');
+  const end = renderSrc.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'updateControlTrackInfo must exist');
+  const fnSrc = renderSrc.slice(start, end + 2);
+  const box = { currentPlaybackContext: null, calls: [] };
+  box.applyControlTrackInfo = (song) => box.calls.push(song);
+  vm.createContext(box);
+  vm.runInContext(fnSrc + '\nthis.__update = updateControlTrackInfo;', box);
+  box.smtcExternalOwnsUi = () => true;
+  box.__update({ name: 'Kiss Land' });
+  assert.equal(box.calls.length, 0, 'a queue repaint must not overwrite the live external identity');
+  box.smtcExternalOwnsUi = () => false;
+  box.__update({ name: 'Kiss Land' });
+  assert.equal(box.calls.length, 1, 'without an external session the queue paints normally');
+  box.currentPlaybackContext = { provider: 'apple' };
+  box.__update({ name: 'Queue' });
+  assert.equal(box.calls.length, 1, 'a published context still blocks queue repaints (F1 unchanged)');
+});
+
+test('19. the comment section is omitted for Apple Music and kept for every other provider', () => {
+  const start = detail.indexOf('function detailCommentsEnabledForSong(song) {');
+  const end = detail.indexOf('function renderDetailCommentComposer(config) {');
+  assert.ok(start >= 0 && end > start, 'detailCommentsEnabledForSong must exist');
+  const src = detail.slice(start, end);
+  const box = { songProviderKey: (song) => (song && (song.provider || song.source)) || 'netease' };
+  vm.createContext(box);
+  vm.runInContext(src + '\nthis.__enabled = detailCommentsEnabledForSong;', box);
+  assert.equal(box.__enabled({ provider: 'apple' }), false, 'Apple Music has no comment interface here');
+  assert.equal(box.__enabled({ source: 'apple' }), false);
+  assert.equal(box.__enabled({ provider: 'netease', id: 1 }), true);
+  assert.equal(box.__enabled({ provider: 'qq' }), true);
+  assert.equal(box.__enabled({ provider: 'qishui' }), true);
+  assert.equal(box.__enabled(null), true, 'unknown input keeps the previous behaviour');
+});
+
+test('22. Apple detail rows/albums lose the MineRadio-only actions; other providers keep them', () => {
+  const start = detail.indexOf('function appleDetailActionsVisibleForSong(song) {');
+  const end = detail.indexOf('function renderDetailCommentComposer(config) {');
+  assert.ok(start >= 0 && end > start, 'appleDetailActionsVisibleForSong must exist');
+  const pred = detail.slice(start, end);
+  const box = { songProviderKey: (song) => (song && (song.provider || song.source)) || 'netease' };
+  vm.createContext(box);
+  vm.runInContext(pred + '\nthis.__visible = appleDetailActionsVisibleForSong;', box);
+  assert.equal(box.__visible({ provider: 'apple' }), false);
+  assert.equal(box.__visible({ source: 'apple' }), false);
+  assert.equal(box.__visible({ provider: 'netease', id: 1 }), true);
+  assert.equal(box.__visible({ provider: 'qq' }), true);
+  assert.equal(box.__visible(null), true, 'unknown input keeps the previous behaviour');
+
+  // and the album row renderer really drops them for an Apple track, keeps them otherwise
+  const rs = detail.indexOf('function renderAlbumSongList(songs) {');
+  const re = detail.indexOf('\n}', rs);
+  assert.ok(rs >= 0 && re > rs, 'renderAlbumSongList must exist');
+  const box2 = {
+    detailAlbumSongs: [],
+    songProviderKey: (song) => (song && (song.provider || song.source)) || 'netease',
+    escHtml: (s) => String(s == null ? '' : s),
+    cloneSong: (s) => Object.assign({}, s),
+    songCoverSrc: () => '',
+    songDurationLabel: () => '3:00',
+    artistCollectTrayIconSvg: () => '<svg class="collect-icon"></svg>',
+    artistNextPlusIconSvg: () => '<svg class="next-icon"></svg>',
+  };
+  vm.createContext(box2);
+  vm.runInContext(pred + '\n' + detail.slice(rs, re + 2) + '\nthis.__render = renderAlbumSongList;', box2);
+  const appleHtml = box2.__render([{ provider: 'apple', catalogId: '1499378120', name: 'Alone Again', artist: 'The Weeknd', duration: 251 }]);
+  assert.ok(appleHtml.indexOf('artist-song-actions') < 0, 'an Apple row renders no row actions');
+  assert.ok(appleHtml.indexOf('collectAlbumDetailSong') < 0, 'no 收藏到歌单 for an Apple row');
+  assert.ok(appleHtml.indexOf('queueAlbumDetailSongNext') < 0, 'no 下一首播放 for an Apple row');
+  assert.ok(appleHtml.indexOf('playAlbumDetailSong(0)') > 0, 'its click still plays it');
+  const neteaseHtml = box2.__render([{ provider: 'netease', id: 2, name: 'N', artist: 'A', duration: 200 }]);
+  assert.ok(neteaseHtml.indexOf('collectAlbumDetailSong(0)') > 0, 'a netease row keeps 收藏到歌单');
+  assert.ok(neteaseHtml.indexOf('queueAlbumDetailSongNext(0)') > 0, 'a netease row keeps 下一首播放');
+});
+
+test('20. album-detail tracks carry an explicit catalogId, so an album row can reach the UIA chain', async () => {
+  // Without this the renderer had nothing to route on: the album mapper sets id/appleId but no catalogId,
+  // which is exactly what the playlist axis had to add for library tracks (playParams.catalogId).
+  const webApi = require('../desktop/apple-music-web-api');
+  const reads = require('../desktop/apple-music-web-reads-api');
+  const savedCatalog = webApi.getCatalog;
+  const savedToken = webApi.getMediaUserToken;
+  webApi.getMediaUserToken = () => '';
+  webApi.getCatalog = () => Promise.resolve({
+    ok: true, status: 200,
+    json: { data: [{
+      id: '1499378108', type: 'albums',
+      attributes: { name: 'After Hours', artistName: 'The Weeknd', trackCount: 2, artwork: { url: '' } },
+      relationships: { tracks: { data: [
+        { id: '1499378120', type: 'songs', attributes: { name: 'Alone Again', artistName: 'The Weeknd', albumName: 'After Hours', durationInMillis: 251000, trackNumber: 1, playParams: { id: '1499378120', kind: 'song', catalogId: '1499378120' } } },
+        { id: '1499378121', type: 'songs', attributes: { name: 'Too Late', artistName: 'The Weeknd', albumName: 'After Hours', durationInMillis: 240000, trackNumber: 2 } },
+      ] } },
+    }] },
+  });
+  try {
+    const r = await reads.handleAppleAlbumDetailWeb('1499378108', { limit: 10 });
+    assert.equal(r.album.name, 'After Hours');
+    assert.equal(r.songs.length, 2);
+    assert.equal(r.songs[0].provider, 'apple');
+    assert.equal(r.songs[0].storefront, 'us');
+    assert.equal(r.songs[0].catalogId, '1499378120', 'playParams.catalogId wins when Apple sends it');
+    assert.equal(r.songs[1].catalogId, '1499378121', 'and a catalog track without playParams still carries its own id');
+  } finally {
+    webApi.getCatalog = savedCatalog;
+    webApi.getMediaUserToken = savedToken;
+  }
+});
+
+test('21. an Apple album row goes through UIA; anything else keeps the internal deck', () => {
+  const start = detail.indexOf('function playAlbumDetailSong(i) {');
+  const end = detail.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'playAlbumDetailSong must exist');
+  const fnSrc = detail.slice(start, end + 2);
+  const box = {
+    detailAlbumSongs: [
+      { provider: 'apple', catalogId: '1499378120', name: 'Alone Again', artist: 'The Weeknd' },
+      { provider: 'apple', name: 'No Explicit Id' },
+      { provider: 'netease', id: 9, name: 'N' },
+    ],
+    detailAlbumContext: { provider: 'apple' },
+    detailAlbumGaplessEnabled: false,
+    playQueue: null,
+    currentIdx: -1,
+    calls: [],
+  };
+  box.playAmcTrackFromSong = (song) => { box.calls.push(['amc', song && song.name]); return Promise.resolve(true); };
+  box.closeTrackDetailModal = () => box.calls.push(['close']);
+  box.tagAlbumSongsForGapless = (songs) => songs;
+  box.setAlbumGaplessPlaybackContext = () => box.calls.push(['gapless']);
+  box.safeRenderQueuePanel = () => {};
+  box.safeShelfRebuild = () => {};
+  box.playQueueAt = (i) => { box.calls.push(['queueAt', i]); return Promise.resolve(); };
+  box.console = { warn: () => {} };
+  vm.createContext(box);
+  vm.runInContext(fnSrc + '\nthis.__play = playAlbumDetailSong;', box);
+  // an Apple row WITH an explicit catalogId -> the UIA chain, and the internal queue stays untouched
+  box.__play(0);
+  // order-independent: the modal closes and the track is handed to Apple Music, nothing else happens
+  assert.deepEqual(box.calls.map((c) => c[0]).sort(), ['amc', 'close']);
+  assert.equal(box.calls.filter((c) => c[0] === 'amc')[0][1], 'Alone Again');
+  assert.equal(box.playQueue, null, 'the internal queue must not be replaced for an Apple track');
+  assert.equal(box.currentIdx, -1);
+  // an Apple row WITHOUT an explicit catalogId -> internal path (an id is never guessed)
+  box.calls.length = 0;
+  box.__play(1);
+  assert.equal(box.calls.filter((c) => c[0] === 'amc').length, 0);
+  assert.equal(box.calls.filter((c) => c[0] === 'queueAt').length, 1);
+  assert.ok(Array.isArray(box.playQueue));
+  // a non-Apple row -> internal path, exactly as before
+  box.calls.length = 0;
+  box.__play(2);
+  assert.equal(box.calls.filter((c) => c[0] === 'amc').length, 0);
+  assert.equal(box.currentIdx, 2);
+});
+
+test('17. the AM album id comes from the public catalog, and only ever between IDENTICAL entries', () => {
+  const start = detail.indexOf('var appleAlbumIdLookup = {};');
+  const end = detail.indexOf('function albumDetailUrlForSong(song) {');
+  assert.ok(start >= 0 && end > start, 'the album-id resolver must sit above albumDetailUrlForSong');
+  const src = detail.slice(start, end);
+  const box = { window: { mineradio: { amc: { searchTracks: () => Promise.resolve({ results: [] }) } } } };
+  vm.createContext(box);
+  vm.runInContext(src + '\nthis.__token = appleAlbumMatchToken; this.__query = appleAlbumLookupQuery; this.__pick = pickAppleCatalogAlbumId; this.__resolve = resolveAppleCatalogAlbumId;', box);
+  // comparison token: case/punctuation insensitive, CJK kept, decorations KEPT (they are other releases)
+  assert.equal(box.__token('After Hours (Deluxe)'), 'after hours deluxe');
+  assert.equal(box.__token('After Hours (Remixes) - EP'), 'after hours remixes ep');
+  assert.equal(box.__token('My Dear Melancholy,'), 'my dear melancholy');
+  assert.equal(box.__query({ artist: 'Liam Payne', album: 'LP1' }), 'Liam Payne LP1');
+  const song = { name: 'Remember', album: 'LP1', artist: 'Liam Payne' };
+  // iTunes search rows carry trackCount/releaseDate/country (verified against the live API) - that is what
+  // the duplicate-entry signature is built from.
+  const row = (id, album, artist, extra) => Object.assign({
+    collectionId: id, album: album, artist: artist, trackName: 'Remember',
+    trackCount: 10, releaseDate: '2019-01-01T00:00:00Z', country: 'USA',
+  }, extra || {});
+  // the exact album wins over a differently named one
+  assert.equal(box.__pick([row(111, 'LP1', 'Liam Payne'), row(222, 'LP2', 'Liam Payne')], song), '111');
+  // a deluxe edition is a DIFFERENT album, not the same one
+  assert.equal(box.__pick([row(333, 'LP1 (Deluxe)', 'Liam Payne')], song), '');
+  // a different artist is refused
+  assert.equal(box.__pick([row(444, 'LP1', 'Someone Else')], song), '');
+  // duplicate catalog entries of ONE release (identical trackCount/releaseDate/country) resolve, by lowest id
+  assert.equal(box.__pick([row(555, 'LP1', 'Liam Payne'), row(666, 'LP1', 'Liam Payne')], song), '555');
+  // a REAL difference (another trackCount = another release) is refused
+  assert.equal(box.__pick([row(555, 'LP1', 'Liam Payne'), row(666, 'LP1', 'Liam Payne', { trackCount: 17 })], song), '');
+  // the track playing right now narrows the pool before the signature check
+  assert.equal(box.__pick([
+    row(777, 'LP1', 'Liam Payne', { trackCount: 10, trackName: 'Another Song' }),
+    row(888, 'LP1', 'Liam Payne', { trackCount: 17, trackName: 'Remember' }),
+  ], song), '888');
+  // no collectionId -> nothing to trust; no album -> no lookup at all
+  assert.equal(box.__pick([{ album: 'LP1', artist: 'Liam Payne' }], song), '');
+  assert.equal(box.__pick([row(999, 'LP1', 'Liam Payne')], { artist: 'Liam Payne' }), '');
+  // the repo's validated alias pair: iTunes credits The Weeknd while SMTC reports Abel Tesfaye
+  const dawn = { name: 'Take My Breath', album: 'Dawn FM', artist: 'Abel Tesfaye' };
+  assert.equal(box.__pick([row(1234, 'Dawn FM', 'The Weeknd', { trackName: 'Take My Breath' })], dawn), '1234');
+  assert.equal(box.__pick([row(1234, 'Dawn FM', 'Abel Tesfaye', { trackName: 'Take My Breath' })], dawn), '1234');
+  // the alias never rescues an unrelated artist or a different album
+  assert.equal(box.__pick([row(1234, 'Dawn FM', 'Someone Else', { trackName: 'Take My Breath' })], dawn), '');
+  assert.equal(box.__pick([row(1234, 'After Hours', 'The Weeknd', { trackName: 'Take My Breath' })], dawn), '');
+  // REAL DATA (measured 2026-09-26 through the live iTunes API): "After Hours" exists under two ids that
+  // are byte-identical releases (14 tracks, same date/country/track list) -> resolvable; the deluxe and the
+  // remix EP carry different names and are excluded by name.
+  const afterHours = { name: 'Blinding Lights', album: 'After Hours', artist: 'Abel Tesfaye' };
+  assert.equal(box.__pick([
+    row(1499385848, 'After Hours', 'The Weeknd', { trackName: 'Blinding Lights', trackCount: 14, releaseDate: '2020-02-19T08:00:00Z' }),
+    row(1499378108, 'After Hours', 'The Weeknd', { trackName: 'Blinding Lights', trackCount: 14, releaseDate: '2020-02-19T08:00:00Z' }),
+    row(1505683705, 'After Hours (Deluxe)', 'The Weeknd', { trackName: 'Blinding Lights', trackCount: 17, releaseDate: '2020-03-20T07:00:00Z' }),
+  ], afterHours), '1499378108');
+  // ... and the same for "My Dear Melancholy," (also two identical entries)
+  assert.equal(box.__pick([
+    row(1363308558, 'My Dear Melancholy,', 'The Weeknd', { trackName: 'Call Out My Name', trackCount: 6, releaseDate: '2018-03-30T07:00:00Z' }),
+    row(1363309866, 'My Dear Melancholy,', 'The Weeknd', { trackName: 'Call Out My Name', trackCount: 6, releaseDate: '2018-03-30T07:00:00Z' }),
+  ], { name: 'Call Out My Name', album: 'My Dear Melancholy,', artist: 'Abel Tesfaye' }), '1363308558');
+});
+
+test('18. the album-id lookup runs once per album per session (hits AND misses are cached)', async () => {
+  const start = detail.indexOf('var appleAlbumIdLookup = {};');
+  const end = detail.indexOf('function albumDetailUrlForSong(song) {');
+  const src = detail.slice(start, end);
+  const box = {
+    searchCalls: 0,
+    window: { mineradio: { amc: { searchTracks: function () { box.searchCalls++; return Promise.resolve({ results: [{ collectionId: 111, album: 'LP1', artist: 'Liam Payne' }] }); } } } },
+  };
+  vm.createContext(box);
+  vm.runInContext(src + '\nthis.__resolve = resolveAppleCatalogAlbumId;', box);
+  const asked = (song) => new Promise((resolve) => box.__resolve(song, (id) => resolve(id)));
+  assert.equal(await asked({ album: 'LP1', artist: 'Liam Payne' }), '111');
+  assert.equal(await asked({ album: 'LP1', artist: 'Liam Payne' }), '111');
+  assert.equal(box.searchCalls, 1, 'the second resolve must come from the cache');
+  // a missing album is a MISS and stays cached too (no repeated network calls per open)
+  assert.equal(await asked({ album: 'Nothing Like This', artist: 'Nobody' }), '');
+  assert.equal(await asked({ album: 'Nothing Like This', artist: 'Nobody' }), '');
+  assert.equal(box.searchCalls, 2);
+});
+
+test('16. the unified accessor prefers the LIVE external session; the queue-only accessor never does', () => {
+  const box = sandbox();
+  box.playQueue = [{ name: 'Queue Song', artist: 'Q' }];
+  box.currentIdx = 0;
+  box.smtcStore = {
+    active: true, title: 'Out of Time', artist: 'Abel Tesfaye \u2014 Dawn FM', album: '',
+    thumbnail: 'data:image/png;base64,AAAA',
+  };
+  box.internalAudioPlayingNow = () => false;
+  box.smtcExternalOwnsUi = () => true;
+  const live = box.currentCoverSong();
+  assert.equal(live.name, 'Out of Time');
+  assert.equal(live.artist, 'Abel Tesfaye');
+  assert.equal(live.album, 'Dawn FM');
+  assert.equal(live.provider, 'apple');
+  assert.equal(live.artworkUrl, 'data:image/png;base64,AAAA', 'the modal cover comes from the SMTC thumbnail');
+  assert.equal(box.currentLyricSong().name, 'Out of Time', 'the lyric accessor follows the same fact');
+  // E-A invariant untouched: statistics / snapshot / like-sync keep the queue-only accessor
+  assert.equal(box.currentQueueSong().name, 'Queue Song');
+  // a published context (which carries the chain verdict) still wins over the live session
+  box.currentPlaybackContext = { provider: 'apple', identitySource: 'amc', name: 'Clicked Track' };
+  assert.equal(box.currentCoverSong().name, 'Clicked Track');
+  // internal playback takes the bar back: the predicate yields, so nothing external leaks in
+  delete box.currentPlaybackContext;
+  box.currentPlaybackContext = null;
+  box.internalAudioPlayingNow = () => true;
+  box.smtcExternalOwnsUi = () => false;
+  assert.equal(box.currentCoverSong().name, 'Queue Song');
 });

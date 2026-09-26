@@ -301,6 +301,9 @@ function smtcApplyBridgeState(state) {
     smtcVisualCoverPending = null;
     smtcApplyVisualizerCover(pendingCover);
   }
+  // Step 3: hand the bar the LIVE identity (no-op unless an external session owns it and the identity
+  // actually changed). Queued before the generic state callback so listeners see the same title.
+  try { if (typeof smtcMirrorControlBarIdentity === 'function') smtcMirrorControlBarIdentity(); } catch (_) { }
   if (typeof onSmtcStateChanged === 'function') {
     onSmtcStateChanged(prevActive, prevPlaying);
   }
@@ -329,7 +332,15 @@ function initSmtcStore() {
       var smtcEndedStatus = String((typeof smtcStore === 'object' && smtcStore && smtcStore.status) || '');
       var smtcSessionGone = (typeof smtcStore === 'object' && smtcStore && smtcStore.active === false)
         || smtcEndedStatus === 'Stopped' || smtcEndedStatus === 'Closed';
-      if (smtcSessionGone) clearCurrentPlaybackContext('external-session-ended:' + (smtcEndedStatus || 'inactive'));
+      if (smtcSessionGone) {
+        clearCurrentPlaybackContext('external-session-ended:' + (smtcEndedStatus || 'inactive'));
+        // Nothing else repaints the bar after the context is dropped, so it would keep showing the Apple
+        // Music track. Hand it back to the queue through the same single writer (the guard is now clear).
+        // Unguarded painter on purpose: the new "external session owns the bar" suppression must not be
+        // able to block the hand-back (it is keyed on smtcStore.active/status, which is exactly what just
+        // changed).
+        try { if (typeof applyControlTrackInfo === 'function' && typeof currentQueueSong === 'function') applyControlTrackInfo(currentQueueSong()); } catch (_) { }
+      }
     }
   } catch (_) { }
   });

@@ -232,7 +232,19 @@ async function handleAppleAlbumDetailWeb(albumId, opts) {
   };
   const songs = items.slice(0, limit).map(function (track, index) {
     if (track && track.type && track.type !== 'songs') return null;
-    return mapAppleTrack(track, index, 'album:' + id, { storefront, albumId: id, albumName: albumInfo.name });
+    const mapped = mapAppleTrack(track, index, 'album:' + id, { storefront, albumId: id, albumName: albumInfo.name });
+    // Carry the EXPLICIT catalog identity, exactly like the playlist axis does for library tracks: this
+    // axis is CATALOG-only (the caller supplied a catalog album id), so a track's own id IS its catalog
+    // song id, and playParams.catalogId wins whenever Apple sends one. Nothing is decoded from an id form,
+    // and no id is invented - without this the renderer could not hand an album row to Apple Music.
+    if (mapped) {
+      const pp = (track && track.attributes && track.attributes.playParams) || {};
+      const explicit = (pp.catalogId !== undefined && pp.catalogId !== null && String(pp.catalogId) !== '')
+        ? String(pp.catalogId)
+        : String((track && track.id) || '');
+      if (explicit) mapped.catalogId = explicit;
+    }
+    return mapped;
   }).filter(Boolean);
   return {
     provider: 'apple',

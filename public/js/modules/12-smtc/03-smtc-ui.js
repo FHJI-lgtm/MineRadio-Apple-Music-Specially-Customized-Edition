@@ -265,6 +265,36 @@ function smtcEnsureControls() {
   return bar;
 }
 
+// ---- Step 3: the BOTTOM BAR mirrors the LIVE SMTC identity -------------------------------------
+// While an external session is active and MineRadio's own deck is silent, the main control bar shows the
+// track that is ACTUALLY playing. The published playback context is a click-time snapshot (evidence-only)
+// and goes stale as soon as Apple Music advances; SMTC is the live fact - the same source the lyric loader
+// (12-smtc/01-smtc-lyric-loader.js) and the hover panel already read.
+// This only PAINTS: it never touches playQueue / currentIdx / playing / the published context.
+var smtcBarMirrorKey = '';
+// ONE predicate for "an external session owns the UI": SMTC active AND MineRadio's deck silent. The bar
+// suppression and the unified accessor (externalLiveSong) both hang off it, so they cannot disagree.
+function smtcExternalOwnsUi() {
+  if (typeof smtcStore !== 'object' || !smtcStore || smtcStore.active !== true) return false;
+  if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow()) return false;
+  return true;
+}
+function smtcMirrorControlBarIdentity() {
+  // The identity is built ONCE, in externalLiveSong() (05-playback/06-track-detail-lyrics-actions.js):
+  // title, the artist/album split of SMTC's "Artist <em dash> Album", artwork and provider all come from
+  // there, so the bar and the unified accessor can never show two different artists.
+  var live = (typeof externalLiveSong === 'function') ? externalLiveSong() : null;
+  if (!live) { smtcBarMirrorKey = ''; return false; }
+  var key = live.name + '|' + live.artist;
+  // identity unchanged -> do not repaint: the painter rebuilds the badge innerHTML (and its source
+  // switcher), and the SMTC bridge pushes position updates far more often than identity changes.
+  if (key === smtcBarMirrorKey) return false;
+  if (typeof applyControlTrackInfo !== 'function') return false;
+  smtcBarMirrorKey = key;
+  applyControlTrackInfo(live);
+  return true;
+}
+
 function smtcUpdateControls() {
   var bar = document.getElementById('smtc-controls');
   if (!bar) return;
