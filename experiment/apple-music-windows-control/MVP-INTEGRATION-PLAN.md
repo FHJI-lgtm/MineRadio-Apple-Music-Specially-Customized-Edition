@@ -233,3 +233,14 @@ app 模式无法加载运行时，在任何 JS 之前以 `0x80000003 STATUS_BREA
 本刀修掉两个自身缺陷：`b442b3c`（AM 分支使用了声明在之后的 `requestSeq`，导致结果被守卫全部丢弃、永远停在加载文案）、`b056ed8`（换行丢失的格式瑕疵）。
 
 边界未变：provider 注册表仍只有 5 个；无 `searchProviderUrl('amc')`、无 song 模型转换、`07-search.js` 内无 `playTrack`；frozen `poc/lib` 与 `0170bca` byte-identical。
+
+## 18. 全自动端到端通过（2026-09-26 12:50，用户验收："我没动鼠标"）
+
+点击 AM 结果后，链自行滚动定位折叠线下的曲目行 → 合成双击 → **Apple Music 自动最小化** → 行内绿色判定：
+`SMTC 已验证 · 艺人匹配层：alias · 链与模块判定不一致 · SMTC 实际艺人：Abel Tesfaye — Dawn FM`。
+
+链路：`搜索栏 AM 标签 → amc.searchTracks → 自有 AM 结果模型 → 点击 → amc.playTrack → canonicalUrl/-Url → Apple Music Windows → 自动滚动定位 → 合成双击 → 最小化 → SMTC → verifyAgainstSmtc`，全程无需人工介入，且不把 iTunes 结果转成 song、不碰 provider 注册表。
+
+冻结链：`am-uia.ps1` / `am-smtc.ps1` / `am-common.ps1` 仍与 `0170bca` byte-identical；`am-play.ps1` 为**经授权例外**（materialize 滚动 + 点击后最小化），当前 SHA256 `5222963476E757089E3E2F32889461F74EF4B0C7A035603F57EBDCB6DF4A62DE`。
+
+已知上限：materialize 最多 8 步、间隔 1000ms，超长歌单可能仍需更多（两个常量即可调整）。
