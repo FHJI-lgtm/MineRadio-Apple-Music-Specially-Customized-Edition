@@ -37,6 +37,7 @@
 | D8 | **作用域芯片竞态**：搜索提交后芯片尚未渲染，单次查找直接报 SCOPE_CHIP_NOT_FOUND（真机出现过 1 次，1.6s 就返回） | 本次连跑 7 次里 1 次 | 芯片查找改为最多 6 次 × 300ms 重试（每次取新 root），detail 里带上等了多久 |
 | D9 | **播放控件被双击**：冻结的 Invoke-AmRowPlay 发的是**双击**（它是为歌曲行设计的），而 Apple Music 的播放键**第一次点击才真起播**（要加载一下），**再点就暂停** —— 于是出现「找到了、也点了，就是没播」 | 用户指出；实测复现：悬停按钮那次 clicked=true 但 SMTC 8s 不动；同一个坑也能解释悬停路线的失败 | 本文件新增 Invoke-AmSingleClick（一次 down/up，同样的置前台 + 重算几何），**5 处**播放控件/导航点击全部改用它；冻结的 am-uia.ps1 一行未动 |
 | D10 | **点完播放不最小化**：歌曲链在点击后会把 Apple Music 最小化（am-play.ps1:307-310，经授权的产品行为），歌单链没有做，用户点完播放 AM 还杵在最前面 | 用户指出 | 新增 `Hide-AmAfterClick`（先等 250ms 让点击落地 → 调 `Minimize-AmWindow`），三处播放点击后都调用；CLI 以**只读方式** dot-source `am-play.ps1` 复用该助手；`-NoMinimize` 可关闭 |
+| D11 | **作用域切换可能被吞掉**：芯片是 TogglePattern 按钮，搜索结果页还在渲染时发出的那一击会被直接吞掉，于是整次运行停在 Apple Music 作用域、最后以**假 PLAYLIST_NOT_FOUND** 收场（实测 3/3）。**旧的双击刚好掩盖了它**——第二次点击替它完成了工作，这就是我改成单击后暴露出来的回归 | 3/3 复现（`listItems=44`、搜索结果仍是目录作用域） | 芯片只点一次，然后**按结果验证**（切过去之后资料库作用域里应能找到这张卡），找不到才再点；共 3 次（奇数：即使芯片是 toggle，最终态也是资料库）；新增 `scopeVerified` / `scopeSwitchAttempts`，`scopeSwitched` 只表示「点过了」 |
 
 ### 另外三处（本轮按"按你的来"处理）
 
@@ -379,6 +380,25 @@ appleUrl: normalizeText(attributes.url)（还有 applePlayParamsId）。本次�
 | A 链接路线 | PLAYBACK_STARTED via url-page-play-button（过渡 2965ms，正是「要加载一下」） | **True** |
 | B 名称路线 | PLAYBACK_STARTED via page-play-button（5ms） | **True** |
 | C 链接路线 + -NoMinimize | PLAYBACK_STARTED | **False**（开关有效） |
+
+---
+
+### 10.6 作用域切换：改为按结果验证（单击改动暴露的回归）
+
+把点击从双击改成单击之后，名称路线连续 3 次以 `PLAYLIST_NOT_FOUND / listItems=44` 失败。现场取证：
+
+- `SearchPageStatus` = 「正在显示“喜爱歌曲”的结果」→ 搜索确实执行了；
+- 内容区文本 = The River / 绵绵 / 陈奕迅 … → **仍停在 Apple Music（目录）作用域**；
+- 两个芯片的 UIA 能力是 **TogglePattern**，没有 SelectionItem；
+- 直接探测：在页面稳定后单击芯片一次 → 候选数从 0 变 1（切换成功）。
+
+结论：那一击**本身是对的**，但在「搜索刚提交、页面还在渲染」时会被吞掉；旧的**双击**刚好掩盖了这个竞态
+（第二次点击替它干了活），单点之后回归就暴露了。
+
+改法：作用域这一步**点一次 → 按结果验证 → 没切过去才再点**，共 3 次（奇数，即使芯片按 toggle 解释，
+最终态也是资料库作用域）；`scopeSwitched` 只表示「点过了」，真实结果由 `scopeVerified` /
+`scopeSwitchAttempts` 记录。改完实测：**3/3 名称路线 `scopeVerified=true`（第 1 次尝试）→
+`PLAYBACK_STARTED` → 已最小化**。
 
 ---
 

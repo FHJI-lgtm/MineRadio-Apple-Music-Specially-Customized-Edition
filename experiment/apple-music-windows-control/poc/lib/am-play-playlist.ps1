@@ -365,7 +365,7 @@ function Invoke-AmPlayPlaylist {
   )
   $result = @{
     ok = $false; stage = 'UNKNOWN'; stageDetail = ''; stageHistory = @()
-    name = $Name; scopeLabel = $ScopeLabel; mode = $(if ($Commit) { 'commit' } else { 'probe' })
+    name = $Name; scopeLabel = $ScopeLabel; mode = $(if ($Commit) { 'commit' } else { 'probe' }); scopeVerified = $false; scopeSwitchAttempts = 0
     candidateCount = 0; ambiguous = $false; clicked = $false; cards = @()
     playVia = ''; playButtonFound = $false; playButtonClicked = $false
     hoverPlayButton = $false; hoverAttempts = 0; hoverPolls = 0; minimizedAfterClick = $false
@@ -402,21 +402,29 @@ function Invoke-AmPlayPlaylist {
     if (-not $sr.ok) { $stage = 'SEARCH_FAILED'; $detail = [string]$sr.detail }
     else {
       if ($ScopeLabel) {
-        # The scope chips render together with the search UI, which can lag the submit: a single immediate
-        # lookup produced a real SCOPE_CHIP_NOT_FOUND (measured 2026-09-26), so retry on a fresh root.
-        $chip = Find-AmScopeChip $root $ScopeLabel
-        for ($cs = 1; $cs -le 6 -and -not $chip; $cs++) {
-          Start-Sleep -Milliseconds 300
+        # The scope chips are TogglePattern buttons that render together with the search UI, and a click
+        # fired too early is simply SWALLOWED. MEASURED 2026-09-26: the chip was found and clicked while the
+        # page was still rendering, the results stayed in the Apple Music scope, and the run ended as a
+        # false PLAYLIST_NOT_FOUND (3/3). The old double click hid this - its second click did the work.
+        # So: wait for the chip, click it ONCE, then VERIFY BY OUTCOME (does the library-scoped result
+        # contain our card?) and click again only if it does not. Three attempts, odd on purpose: even if
+        # the chip toggled instead of latching, the final state is the library scope.
+        for ($att = 1; $att -le 3; $att++) {
           $chip = Find-AmScopeChip (Get-AmRoot $app.hwnd).root $ScopeLabel
-        }
-        if (-not $chip) { $stage = 'SCOPE_CHIP_NOT_FOUND'; $detail = 'label=' + $ScopeLabel + ' after ' + (($cs - 1) * 300) + 'ms' }
-        else {
+          for ($cs = 1; $cs -le 6 -and -not $chip; $cs++) {
+            Start-Sleep -Milliseconds 300
+            $chip = Find-AmScopeChip (Get-AmRoot $app.hwnd).root $ScopeLabel
+          }
+          if (-not $chip) { $stage = 'SCOPE_CHIP_NOT_FOUND'; $detail = 'label=' + $ScopeLabel + ' after ' + (($cs - 1) * 300) + 'ms'; break }
           try {
             $pt0 = Get-AmSafeClickPoint $chip.Current.BoundingRectangle
             [void](Invoke-AmSingleClick $app.hwnd $chip $pt0.x $pt0.y -NoForeground:$NoForeground)
             Start-Sleep -Milliseconds 1200
             $result.scopeSwitched = $true
-          } catch { $stage = 'SCOPE_SWITCH_FAILED'; $detail = $_.Exception.Message }
+            $result.scopeSwitchAttempts = $att
+          } catch { $stage = 'SCOPE_SWITCH_FAILED'; $detail = $_.Exception.Message; break }
+          $scopeProbe = Get-AmPlaylistCardCandidates (Get-AmRoot $app.hwnd).root $Name
+          if (@($scopeProbe.candidates).Count -gt 0) { $result.scopeVerified = $true; break }
         }
       }
     }
