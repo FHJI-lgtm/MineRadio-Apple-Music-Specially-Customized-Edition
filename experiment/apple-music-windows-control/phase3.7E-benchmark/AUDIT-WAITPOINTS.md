@@ -35,12 +35,37 @@
 | am-uia:419,425 | `Wait-AmRect` | 上限 600，轮询 100 | S | 轮询命中即退 |
 | am-uia:437…478 | `Realize-AmRow` | 上限 2000；子等待 500/700/800/800/600；滚动步间 250 ×≤6 | S | 逐级升级策略；正常行第一次即得矩形 |
 | am-uia:167,172-210 | `Invoke-AmSearch` | 上限 4000；150/250/120ms | N | search 模式专用 |
-| am-uia:245 | sleep | 500ms | **?** | **上下文未读**（需确认所在函数）——列入待查 |
-| am-smtc:83 | settled 轮询 | 100ms | S | — |
-| am-smtc:113 | playback 轮询 | 120ms | S | — |
+| am-uia:245 | `Invoke-AmNavigateUrl` 尾部 sleep | **500ms** | **C（已确认，成功路径必走，无条件）** | 见第 6 节 |
+
+## 6. 已确认项：`am-uia.ps1:245`（原"待查"）
+
+**归属**：`Invoke-AmNavigateUrl([string]$Url)`（`am-uia.ps1:233-247`）。
+**可达性**：**成功路径必走**。它位于该函数**末尾、`return` 之前**，且与导航成败无关：
+
+```powershell
+233: function Invoke-AmNavigateUrl([string]$Url) {
+236:   if (Test-Path $exe) { ... Start-Process ... $method = 'AppleMusic.exe /url' }
+242:   if (-not $method) { try { Start-Process $Url ... } catch { $method = 'failed' } }
+245:   Start-Sleep -Milliseconds 500      # <-- 无条件
+246:   return @{ method = $method; ok = ($method -ne 'failed') }
+```
+
+调用方 `am-play.ps1:120` 在 deep link 模式下**唯一入口**：`$nav = Invoke-AmNavigateUrl $Url`，
+返回后立刻进入轮询循环（首个等待是 `am-play:127` 的 300ms）。
+
+→ 因此这 500ms **既不是失败 fallback，也不是异常分支**，而是**每次 deep link 导航都固定付出的 500ms**，
+且与轮询的 300ms **串联**（`500 + 300×k`）。
+
+**对前台占用的意义（待 benchmark 判定）**：导航本身会激活 AM 窗口（T3 可能落在这 500ms 之内），
+所以它对 `foreground occupancy` 的净贡献取决于 T3 的相对位置——这正是 ④ 要测的：
+
+| 可能结果 | 含义 |
+|---|---|
+| 固定等待 1950ms，实际前台 ~900ms | 部分等待发生在 AM 已可继续操作之后 → **有可抠空间** |
+| 固定等待 1950ms，实际前台 1450–1600ms | 这些等待确实在撑同步 → 不应盲删 |
 
 **成功路径（deep link + 已运行 AM + 窗口正常可见 + 无重试）会走到的等待点**：
-`300`(导航轮询) · `200`(置前) · `120`+`450`+`350`+`200`+`130`(点击路径) · `100/120`(SMTC 轮询) ·
+`500`(导航后,无条件) · `300`(导航轮询) · `200`(置前) · `120`+`450`+`350`+`200`+`130`(点击路径) · `100/120`(SMTC 轮询) ·
 `Wait-AmRect/Realize` 的**上限**（命中即退）。
 
 ---
