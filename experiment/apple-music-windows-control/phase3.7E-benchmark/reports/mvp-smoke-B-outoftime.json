@@ -1,0 +1,26 @@
+{
+  "at": "2026-09-26T02:30:51.940Z",
+  "route": "in-app-search (module -> play-song.ps1 -Title/-Artist, no -Url)",
+  "expected": {
+    "title": "Out of Time",
+    "artist": "The Weeknd"
+  },
+  "elapsedMs": 12163,
+  "result": {
+    "ok": false,
+    "verified": false,
+    "stage": "SMTC_TIMEOUT",
+    "mismatch": [
+      "playback"
+    ],
+    "expected": {
+      "title": "Out of Time",
+      "artist": "The Weeknd"
+    },
+    "actual": {
+      "title": "",
+      "artist": ""
+    },
+    "error": "chain reported failure"
+  }
+}
