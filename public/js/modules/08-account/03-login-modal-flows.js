@@ -137,7 +137,7 @@ function loginWorkflowMrTargetPoint(graph) {
 }
 function loginWorkflowSnapPoint(point, graph) {
   if (!point) return point;
-  var mode = loginWorkflowNearestMode(point, graph, 92);
+  var mode = loginWorkflowModeAtPoint(point, graph, 12) || loginWorkflowNearestMode(point, graph, 40);
   if (mode) {
     var modePoint = workflowPointForModeNode(mode, graph);
     if (modePoint) return modePoint;
@@ -155,7 +155,37 @@ function loginWorkflowNearMr(point, graph) {
 function loginWorkflowModeNode(mode) {
   return document.getElementById(mode === 'cookie' ? 'login-mode-cookie' : 'login-mode-official');
 }
-function loginWorkflowNearestMode(point, graph, maxDistance) {
+// Reliable mode hit-testing: the graph overlays an SVG edge layer on top of the node card, so
+// elementFromPoint().closest() frequently misses the row. Use the full point stack first, then the
+// row's real rectangle, and only fall back to a short-radius nearest test.
+function loginWorkflowModeElementAtPoint(clientX, clientY) {
+  var stack = (document.elementsFromPoint && document.elementsFromPoint(clientX, clientY)) || [];
+  for (var i = 0; i < stack.length; i += 1) {
+    var el = stack[i];
+    if (!el) continue;
+    if (el.id === 'login-mode-cookie') return 'cookie';
+    if (el.id === 'login-mode-official') return 'official';
+    var node = el.closest ? el.closest('#login-mode-official, #login-mode-cookie') : null;
+    if (node) return node.id === 'login-mode-cookie' ? 'cookie' : 'official';
+  }
+  return '';
+}
+function loginWorkflowModeAtPoint(point, graph, margin) {
+  if (!point || !graph) return '';
+  var root = graph.getBoundingClientRect();
+  var clientX = root.left + point.x;
+  var clientY = root.top + point.y;
+  var pad = typeof margin === 'number' ? margin : 6;
+  var hit = '';
+  ['official', 'cookie'].forEach(function (mode) {
+    if (hit) return;
+    var el = loginWorkflowModeNode(mode);
+    if (!el || el.disabled) return;
+    var rect = el.getBoundingClientRect();
+    if (clientX >= rect.left - pad && clientX <= rect.right + pad && clientY >= rect.top - pad && clientY <= rect.bottom + pad) hit = mode;
+  });
+  return hit;
+}function loginWorkflowNearestMode(point, graph, maxDistance) {
   if (!point || !graph) return '';
   var best = '';
   var bestDistance = maxDistance;
@@ -258,8 +288,9 @@ function finishLoginWorkflowDrag(e) {
   var eventPoint = workflowPointFromEvent(e, graph);
   var droppedMode = '';
   if (drag.provider === 'apple') {
-    var modeNode = target && target.closest ? target.closest('#login-mode-official, #login-mode-cookie') : null;
-    droppedMode = modeNode ? (modeNode.id === 'login-mode-cookie' ? 'cookie' : 'official') : loginWorkflowNearestMode(eventPoint, graph, 92);
+    droppedMode = loginWorkflowModeElementAtPoint(e.clientX, e.clientY)
+      || loginWorkflowModeAtPoint(eventPoint, graph, 8)
+      || loginWorkflowNearestMode(eventPoint, graph, 40);
   }
   var nearDrop = droppedMode || loginWorkflowNearMr(eventPoint, graph);
   if ((port && graph.contains(port)) || (mrNode && graph.contains(mrNode)) || nearDrop) {
@@ -463,7 +494,7 @@ function bindLoginWorkflowPointerEvents() {
     }
     if (!loginWorkflowDrag) return;
     var point = workflowPointFromEvent(e, graph);
-    graph.classList.toggle('drop-ready', !!(loginWorkflowNearMr(point, graph) || (loginWorkflowDrag.provider === 'apple' && loginWorkflowNearestMode(point, graph, 92))));
+    graph.classList.toggle('drop-ready', !!(loginWorkflowNearMr(point, graph) || (loginWorkflowDrag.provider === 'apple' && (loginWorkflowModeAtPoint(point, graph, 12) || loginWorkflowNearestMode(point, graph, 40)))));
     renderLoginWorkflowEdges(point);
   });
   graph.addEventListener('pointerup', finishLoginProviderPointer);
