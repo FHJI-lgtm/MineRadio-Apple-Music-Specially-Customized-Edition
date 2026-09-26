@@ -37,6 +37,11 @@ protocol: one sleep changed at a time, same 20 songs, same order, `Retries 0`, a
 correctness, SMTC outcome, occupancy and every `t.*` field - and it should start from the sleep with the
 clearest theoretical justification, not from the largest number.
 
+The generalised form of this criterion is now a standing seam convention in `CONTROL-PLANE.md` §7 (invariant
+I7): the **Wait Absorption Principle** - "fixed-wait latency is not equivalent to observable latency" - and
+**"one wait, one hypothesis, one controlled comparison"**. This report is cited there as the empirical case,
+so the finding constrains future Activation-layer work instead of staying a Phase 3.7E anecdote.
+
 ## Correctness: did the change break anything
 
 | | step 4 | step 5 |

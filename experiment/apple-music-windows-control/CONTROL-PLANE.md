@@ -18,6 +18,7 @@
 | I4 | **新后端的硬性审计** | `mouseMoved=false`、`keyboardInjected=false`、`foregroundChangedByApplication=false`、`SMTC changed = expected` |
 | I5 | **不改冻结实现** | `poc/lib/am-play.ps1` / `am-uia.ps1` / `am-smtc.ps1` 只在"经批准的最小修改"下改动（已有先例：3.7A 的导航判据） |
 | I6 | **不引入凭据** | 不使用 Apple ID / cookie / media-user-token / MusicKit token（用户明确约束） |
+| I7 | **等待改动须可测** | 固定等待的墙上时长**不构成**"可优化 latency"的证据；任何 Activation 层等待/时序改动，一律按 **§7 的接缝约定与实验判据**评估（固定等待吸收原则 + 一次一个等待受控对比） |
 
 ---
 
@@ -134,7 +135,72 @@
 
 ---
 
-## 7. 文件与提交索引
+## 7. 接缝约定与实验判据（Activation 层的等待 / 时序改动）
+
+本节**不针对 Apple Music**，而是任何 Activation 后端、任何"固定等待"改动的通用判据；
+MineRadio 其他激活层、Wallpaper Engine 侧遇到同类 `Sleep(500)` 均可直接复用。
+出处：Phase 3.7E ⑤（500 ms → 0 的受控实验，结论为**无可稳定归因收益**，代码已回退）。
+
+### 7.1 固定等待吸收原则（Wait Absorption Principle）
+
+> **Fixed-wait latency is not equivalent to observable latency.**
+> Before removing or shortening a fixed wait, identify the state transition it is intended to cover and
+> determine whether a subsequent condition-poll absorbs part or all of that wall time. A wait may be
+> redundant, partially absorbed, or synchronization-critical; its duration alone is not evidence of
+> removable latency.
+
+**中文定义**：后续条件轮询、UI 状态转换、导航、渲染或 SMTC 收敛，可能吸收固定等待的**部分或全部**墙上时间；
+因此固定等待的时长**不能**直接作为"可优化 latency"的上限，也**不能**直接当作收益估计。
+
+判断某个固定等待属于哪一类（冗余 / 部分被吸收 / 同步关键），按顺序回答五问：
+
+1. **它在等什么状态？**（说不出状态，就不能改）
+2. **那个状态什么时候真正发生？**（事件、轮询周期、realize/渲染完成）
+3. **后面是否紧跟一个 condition-poll？** 若有，它多半已被**部分或完全吸收**
+4. **删掉后真正改变的是哪个 stage？** 必须是可命名的 stage，而不是"感觉快了"
+5. **这个改变能否在同一 benchmark、同一观测协议下被测出来？** 低于观测分辨率的差值不算证据
+
+**禁止**按毫秒数从大到小排队删除：`450 > 350 > 200 > 130 > 120` 说明的是"显眼"，不是"可删"。
+从**理论依据最清楚**的那一个开始，而不是从数字最大的那一个开始。
+
+### 7.2 一次一个等待，一个假设，一次受控对比（One wait, one hypothesis, one controlled comparison）
+
+> **One wait, one hypothesis, one controlled comparison.**
+> Any activation-layer wait change must be evaluated against the same fixture, ordering, retry policy,
+> correctness criteria, and external-observation protocol. Do not infer latency savings from the deleted
+> milliseconds; measure the end-to-end observable effect.
+
+协议（即 Phase 3.7E 已执行并冻结的形态）：
+
+- 同一批歌曲夹具、**同序**、每首一次机会、`Retries 0`；resolver 在测量窗口之外
+- **一次只改一个** sleep；其余实现一字不动
+- 对比：correctness / 失败集合 / SMTC 结果 / occupancy（`T10 − T3`）/ 全部 `t.*` 字段
+- **声明观测分辨率**（本机实测：请求 50 ms 轮询 → median 80 ms / mean 82 ms / max 121 ms；255 样本空跑基线）
+  - 低于该分辨率的差值**不得**作为收益
+  - 单次最小值只是下界；`T7` 不可观测，**禁止编造**
+- 未证明收益的行为变化：**回退**，证据留档（mainline 只保留已证明的行为）
+
+### 7.3 实证案例：Phase 3.7E ⑤（`am-uia.ps1:245` 500 ms → 0）
+
+| 观测量 | 结果 |
+|---|---|
+| correctness | 17/20 → 17/20；失败集合**完全相同**（B02/B04 `SMTC_TIMEOUT`、B13 `TARGET_ROW_NOT_FOUND`） |
+| occupancy 配对差值（⑤ − ④） | n=20，**p50 −153 ms**，min −885 ms，max **+1473 ms**，11 例快 / 9 例慢 |
+| 成功子集 occupancy | n=17，p50 3459 → 3438 ms |
+| 控制量 `t3_ms` | p50 699 → 699（改动全在其下游） |
+| `contentMatchMs` | 均值 1789 → 1789（未出现固定 500 ms 位移） |
+
+结论：**删除 500 ms 固定等待没有改变正确性，但在 20 首、每首一次的实验条件下，没有观察到可稳定归因于
+该删除的 latency 收益** —— 该 500 ms 大部分被相邻等待吸收。
+
+处置：`poc/lib` 已回退（提交 `19e881d`），与 ④ 基线 `0170bca` 逐文件一致；
+证据留档于 `4317e3b`（实验改动）+ `phase3.7E-benchmark/reports/bench-20260926-090905.jsonl`（原始数据）
++ `phase3.7E-benchmark/REPORT-3.7E-STEP5-FINAL.md`（结论）。
+点击路径剩余 1250 ms 固定 sleep（120+450+350+200+130）**不排期**；若恢复审计，先答 §7.1 第 1 问。
+
+---
+
+## 8. 文件与提交索引
 
 | 层 | 关键文件 | 关键提交 |
 |---|---|---|
@@ -143,3 +209,4 @@
 | L2 审计 | `phase3.7B-uia-no-mouse/lib/instrumentation.ps1`（`New-AmNmAudit/Compare-AmNmAudit`） | `03d165d`、`f2a2c29` |
 | L2 已排除路线 | `phase3.7B-uia-no-mouse/REPORT-3.7B*.md`、`phase3.8-non-uia-surface/REPORT-3.8*.md` | `010be75`、`a0c001a` |
 | L3 校验/指标 | `poc/lib/am-smtc.ps1`、`poc/analyze-e2e.ps1` | `b9e4983`、`4c251ee` |
+| 等待/时序判据（§7） | `phase3.7E-benchmark/REPORT-3.7E-STEP5-FINAL.md`、`.../reports/bench-20260926-090320.jsonl`、`.../bench-20260926-090905.jsonl` | `4317e3b`、`e4a0082`、`19e881d`、`1d5d575` |
