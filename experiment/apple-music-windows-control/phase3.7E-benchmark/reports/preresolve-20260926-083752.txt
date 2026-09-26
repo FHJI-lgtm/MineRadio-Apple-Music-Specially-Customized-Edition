@@ -1,0 +1,40 @@
+# Phase 3.7E pre-resolution check 20260926-083752
+cases=20
+
+B01  KEEP      ok=True  auto=True  conf=HIGH      id=1739659142   sf=tw  ms=1897   song=[BIRDS OF A FEATHER] album=[HIT ME HARD AND SOFT] reason=OK
+B02  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1092   song=[Espresso] album=[Espresso - Single] reason=RESOLVE_AMBIGUOUS
+B03  KEEP      ok=True  auto=True  conf=HIGH      id=1737497080   sf=tw  ms=1274   song=[Good Luck, Babe!] album=[Good Luck, Babe! - Single] reason=OK
+B04  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1112   song=[Houdini] album=[Houdini - Single] reason=RESOLVE_AMBIGUOUS
+B05  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1180   song=[we can't be friends (wait for your love)] album=[eternal sunshine] reason=RESOLVE_AMBIGUOUS
+B06  KEEP      ok=True  auto=True  conf=HIGH      id=1468058171   sf=tw  ms=1340   song=[Cruel Summer] album=[Lover] reason=OK
+B07  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1111   song=[vampire] album=[GUTS] reason=RESOLVE_AMBIGUOUS
+B08  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1039   song=[Locked Out of Heaven] album=[2014 GRAMMY® Nominees] reason=RESOLVE_AMBIGUOUS
+B09  KEEP      ok=True  auto=True  conf=MEDIUM    id=1792667005   sf=tw  ms=1420   song=[Abracadabra] album=[MAYHEM] reason=OK
+B10  KEEP      ok=True  auto=True  conf=HIGH      id=1615585008   sf=tw  ms=1388   song=[As It Was] album=[Harry's House] reason=OK
+B11  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=953    song=[Believer (feat. Lil Wayne)] album=[Believer (feat. Lil Wayne) - Single] reason=RESOLVE_AMBIGUOUS
+B12  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1033   song=[Counting Stars] album=[Native (Gold Edition)] reason=RESOLVE_AMBIGUOUS
+B13  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1012   song=[Numb] album=[Meteora] reason=RESOLVE_AMBIGUOUS
+B14  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=2243   song=[Sugar] album=[Sugar (Deluxe Single) - Single] reason=RESOLVE_AMBIGUOUS
+B15  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1207   song=[Circles] album=[Hollywood's Bleeding] reason=RESOLVE_AMBIGUOUS
+B16  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=973    song=[Beautiful Things] album=[Beautiful Things - Single] reason=RESOLVE_AMBIGUOUS
+B17  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1096   song=[Anti-Hero (feat. Bleachers)] album=[Anti-Hero (feat. Bleachers) - Single] reason=RESOLVE_AMBIGUOUS
+B18  KEEP      ok=True  auto=True  conf=MEDIUM    id=1674691586   sf=tw  ms=1365   song=[Flowers] album=[Endless Summer Vacation] reason=OK
+B19  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1017   song=[Kill Bill] album=[SOS] reason=RESOLVE_AMBIGUOUS
+B20  REPLACE   ok=False auto=False conf=AMBIGUOUS id=             sf=    ms=1095   song=[A Sky Full of Stars] album=[A Sky Full of Stars - Single] reason=RESOLVE_AMBIGUOUS
+
+KEEP=6 REPLACE=14
+  REPLACE: B02 (Espresso/Sabrina Carpenter) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B04 (Houdini/Dua Lipa) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B05 (we can't be friends (wait for your love)/Ariana Grande) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B07 (vampire/Olivia Rodrigo) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B08 (Locked Out of Heaven/Bruno Mars) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B11 (Believer/Imagine Dragons) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B12 (Counting Stars/OneRepublic) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B13 (Numb/Linkin Park) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B14 (Sugar/Maroon 5) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B15 (Circles/Post Malone) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B16 (Beautiful Things/Benson Boone) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B17 (Anti-Hero/Taylor Swift) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B19 (Kill Bill/SZA) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+  REPLACE: B20 (A Sky Full of Stars/Coldplay) reason=RESOLVE_AMBIGUOUS conf=AMBIGUOUS
+note=KEEP means ok=true AND autoPlayable=true from the unchanged resolver; REPLACE items must be swapped for songs that are not in history and are CN-resolvable
