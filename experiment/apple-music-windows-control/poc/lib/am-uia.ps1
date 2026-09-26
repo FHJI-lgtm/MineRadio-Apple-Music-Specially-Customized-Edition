@@ -514,33 +514,7 @@ function Invoke-AmRowPlay([IntPtr]$Hwnd, $Element, [int]$X, [int]$Y, [switch]$No
   try {
     if (-not $NoForeground) {
       Invoke-AmForeground $Hwnd
-      # ---- W3 state substitution (G3 candidate; the ONLY frozen-chain change) --------------
-      # Was: Start-Sleep -Milliseconds 350 - a fixed wait whose verified meaning is only
-      # "probably foreground by now".  Now: wait for the observable state
-      # GetForegroundWindow() == $Hwnd, capped at the SAME 350 ms, and FAIL SAFE on timeout:
-      # no geometry read, no cursor move, no click.  S1 only - no layout condition is added.
-      # $global:AmW3Last is a side channel for the benchmark harness; the frozen am-play.ps1
-      # aggregation is deliberately NOT modified.
-      $w3sw = [Diagnostics.Stopwatch]::StartNew()
-      $w3polls = 0; $w3ok = $false
-      while ($w3sw.ElapsedMilliseconds -lt 350) {
-        $w3polls++
-        if ([int64][AmUiaNative]::GetForegroundWindow() -eq [int64]$Hwnd) { $w3ok = $true; break }
-        Start-Sleep -Milliseconds 10
-      }
-      $global:AmW3Last = @{
-        waitMs = [int]$w3sw.ElapsedMilliseconds
-        polls = $w3polls
-        satisfied = $w3ok
-        timeout = (-not $w3ok)
-        targetIconicAtSatisfied = [bool][AmUiaNative]::IsIconic($Hwnd)
-      }
-      if (-not $w3ok) {
-        return @{ ok = $false; stage = 'W3_FOREGROUND_TIMEOUT'; ms = [int]$sw.ElapsedMilliseconds
-                  detail = ('foreground != ' + $Hwnd + ' within 350ms (foreground=' + [int64][AmUiaNative]::GetForegroundWindow() + ')')
-                  x = $usedX; y = $usedY; recomputed = $false }
-      }
-      # ---- end W3 substitution -------------------------------------------------------------
+      Start-Sleep -Milliseconds 350
     }
     # The window may have moved/resized while coming to the foreground: re-read
     # the row geometry and recompute the safe point instead of trusting the
