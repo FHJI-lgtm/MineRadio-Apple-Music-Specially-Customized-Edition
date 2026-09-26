@@ -1323,7 +1323,12 @@ function ensureAmcSearchSectionStyle() {
   var st = document.createElement('style');
   st.id = 'search-amc-style';
   st.textContent = '.search-amc-section{margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.18)}'
-    + '.search-amc-head{font-weight:600;margin:4px 0 8px;opacity:.9}'
+    + '.search-amc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;margin:4px 0 8px;opacity:.9}'
+    + '.search-amc-login{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:400;opacity:.85}'
+    + '.search-amc-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.35);display:inline-block}'
+    + '.search-amc-dot.on{background:#7CFFB2}'
+    + '.search-amc-login-btn{margin-left:4px;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:inherit;font-size:12px;cursor:pointer}'
+    + '.search-amc-login-btn:hover{background:rgba(255,255,255,.16)}'
     + '.search-amc-head i{font-style:normal;opacity:.6;font-weight:400;margin-left:6px;font-size:12px}'
     + '.search-amc-item{display:flex;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}'
     + '.search-amc-cover{width:44px;height:44px;border-radius:6px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.08)}'
@@ -1362,10 +1367,12 @@ function renderAmcSearchSection(results) {
   ensureAmcSearchSectionStyle();
   amcCurrentResults = results;
   ensureAmcResultClickHandler();
-  var html = '<div class="search-amc-section"><div class="search-amc-head">Apple Music App<i>iTunes Search API</i></div>';
+  var html = '<div class="search-amc-section"><div class="search-amc-head"><span>Apple Music App<i>iTunes Search API</i></span><span class="search-amc-login" id="search-amc-login"></span></div>';
   for (var i = 0; i < results.length; i++) html += amcResultRowHtml(results[i], i);
   html += '</div>';
   $results.insertAdjacentHTML('beforeend', html);
+  renderAmcLoginIndicator();
+  refreshAmcLoginStatus();
   if (window.gsap) animateListItems($results, '.search-amc-item', { x: 0, y: 6, stagger: 0.012, duration: 0.18, limit: 12 });
   return true;
 }
@@ -1378,6 +1385,13 @@ function ensureAmcResultClickHandler() {
   if (window.__amcRowClickBound || !$results) return;
   window.__amcRowClickBound = true;
   function pick(ev) {
+    var loginEl = ev.target && ev.target.closest ? ev.target.closest('.search-amc-login') : null;
+    if (loginEl && $results.contains(loginEl)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!amcLoginState.loggedIn) amcLoginClick();
+      return;
+    }
     var row = ev.target && ev.target.closest ? ev.target.closest('.search-amc-item') : null;
     if (!row || !$results.contains(row)) return;
     ev.preventDefault();
@@ -1434,6 +1448,73 @@ async function amcPlayRow(rowEl, model) {
     if (amcPlayWatchdog) { clearTimeout(amcPlayWatchdog); amcPlayWatchdog = null; }
     amcPlayBusy = false;
   }
+}// ---- Apple Music account status (reuses the existing token-safe IPC, adds no new channel) ----
+// Source of truth: window.desktopWindow.getAppleLyricsCredentialStatus() -> { configured, updatedAt }.
+// Only booleans are used here; the media-user-token itself never crosses into the renderer.
+var amcLoginState = { ready: false, loggedIn: false, busy: false };
+function amcDesktopWindowApi() {
+  return (window.desktopWindow && typeof window.desktopWindow.getAppleLyricsCredentialStatus === 'function') ? window.desktopWindow : null;
+}
+function renderAmcLoginIndicator() {
+  var el = document.getElementById('search-amc-login');
+  if (!el) return;
+  if (!amcLoginState.ready) {
+    el.innerHTML = '<span class="search-amc-dot"></span>检查中…';
+    return;
+  }
+  if (amcLoginState.loggedIn) {
+    el.setAttribute('title', 'Apple Music 账号已连接');
+    el.innerHTML = '<span class="search-amc-dot on"></span>已登录';
+    return;
+  }
+  el.setAttribute('title', 'Apple Music 账号未连接');
+  el.innerHTML = '<span class="search-amc-dot"></span>未登录'
+    + '<button type="button" class="search-amc-login-btn">登录 Apple Music</button>';
+}
+async function refreshAmcLoginStatus() {
+  var api = amcDesktopWindowApi();
+  if (!api) {
+    amcLoginState.ready = true;
+    amcLoginState.loggedIn = false;
+    var el0 = document.getElementById('search-amc-login');
+    if (el0) el0.innerHTML = '<span class="search-amc-dot"></span>登录状态不可用';
+    return;
+  }
+  try {
+    var st = await api.getAppleLyricsCredentialStatus();
+    amcLoginState.loggedIn = !!(st && st.ok !== false && st.configured === true);
+  } catch (err) {
+    console.warn('amc login status read failed:', err);
+    amcLoginState.loggedIn = false;
+  }
+  amcLoginState.ready = true;
+  renderAmcLoginIndicator();
+}
+async function amcLoginClick() {
+  if (amcLoginState.busy) return;
+  var api = amcDesktopWindowApi();
+  if (!api || typeof api.openAppleMusicLogin !== 'function') return;
+  amcLoginState.busy = true;
+  var el = document.getElementById('search-amc-login');
+  if (el) el.innerHTML = '<span class="search-amc-dot"></span>等待 Apple Music 登录…';
+  try {
+    // No fixed delay: the main process captures media-user-token via cookies.on('changed') plus a
+    // pull, and this promise resolves when the login window closes - re-reading right here suffices.
+    var res = await api.openAppleMusicLogin();
+    if (res && res.ok === false) {
+      console.warn('amc login window reported:', res.error || '', res.message || '');
+      if (el) el.innerHTML = '<span class="search-amc-dot"></span>' + escHtml(String(res.message || res.error || '登录未完成'));
+    }
+  } catch (err) {
+    console.warn('amc login window failed:', err);
+  } finally {
+    amcLoginState.busy = false;
+    await refreshAmcLoginStatus();
+  }
+}
+if (!window.__amcLoginFocusBound) {
+  window.__amcLoginFocusBound = true;
+  window.addEventListener('focus', function () { refreshAmcLoginStatus(); });
 }async function appendAmcSearchSection(q, requestSeq) {
   if (!q || !amcSearchAvailable()) return;
   try {
