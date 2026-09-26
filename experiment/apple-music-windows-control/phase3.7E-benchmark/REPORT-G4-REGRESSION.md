@@ -117,3 +117,35 @@ from a third run: a temp script using absolute paths and index-paired rows, plus
 
 Gate status: G0 pass, G1 pass, G1b pass (Q1 closed), G2 pass, G3 pass (3/3), **G4 pass (20/20, G4-A clean,
 G4-B no failure mode observed)**. Disposition pending.
+
+## 7. Disposition (operator decision): reverted - research complete, not adopted
+
+The W3 substitution was reverted in the frozen chain to the 4 baseline `0170bca` (commit `ecbb0fd`).
+The experiment commits (`477cafc` W3 change, `44506b6` G3 result, `1711f08` G3 evidence, `cf28901` G4 result)
+are retained **unsquashed**, so `git show 477cafc` reproduces the complete W3 design and its instrumentation.
+
+This is not "W3 failed". It is: **the S1 fail-safe design is validated, and it is not taken into the
+product path** because:
+
+| question | answer |
+|---|---|
+| does the W3 success path work | yes - G3 3/3 |
+| did W3 cause a regression | no - G4 17/20, identical to the baseline, zero stage changes |
+| did W3 fix the old failures | no evidence |
+| did W3 produce a measurable performance benefit | no evidence - the wait was never consumed (22/22 click attempts had `w3WaitMs=0`) |
+| is the timeout branch safe | yes - G2 rig: 0/9 downstream steps, cursor/foreground/last-input-tick/SMTC invariant |
+| did a real timeout happen on the live chain | no (0 in G3+G4) |
+| is the earlier geometry read (S2) risky | neither proven nor disproven |
+
+W3 does remove a real fail-open hazard: the old code clicked **blind** after a fixed 350 ms even if the
+window had never become foreground. Against that, it moves the geometry read ~350 ms earlier, and that new
+exposure is unverified while the benefit is unmeasured. With no proven gain and an unproven exposure, the
+maintainable state is the verified behaviour baseline.
+
+**S2 is not authorised as a follow-up now.** It stays a separately-scoped future study. The G0-G4 chain
+(this report, `g2-negative-path.ps1`, `probe-w3-foreground.ps1`, `probe-w3-programmatic-transition.ps1`,
+`DESIGN-W3-STATE-SUBSTITUTION.md`) is reusable as-is instead of being extended incrementally.
+
+Harness note: `run-bench.ps1` keeps the `w3*` capture and the `-Case` comma list. With W3 reverted the side
+channel is never set, so those five fields are `null` in every future row - the honest encoding of "no W3 in
+the chain", not a missing measurement.

@@ -268,3 +268,4 @@ W2 实测（`REPORT-3.7E-STEP6.md`，基线 ④，同一 20 首同序夹具）�
 | W3 状态替换设计 + G1/G1b（§7.5） | `phase3.7E-benchmark/DESIGN-W3-STATE-SUBSTITUTION.md`、`.../REPORT-G1-W3-FOREGROUND-OBJECT.md`、`.../REPORT-G1b-PROGRAMMATIC-TRANSITION.md`、`.../probe-w3-foreground.ps1`、`.../probe-w3-programmatic-transition.ps1`、`.../lib/w3probe.ps1` | `bf3a8ef`、`d1e3517`、`7fe2e44` |
 | G2 负路径安全测试（受控 timeout） | `phase3.7E-benchmark/g2-negative-path.ps1`、`.../REPORT-G2-NEGATIVE-PATH.md` | `5345bfb` |
 | W3 状态替换 G3 三首干跑（冻结链仅 W3 一处 hunk） | `poc/lib/am-uia.ps1`、`.../run-bench.ps1`、`.../REPORT-G3-DRYRUN.md`、`.../reports/bench-20260926-100739.jsonl` | `477cafc`、`44506b6` |
+| W3 G4 二十首回归 + 处置：**W3 不进入产品路径**（已回退至 0170bca） | `phase3.7E-benchmark/REPORT-G4-REGRESSION.md`、`.../reports/bench-20260926-101106.jsonl`、`poc/lib/am-uia.ps1` | `cf28901`、`ecbb0fd` |
