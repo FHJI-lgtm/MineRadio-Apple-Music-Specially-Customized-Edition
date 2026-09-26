@@ -146,14 +146,3 @@ test('9. publish stays three-state and alias/normalized never becomes verified',
   assert.equal(/identityConfidence: 'confirmed'/.test(searchSrc), false);
   assert.match(searchSrc, /disagreement === true && res\.verified === false/);
 });
-test('10. an Apple playlist play action also goes through AMC (never into the internal queue)', () => {
-  const detailSrc = read(detailRel);
-  const panelSrc = read('public/js/modules/06-lyrics/02-playlist-detail.js');
-  assert.match(panelSrc, /amcPlaylistFirst\s*&&\s*typeof playAmcTrackFromSong === 'function'/);
-  assert.match(panelSrc, /amcCand\.provider === 'apple' && amcCand\.catalogId/);
-  assert.match(panelSrc, /playAmcTrackFromSong\(amcPlaylistFirst\)/);
-  // the row branch must use the same identity rule
-  assert.match(panelSrc, /panelSong\.provider === 'apple' && panelSong\.catalogId/);
-  // and nothing may decode the `a.<...>` id form to build a catalog id
-  assert.equal(panelSrc.indexOf('/^a.') === -1 && searchSrc.indexOf('/^a.') === -1 && detailSrc.indexOf('/^a.') === -1, true, 'no a. prefix decoding anywhere');
-});

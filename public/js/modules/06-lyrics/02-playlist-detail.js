@@ -740,20 +740,6 @@ document.getElementById('pl-list').addEventListener('click', function (e) {
     scrollPlaylistPanelToTop();
     return;
   }
-    // E-A F6: "播放歌单" on an APPLE playlist hands its first playable Apple track to Apple Music instead of
-    // loading the whole playlist into MineRadio's internal queue. Same exact identity rule as the row branch:
-    // provider 'apple' AND an explicit catalogId. Anything else falls through to the original logic untouched.
-    var amcPlaylistFirst = null;
-    for (var amcPi = 0; amcPi < ((playlistPanelDetailState.tracks || []).length); amcPi++) {
-      var amcCand = playlistPanelDetailState.tracks[amcPi];
-      if (amcCand && amcCand.provider === 'apple' && amcCand.catalogId) { amcPlaylistFirst = amcCand; break; }
-    }
-    if (amcPlaylistFirst && typeof playAmcTrackFromSong === 'function') {
-      e.preventDefault();
-      e.stopPropagation();
-      playAmcTrackFromSong(amcPlaylistFirst);
-      return;
-    }
   var playDetail = e.target && e.target.closest ? e.target.closest('[data-pl-detail-play]') : null;
   if (playDetail) {
     e.preventDefault();
