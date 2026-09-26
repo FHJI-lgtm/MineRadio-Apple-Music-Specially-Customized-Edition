@@ -560,6 +560,9 @@ function openTrackDetailModal(type, songOverride) {
   } else if (type === 'artist') {
     var artistId = currentArtistId(song);
     var qqArtistMid = currentQQArtistMid(song);
+    // E-A step 6b (minimal): an external AM context calls no artist endpoint either - the page
+    // then reuses its existing empty state (no new copy, no new interaction).
+    if (typeof currentPlaybackContext === 'object' && currentPlaybackContext && currentPlaybackContext.identitySource === 'amc') { artistId = ''; qqArtistMid = ''; }
     var artistDetailUrl = artistId
       ? ('/api/artist/detail?id=' + encodeURIComponent(artistId) + '&limit=36')
       : (qqArtistMid ? ('/api/qq/artist/detail?mid=' + encodeURIComponent(qqArtistMid) + '&limit=36') : '');

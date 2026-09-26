@@ -71,6 +71,9 @@ function hydrateCustomCover(song) {
   return song;
 }
 function songCoverSrc(song, size) {
+  // E-A step 6: Apple Music results carry their artwork as `artworkUrl`, not `cover`.
+  // Normalise before the existing body runs, so no cover logic is duplicated or rewritten here.
+  if (song && !song.cover && song.artworkUrl) song = Object.assign({}, song, { cover: String(song.artworkUrl) });
   var custom = getCustomCoverForSong(song);
   if (custom) return custom;
   return song && song.cover ? coverUrlWithSize(song.cover, size) : '';
