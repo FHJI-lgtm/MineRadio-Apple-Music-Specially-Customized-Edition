@@ -412,7 +412,7 @@ function Scroll-AmView([IntPtr]$Hwnd, [int]$Direction, [int]$Notches = 3) {
   Start-Sleep -Milliseconds 120
   $data = 120 * $Notches * $Direction
   [AmUiaNative]::mouse_event(0x0800, 0, 0, $data, 0)   # MOUSEEVENTF_WHEEL
-  Start-Sleep -Milliseconds 450
+  Start-Sleep -Milliseconds 0
 }
 
 # Poll for a non-empty rectangle (no pattern calls at all).
