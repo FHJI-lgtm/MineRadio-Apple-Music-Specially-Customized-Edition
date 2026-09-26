@@ -1,13 +1,18 @@
 # ============================================================
-# phase3.7E-benchmark/lib/bench-common.ps1
+# phase3.7E-benchmark/lib/bench-common.ps1     (rev 2)
 # Sampling + environment for the foreground-occupancy benchmark.
 #
 # SANCTIONED state changes (the phase explicitly allows exactly these, and nothing else):
 #   * restore the ORIGINAL foreground window after a run   (SetForegroundWindow)
 #   * restore the ORIGINAL cursor position after a run     (SetCursorPos)
 # Both are restore-only, used after the measured window, and are never part of the
-# activation mechanism.  Everything else in this file is read-only observation.
-# The frozen chain, the resolver and the SMTC logic are never modified.
+# activation mechanism.  No AttachThreadInput / AllowSetForegroundWindow /
+# LockSetForegroundWindow is used anywhere.  Everything else here is read-only.
+#
+# rev 2: the P/Invoke type now carries its own SetForegroundWindow (the previous version
+# called [AmNav.Win], a type that only exists in the 3.7A experiment lib and was therefore
+# never loaded here) and no longer declares a System.Drawing signature (which made the
+# whole Add-Type fail, so [AmBench.Native] did not exist and cursor restore errored).
 # ASCII-only.
 # ============================================================
 
@@ -19,17 +24,19 @@ using System;
 using System.Runtime.InteropServices;
 namespace AmBench {
   public static class Native {
-    [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-    [DllImport("user32.dll")] public static extern bool GetCursorPos(out System.Drawing.Point p);
+    [DllImport("user32.dll", SetLastError=true)] public static extern bool SetCursorPos(int X, int Y);
+    [DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", SetLastError=true)] public static extern bool SetForegroundWindow(System.IntPtr hWnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(System.IntPtr hWnd, System.Text.StringBuilder text, int count);
   }
 }
 '@
 }
 
-# fast, read-only sample used by the 50ms observer
+# fast, read-only sample used by the ~50ms observer
 function Get-AmBenchSample {
   $am = Find-AmVdAppleMusicWindow
-  $fg = [AmNav.Native]::GetForegroundWindow()
+  $fg = [AmBench.Native]::GetForegroundWindow()
   $c = Get-AmNmCursor
   $s = Get-AmNavSmtcSnapshot
   return @{
@@ -46,22 +53,21 @@ function Get-AmBenchSample {
 
 function Get-AmBenchEnv {
   $am = Find-AmVdAppleMusicWindow
-  $fg = [AmNav.Native]::GetForegroundWindow()
+  $fg = [AmBench.Native]::GetForegroundWindow()
   $fgPid = 0
-  # GetWindowThreadProcessId lives on AmVd.Native (vd-common), not on AmNav.Native.
-  # This is the ONLY harness fix made before the 20-run baseline; nothing else changed.
   [void][AmVd.Native]::GetWindowThreadProcessId($fg, [ref]$fgPid)
   $fgProc = ''
   if ($fgPid -gt 0) { $p = Get-Process -Id $fgPid -ErrorAction SilentlyContinue; if ($p) { $fgProc = $p.ProcessName } }
   $fgDid = Get-AmVdWindowDesktopId $fg
-  $onCur = if ($am.hwnd -ne 0) { Get-AmVdIsOnCurrentDesktop ([IntPtr]$am.hwnd) } else { @{ ok = $false; value = $null } }
-  $amDid = if ($am.hwnd -ne 0) { Get-AmVdWindowDesktopId ([IntPtr]$am.hwnd) } else { @{ ok = $false; value = '' } }
+  $onCur = @{ ok = $false; value = $null }
+  $amDid = @{ ok = $false; value = '' }
+  if ($am.hwnd -ne 0) { $onCur = Get-AmVdIsOnCurrentDesktop ([IntPtr]$am.hwnd); $amDid = Get-AmVdWindowDesktopId ([IntPtr]$am.hwnd) }
   $c = Get-AmNmCursor
   $build = ''
   try { $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop).CurrentBuildNumber } catch { }
   $amVer = ''
   try { $amPkg = Get-AppxPackage -Name 'AppleInc.AppleMusicWin' -ErrorAction Stop; $amVer = $amPkg.Version.ToString() } catch { }
-  $mon = 0
+  $mon = -1
   try { $mon = ([System.Windows.Forms.Screen]::AllScreens).Count } catch { $mon = -1 }
   return @{
     windowsBuild = $build
@@ -82,17 +88,17 @@ function Get-AmBenchEnv {
 function Invoke-AmBenchRestoreForeground([int64]$Hwnd) {
   try {
     if ($Hwnd -eq 0) { return 'no-original-hwnd' }
-    $ok = [AmNav.Win]::SetForegroundWindow([IntPtr]$Hwnd)
-    Start-Sleep -Milliseconds 120
-    $now = [AmNav.Native]::GetForegroundWindow()
+    [void][AmBench.Native]::SetForegroundWindow([IntPtr]$Hwnd)
+    Start-Sleep -Milliseconds 150
+    $now = [AmBench.Native]::GetForegroundWindow()
     if ([int64]$now -eq $Hwnd) { return 'ok' }
-    return ('not-restored: fg=' + [int64]$now)
+    return ('not-restored: fg=' + [int64]$now + ' win32=' + [int][System.Runtime.InteropServices.Marshal]::GetLastWin32Error())
   } catch { return ('error: ' + $_.Exception.Message) }
 }
 
 function Invoke-AmBenchRestoreCursor([int]$X, [int]$Y) {
   try {
-    $ok = [AmBench.Native]::SetCursorPos($X, $Y)
+    [void][AmBench.Native]::SetCursorPos($X, $Y)
     Start-Sleep -Milliseconds 60
     $c = Get-AmNmCursor
     if ($c.x -eq $X -and $c.y -eq $Y) { return 'ok' }
