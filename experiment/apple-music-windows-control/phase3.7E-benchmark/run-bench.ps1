@@ -128,7 +128,7 @@ if ($EmptyBaseline) {
 # ================================================================ case runs
 $pinned = @((Get-Content (Join-Path $here 'cases\songs-20-pinned.json') -Raw -Encoding UTF8 | ConvertFrom-Json).cases)
 $todo = @()
-if ($Case -ne '') { $todo = @($pinned | Where-Object { $_.id -eq $Case }) } elseif ($All) { $todo = @($pinned) }
+if ($Case -ne '') { $ids = @(($Case -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }); $todo = @($pinned | Where-Object { $ids -contains $_.id }) } elseif ($All) { $todo = @($pinned) }
 else { Write-Host 'nothing to do: pass -EmptyBaseline, -Case <id> or -All'; exit 2 }
 if ($todo.Count -eq 0) { Write-Host 'no matching pinned case'; exit 2 }
 
@@ -172,6 +172,7 @@ foreach ($c in $todo) {
   $obs = Start-AmBenchObserver $samples
   Start-Sleep -Milliseconds 300
   $t0 = Get-Date
+  $global:AmW3Last = $null
   $r = Invoke-AmPlaySong -Title ('' + $c.title) -Artist ('' + $c.artist) -SongId ('' + $c.songId) -Url ('' + $c.canonicalUrl) -Retries 0 -PauseFirst
   $tCallEnd = Get-Date
   $restoredFg = Invoke-AmBenchRestoreForeground $env0.originalForegroundHwnd
@@ -235,6 +236,11 @@ foreach ($c in $todo) {
     matchedRow = ('' + $r.matchedRow); clickRecomputed = $r.clickRecomputed
     smtcTitle = ('' + $r.smtc.title); smtcArtist = ('' + $r.smtc.artist); smtcStatus = ('' + $r.smtc.status)
     internal = $r.t; actions = $r.a
+    w3WaitMs = $(if ($global:AmW3Last) { $global:AmW3Last.waitMs } else { $null })
+    w3PollCount = $(if ($global:AmW3Last) { $global:AmW3Last.polls } else { $null })
+    w3Satisfied = $(if ($global:AmW3Last) { $global:AmW3Last.satisfied } else { $null })
+    w3Timeout = $(if ($global:AmW3Last) { $global:AmW3Last.timeout } else { $null })
+    w3TargetIconicAtSatisfied = $(if ($global:AmW3Last) { $global:AmW3Last.targetIconicAtSatisfied } else { $null })
     t3_ms = $t3ms; t6_ms = $t6ms; t_smtc_ms = $smtcMs; t_callend_ms = (& $rel $tCallEnd.Ticks); t10_ms = $t10ms; t11_ms = (& $rel $t11.Ticks)
     activation_to_click_upper_bound_ms = $ub
     foreground_occupancy_ms = $occ
@@ -246,6 +252,7 @@ foreach ($c in $todo) {
   Add-Content -Path $jsonl -Value ($rec | ConvertTo-Json -Depth 6 -Compress) -Encoding UTF8
   Write-Host ('   stage=' + $rec.stage + ' result=' + $result + ' t3=' + $t3ms + 'ms t6=' + $t6ms + 'ms smtc=' + $smtcMs + 'ms t10=' + $t10ms + 'ms occ=' + $occ + 'ms ub=' + $ub + 'ms playing=' + $rec.targetPlaying)
   Write-Host ('   restoreForeground=' + $restoredFg + ' restoreCursor=' + $restoredCur)
+  Write-Host ('   w3: satisfied=' + $rec.w3Satisfied + ' timeout=' + $rec.w3Timeout + ' waitMs=' + $rec.w3WaitMs + ' polls=' + $rec.w3PollCount + ' iconicAtSatisfied=' + $rec.w3TargetIconicAtSatisfied)
   if ($result -eq 'INVALID_RESTORE') {
     Write-Host '   HALT: the original foreground window was not restored, so the next run would not be an independent sample.'
     $halt = $true
