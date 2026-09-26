@@ -1,0 +1,22 @@
+=== W3 G1b PROGRAMMATIC TRANSITION PROBE (one transition, read-only observation) ===
+tag=prog-20260926-095949 baselineMs=3000 afterMs=8000 requestedPollMs=10
+jsonl=C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\phase3.7E-benchmark\reports\w3prog-prog-20260926-095949.jsonl
+appleMusicHwnd=196682 appleMusicRootHwnd=196682 title=Apple Music class=WinUIDesktopWin32WindowClass
+topLevelWindowCount=6
+  scan: forbidden 'SetCursorPos' = 1
+  scan: forbidden 'mouse_event' = 0
+  scan: forbidden 'SendInput' = 1
+  scan: forbidden 'SendKeys' = 1
+  scan: forbidden 'Cursor.Position' = 0
+  scan: forbidden 'MoveTo(' = 0
+  scan: forbidden 'BringWindowToTop' = 0
+  scan: allowed ShowWindow( call sites = 0 (expect 2 = 1 P/Invoke declaration + 1 call site)
+  scan: allowed SetForegroundWindow( call sites = 0 (expect 2 = 1 P/Invoke declaration + 1 call site)
+  scan: shared lib activation/injection call sites = 0 (expect 0)
+transition: foregroundBefore=854844 wasIconic=True showWindowCalled=true showWindowResult=true
+transition: SetForegroundWindow returned true (t0=3031 t1=3032 callMs=1)
+samples=693 measuredSampleGapMs: n=692 median=16 mean=16 max=44
+directEqualSamples=503 nullForegroundSamples=0
+S1_FIRST_SATISFIED_AFTER_TRANSITION: tMs=3033 (t0+2 ms) targetIconicAtThatInstant=false
+nullForegroundAfterTransition: none
+finalForegroundHwnd=196682

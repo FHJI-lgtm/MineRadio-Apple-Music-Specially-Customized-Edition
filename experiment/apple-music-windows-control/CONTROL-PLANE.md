@@ -226,6 +226,34 @@ W2 实测（`REPORT-3.7E-STEP6.md`，基线 ④，同一 20 首同序夹具）�
 
 ---
 
+### 7.5 工具陷阱：中文 BOM-less 文档不能用 PowerShell 5.1 `Get-Content` 的行数/内容做判据
+
+实测（2026-09-26，在校验 W3 设计文档时发现）：本机 harness 外壳是 Windows PowerShell 5.1，
+`Get-Content` / `Select-String` 读**无 BOM 的 UTF-8 中文文档**时按系统 ANSI（GBK）解码，
+会把部分多字节序列的尾字节连同紧随其后的 ASCII/换行一起吃掉 —— 表现是**行数与内容都不完整**：
+
+| 文件 | `Get-Content` 行数 | `[System.IO.File]::ReadAllLines` 行数 |
+|---|---|---|
+| `phase3.7E-benchmark/DESIGN-W3-STATE-SUBSTITUTION.md` | 189 | **267** |
+| `CONTROL-PLANE.md` | 157 | **239** |
+| `phase3.7E-benchmark/REPORT-G1-W3-FOREGROUND-OBJECT.md` | 135 | **138** |
+| 纯 ASCII 的探测 JSONL（7 MB，18 938 行） | 一致 | 一致 |
+
+**排除项**：把文件**逐字节复制**到非 OneDrive 临时目录后 `Get-Content` 仍然少数 →
+**不是 OneDrive、不是文件损坏**，是解码行为；`git`（`cat-file -s` / `diff`）与 .NET 读取彼此一致，
+且提交 blob 的字节数与磁盘完全一致。
+
+**因此的判据（写死）**：
+
+1. 校验中文文档的完整性/行数/行号，**必须**用 `[System.IO.File]::ReadAllLines/ReadAllBytes` 或 `git`，
+   不能用 `Get-Content` 的行数——否则会产出**假的"内容缺失"结论**（本仓库真实发生过：`Select-String`
+   报告某表格末行不存在，实为被吞掉的换行/字节）。
+2. 反过来，`Get-Content` 对**纯 ASCII 文件**（`poc/lib/*.ps1`）的行号读取仍然可靠——这是"`.ps1` 一律 ASCII"
+   这条既有约定的附加收益，继续保留。
+3. 纯 ASCII 的证据 JSONL，`Get-Content` 与 .NET 读取一致（已交叉验证），可用。
+
+---
+
 ## 8. 文件与提交索引
 
 | 层 | 关键文件 | 关键提交 |
@@ -237,3 +265,4 @@ W2 实测（`REPORT-3.7E-STEP6.md`，基线 ④，同一 20 首同序夹具）�
 | L3 校验/指标 | `poc/lib/am-smtc.ps1`、`poc/analyze-e2e.ps1` | `b9e4983`、`4c251ee` |
 | 等待/时序判据（§7） | `phase3.7E-benchmark/REPORT-3.7E-STEP5-FINAL.md`、`.../reports/bench-20260926-090320.jsonl`、`.../bench-20260926-090905.jsonl` | `4317e3b`、`e4a0082`、`19e881d`、`1d5d575` |
 | 五 wait 审计 + 第二实证（§7.4） | `phase3.7E-benchmark/AUDIT-5WAITS-5Q.md`、`.../REPORT-3.7E-STEP6.md`、`.../reports/bench-20260926-092741.jsonl` | `bcafbda`、`2b8de79`、`9200c98` |
+| W3 状态替换设计 + G1/G1b（§7.5） | `phase3.7E-benchmark/DESIGN-W3-STATE-SUBSTITUTION.md`、`.../REPORT-G1-W3-FOREGROUND-OBJECT.md`、`.../REPORT-G1b-PROGRAMMATIC-TRANSITION.md`、`.../probe-w3-foreground.ps1`、`.../probe-w3-programmatic-transition.ps1`、`.../lib/w3probe.ps1` | `bf3a8ef`、`d1e3517`、`7fe2e44` |

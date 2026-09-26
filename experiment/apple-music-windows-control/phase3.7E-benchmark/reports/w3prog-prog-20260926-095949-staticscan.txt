@@ -1,0 +1,30 @@
+=== G1b corrected static scan (code lines only; comments excluded) ===
+probe = C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\phase3.7E-benchmark\probe-w3-programmatic-transition.ps1
+lib   = C:\Users\limin\OneDrive\mineradio-apple-music\experiment\apple-music-windows-control\phase3.7E-benchmark\lib\w3probe.ps1
+NOTE: this scan did NOT run the probe. Exactly one programmatic transition was authorised and it already happened (tag prog-20260926-095949).
+The probe-internal scan block printed by that run was DEFECTIVE (3 false positives from the header comment, 2 false negatives from array-join patterns); this file is the corrected evidence.
+
+probe forbidden 'SetCursorPos' = 0 (expect 0)
+probe forbidden 'mouse_event' = 0 (expect 0)
+probe forbidden 'SendInput' = 0 (expect 0)
+probe forbidden 'SendKeys' = 0 (expect 0)
+probe forbidden 'Cursor.Position' = 0 (expect 0)
+probe forbidden 'MoveTo(' = 0 (expect 0)
+probe forbidden 'BringWindowToTop' = 0 (expect 0)
+probe allowed 'ShowWindow(' = 2 (expect 2 = 1 P/Invoke declaration + 1 call site)
+probe allowed 'SetForegroundWindow(' = 2 (expect 2 = 1 P/Invoke declaration + 1 call site)
+probe UIA/click 'GetCurrentPattern' = 0 (expect 0)
+probe UIA/click 'InvokePattern' = 0 (expect 0)
+probe UIA/click 'ScrollItemPattern' = 0 (expect 0)
+probe UIA/click 'VirtualizedItemPattern' = 0 (expect 0)
+probe UIA/click 'SetFocus(' = 0 (expect 0)
+probe UIA/click 'Click(' = 0 (expect 0)
+
+lib forbidden 'SetCursorPos' = 0 (expect 0)
+lib forbidden 'mouse_event' = 0 (expect 0)
+lib forbidden 'SendInput' = 0 (expect 0)
+lib forbidden 'SendKeys' = 0 (expect 0)
+lib forbidden 'Cursor.Position' = 0 (expect 0)
+lib forbidden 'MoveTo(' = 0 (expect 0)
+lib forbidden 'BringWindowToTop' = 0 (expect 0)
+lib activation APIs = 0 (expect 0)

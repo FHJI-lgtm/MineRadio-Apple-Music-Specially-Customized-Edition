@@ -265,3 +265,21 @@ deadline 到，前台仍不是 AppleMusic
 
 **字段可靠性（随结论引用）**：`activeDesktop` 在 100 ms 刷新节奏下不可靠——run 1 `unavailable` 5.7% 且全零 GUID 6.6%，
 run 2 `unavailable` 4.8%。`unavailable` 与全零 GUID 一律视为"无可用值"，**任何结论都不得把它们当作桌面身份**。
+
+**2026-09-26 追加：Q1 已闭合（G1b 程序化过渡观测）**
+
+经单独授权，执行了**一次**程序化过渡（`ShowWindow(SW_RESTORE)` + `SetForegroundWindow($Hwnd)`，
+与链路 `Invoke-AmForeground` 同序；探针内禁止鼠标/键盘/滚轮/UIA/`SetCursorPos`/`SendInput`，修正版静态扫描全 0）：
+
+- 调用前 `IsIconic(196682) = true`；`ShowWindow(...,9)` 返回 true；**`SetForegroundWindow` 返回 true**（调用本身 1 ms）
+- **S1 在调用后的第一个采样点即成立**（t0+2 ms）；采样粒度 ~16 ms ⇒ 只能说"第一个采样点"，
+  **不得表述为"程序化过渡耗时 2 ms"**（单次观测、单样本、无分布）
+- 该瞬间 `targetIconic = false`；全程 `hwnd = 0` 样本 0；观测窗结束时前台仍是 196682
+- ⇒ **Q1 闭合**：`S1 := GetForegroundWindow() == $Hwnd` 正式采用，**不采用 `GA_ROOT`**。
+  累计证据 23 次激活（22 人手 + 1 程序化）、4509 个 AM 前台样本，`CASE_B = 0`
+- `w3TargetIconicAtSatisfied` 保留为**指标**；`S1 AND NOT IsIconic($Hwnd)` **仍未采用**（避免一次实验两个假设）
+- `SetForegroundWindow` 本次返回 true **不等于**它总会成功（Q2 作为一般性风险仍然开放；本次未触发）
+- **W3 本体修改仍未授权**：G2（强制 `FOREGROUND_TIMEOUT` → 验证零输入注入）→ G3（3 首干跑）→ G4（20 首）顺序不变
+- 披露：该次运行打印的探针内扫描块是**坏的**（3 个来自头部注释的假阳性、2 个数组拼接造成的假阴性），
+  已在运行后修正并另存修正版扫描证据（`reports/w3prog-prog-20260926-095949-staticscan.txt`）；
+  **探针未重跑**（只授权一次过渡），详见 `REPORT-G1b-PROGRAMMATIC-TRANSITION.md`
