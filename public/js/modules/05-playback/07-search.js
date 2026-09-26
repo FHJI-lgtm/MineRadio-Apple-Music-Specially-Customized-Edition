@@ -1270,6 +1270,68 @@ function renderSongSearchResults(songs) {
   observeSearchLoadMoreSentinel();
 }
 
+// ------------------------------------------------------------
+// Apple Music App auxiliary search section (side-channel, NOT a provider)
+//   doSearch() -> 5 native providers -> song model -> existing results area
+//              \-> window.mineradio.amc.searchTracks() -> own AM result model
+//                  appended as a separate section, only when it has results.
+// Constraints: no entry in MUSIC_SEARCH_PROVIDER_ORDER, no searchProviderUrl branch, no conversion
+// into the song model (so the queue / provider-fallback / 13-playback-start-audio never pick these up),
+// and a failure here never blocks or replaces the five-provider results.
+// ------------------------------------------------------------
+function amcSearchAvailable() {
+  return !!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.searchTracks === 'function');
+}
+function ensureAmcSearchSectionStyle() {
+  if (document.getElementById('search-amc-style')) return;
+  var st = document.createElement('style');
+  st.id = 'search-amc-style';
+  st.textContent = '.search-amc-section{margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.18)}'
+    + '.search-amc-head{font-weight:600;margin:4px 0 8px;opacity:.9}'
+    + '.search-amc-head i{font-style:normal;opacity:.6;font-weight:400;margin-left:6px;font-size:12px}'
+    + '.search-amc-item{display:flex;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}'
+    + '.search-amc-cover{width:44px;height:44px;border-radius:6px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.08)}'
+    + '.search-amc-meta{min-width:0}'
+    + '.search-amc-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.search-amc-sub{opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.search-amc-ids{opacity:.5;font-size:11px}';
+  document.head.appendChild(st);
+}
+function amcResultRowHtml(r) {
+  var cover = r.artworkUrl
+    ? '<img class="search-amc-cover" src="' + escHtml(r.artworkUrl) + '" alt="" loading="lazy">'
+    : '<span class="search-amc-cover"></span>';
+  var dur = '';
+  if (r.durationMs) { var s = Math.round(r.durationMs / 1000); dur = '  ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  return '<div class="search-amc-item">' + cover + '<div class="search-amc-meta">'
+    + '<div class="search-amc-title">' + escHtml(r.title || '') + '</div>'
+    + '<div class="search-amc-sub">' + escHtml(r.artist || '') + (r.album ? ' - ' + escHtml(r.album) : '') + '</div>'
+    + '<div class="search-amc-ids">trackId=' + (r.trackId == null ? '?' : escHtml(String(r.trackId)))
+    + '  storefront=' + escHtml(r.storefront || '?') + dur + '</div>'
+    + '</div></div>';
+}
+function renderAmcSearchSection(results) {
+  if (!results || !results.length || !$results) return false;
+  ensureAmcSearchSectionStyle();
+  var html = '<div class="search-amc-section"><div class="search-amc-head">Apple Music App<i>iTunes Search API</i></div>';
+  for (var i = 0; i < results.length; i++) html += amcResultRowHtml(results[i]);
+  html += '</div>';
+  $results.insertAdjacentHTML('beforeend', html);
+  if (window.gsap) animateListItems($results, '.search-amc-item', { x: 0, y: 6, stagger: 0.012, duration: 0.18, limit: 12 });
+  return true;
+}
+async function appendAmcSearchSection(q, requestSeq) {
+  if (!q || !amcSearchAvailable()) return;
+  try {
+    var res = await window.mineradio.amc.searchTracks({ query: q, country: 'us', limit: 12 });
+    var list = res && Array.isArray(res.results) ? res.results : [];
+    if (requestSeq !== searchRequestSeq) return;
+    if (String(($input && $input.value) || '').trim() !== q) return;
+    renderAmcSearchSection(list);
+  } catch (err) {
+    console.warn('amc auxiliary search failed (five-provider results unaffected):', err);
+  }
+}
 async function doSearch(q, opts) {
   opts = opts || {};
   q = String(q || '').trim();
@@ -1307,6 +1369,7 @@ async function doSearch(q, opts) {
       hasMore: !!searchData.hasMore
     };
     renderSongSearchResults(songs);
+    appendAmcSearchSection(q, requestSeq);
     if (opts.autoPlayFirst) playSearchResult(0);
   } catch (err) {
     console.error('Search:', err);
