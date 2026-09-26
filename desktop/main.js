@@ -5652,6 +5652,12 @@ const appleMusicLyricsCredentialStore = createAppleMusicLyricsCredentialStore({
 // 把凭证读取口交给歌词 Web provider (仅主进程内可见), 已配置时后台预热 Bearer,
 // 这样首次歌词请求不必等 Apple 页面 + bundle 下载。
 setAppleLyricsCredentialSource(() => appleMusicLyricsCredentialStore.readTokenForMainProcess());
+
+// Step 3A (mechanism A): the migrated Web READ handlers live in server.js/apple-music-api.js, which run
+// in this very process, so they resolve this same web-api singleton. The media-user-token is read from
+// the same store as the lyrics source and never crosses into the renderer.
+require('./apple-music-web-api').setCredentialSource(() => appleMusicLyricsCredentialStore.readTokenForMainProcess());
+require('./apple-music-web-api').setReadOnly(true);   // step 3 migrates reads only; lift before any write phase
 try {
   if (appleMusicLyricsCredentialStore.getStatus().configured) warmUpAppleLyricsBearer();
 } catch (_) {}

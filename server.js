@@ -137,6 +137,7 @@ const {
   handleAppleStatus,
   handleAppleSearch,
   handleAppleUserPlaylists,
+    handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracks,
   handleAppleAlbumDetail,
   handleAppleLibraryCheck,
@@ -5383,7 +5384,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const limit = Math.max(1, Math.min(500, parseInt(url.searchParams.get('limit') || '300', 10) || 300));
       const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
-      sendJSON(res, await handleAppleUserPlaylists({ limit, offset }));
+      sendJSON(res, await handleAppleUserPlaylistsWeb({ limit, offset }));
     } catch (err) {
       console.error('[AppleMusicUserPlaylists]', err);
       sendJSON(res, { provider: 'apple', loggedIn: false, error: err.message, playlists: [] }, 500);

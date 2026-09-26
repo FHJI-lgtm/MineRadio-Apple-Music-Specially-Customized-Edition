@@ -957,6 +957,71 @@ async function handleAppleUserPlaylists(options) {
   };
 }
 
+// ---- Apple Music WEB path for user playlists (step 3A) -------------------------------------------------
+// Same response contract as handleAppleUserPlaylists above, but the data comes from the Web API
+// (AMPWeb bearer + media-user-token) instead of the Developer JWT. The Developer handler is kept
+// untouched and still exported; this route simply no longer uses it.
+// identity note: the web credential store carries no nickname/userId, so userId is '' on this path.
+async function handleAppleUserPlaylistsWeb(options) {
+  options = options || {};
+  const webApi = require('./desktop/apple-music-web-api');
+  const userToken = webApi.getMediaUserToken();
+  if (!userToken) {
+    return { provider: 'apple', loggedIn: false, playlists: [], message: '需要先登录 Apple Music 网页账号（media-user-token 未配置）。', error: '' };
+  }
+  const maxTotal = Math.max(1, Math.min(500, Number(options.limit) || 300));
+  const startOffset = Math.max(0, Number(options.offset) || 0);
+  const playlists = [];
+  let offset = startOffset;
+  let playlistError = null;
+  let lastJson = null;
+  try {
+    while (playlists.length < maxTotal) {
+      const pageLimit = Math.min(APPLE_LIBRARY_PAGE_LIMIT, maxTotal - playlists.length);
+      // GET only: the web layer is in read-only mode for this phase.
+      const page = await webApi.getLibrary('/playlists', { limit: pageLimit, offset });
+      if (!page.ok) { playlistError = { error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status }; break; }
+      const json = page.json || {};
+      lastJson = json;
+      const items = Array.isArray(json.data) ? json.data : [];
+      items.forEach((item) => { const mapped = mapAppleLibraryPlaylist(item); if (mapped) playlists.push(mapped); });
+      if (!items.length || !json.next) break;
+      offset += items.length;
+    }
+  } catch (err) {
+    playlistError = appleErrorDetails(err);
+  }
+  const likedCard = {
+    provider: 'apple',
+    source: 'apple',
+    id: APPLE_LIKED_PLAYLIST_ID,
+    virtual: true,
+    name: 'Apple Music 资料库',
+    cover: '',
+    creator: 'Apple Music',
+    trackCount: 0,
+    playCount: 0,
+    subscribed: false,
+    shelfPane: 'fav',
+  };
+  const total = Math.max(playlists.length + startOffset, Number(lastJson && lastJson.meta && lastJson.meta.total) || (playlists.length + startOffset));
+  const nextOffset = startOffset + playlists.length;
+  return {
+    provider: 'apple',
+    loggedIn: true,
+    userId: '',
+    playlists: (startOffset === 0 ? [likedCard] : []).concat(playlists),
+    total,
+    offset: startOffset,
+    limit: maxTotal,
+    nextOffset,
+    hasMore: !!(lastJson && lastJson.next) && nextOffset < total,
+    partial: true,
+    source: 'web',
+    error: playlistError && playlistError.error || '',
+    message: playlistError && playlistError.message || '',
+  };
+}
 async function handleAppleLibrarySongs(limit, offset, userToken) {
   const json = await appleGet('/v1/me/library/songs', {
     limit: Math.max(1, Math.min(APPLE_LIBRARY_PAGE_LIMIT, Number(limit) || 48)),
@@ -1443,6 +1508,7 @@ module.exports = {
   handleAppleStatus,
   handleAppleSearch,
   handleAppleUserPlaylists,
+  handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracks,
   handleAppleAlbumDetail,
   handleAppleLibraryCheck,

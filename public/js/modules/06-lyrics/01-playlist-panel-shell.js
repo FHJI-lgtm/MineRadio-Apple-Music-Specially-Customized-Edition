@@ -501,7 +501,12 @@ function playlistCatalogProviderLoggedIn(provider) {
   if (provider === 'kugou') return !!kugouLoginStatus.loggedIn;
   if (provider === 'qishui') return !!qishuiLoginStatus.loggedIn;
   if (provider === 'spotify') return !!spotifyLoginStatus.loggedIn;
-  if (provider === 'apple') return !!appleLoginStatus.loggedIn;
+  if (provider === 'apple') {
+  // Step 3A: the playlist endpoint now reads the Apple Music Web axis, so the gate must accept it.
+  // The Developer axis stays accepted here (union) until it is retired in a later step.
+  if (typeof appleWebAccountAvailable === 'function' && appleWebAccountAvailable()) return true;
+  return !!appleLoginStatus.loggedIn;
+}
   return false;
 }
 function playlistCatalogPageUrl(provider, offset, limit) {
