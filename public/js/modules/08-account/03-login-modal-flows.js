@@ -32,7 +32,8 @@ function loginProviderOfficialModeText(provider) {
 }
 // Apple has no cookie import, but its second mode node (网页登录) needs a real flag so the
 // node graph can mark it active and draw the workflow edge to it.
-var appleWebLoginModeOpen = false;
+// Web login is Apple's primary mode; the developer-credential flow is the second mode.
+var appleWebLoginModeOpen = true;
 
 function setManualCookieOpenForProvider(provider, open) {
   provider = normalizeLoginProviderKey(provider);
@@ -61,6 +62,9 @@ function saveLoginWorkflowConnections(list) {
 function providerHasLiveLogin(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (loginWorkflowVerifiedSession && loginWorkflowVerifiedSession[provider]) return true;
+  // Apple has two isolated axes. The web login (media-user-token) is the primary one and counts
+  // as a live login on its own, independently of the developer-credential API axis.
+  if (provider === 'apple' && typeof appleWebLoginStatus === 'object' && appleWebLoginStatus && appleWebLoginStatus.configured) return true;
   try { return typeof hasPlatformLogin === 'function' && hasPlatformLogin(provider); } catch (e) { return false; }
 }
 function loginWorkflowConnectedProviders() {
@@ -981,6 +985,8 @@ function updateLoginProviderUi() {
   var isApple = loginProvider === 'apple';
   var appleBtn = document.getElementById('login-provider-apple');
   var canOpenAppleLogin = !!appleWebLoginBridge();
+  // Two isolated axes for Apple: 网页登录 (web, primary) and 官方登录 (developer credentials).
+  var appleWebMode = isManualCookieOpenForProvider('apple');
   var appleBusy = !!(appleConfigBusy || appleOAuthBusy);
   if (isApple) {
     if (neteaseBtn) neteaseBtn.classList.toggle('active', false);
@@ -991,7 +997,9 @@ function updateLoginProviderUi() {
     if (appleBtn) appleBtn.classList.toggle('active', true);
     if (title) title.textContent = 'Apple Music';
     if (desc) desc.innerHTML = canOpenAppleLogin
-      ? '登录 Apple Music 网页账号即可使用（自动获取登录态）。<b>官方 API</b> 为高级可选能力，仅在需要歌单 / 收藏等官方接口时再配置。'
+      ? (appleWebMode
+        ? '登录 Apple Music 网页账号即可使用（自动获取登录态）。<b>官方 API</b> 为高级可选能力，仅在需要歌单 / 收藏等官方接口时再配置。'
+        : '官方 API 登录：使用 Apple 开发者凭据（Team ID / Key ID / P8 私钥）打开官方授权窗口，用于歌单 / 收藏 / 资料库等接口。')
       : '当前环境不支持桌面授权桥；请在 Mineradio 桌面版中连接 Apple Music。';
     if (shell) {
       shell.classList.add('web-login-preview');
@@ -1031,16 +1039,22 @@ function updateLoginProviderUi() {
       var amCardMark = qqCard.querySelector('b');
       var amCardLabel = qqCard.querySelector('span');
       if (amCardMark) amCardMark.textContent = 'AM';
-      if (amCardLabel) amCardLabel.textContent = appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '打开 Apple Music 登录页面';
+      if (amCardLabel) amCardLabel.textContent = appleWebMode ? (appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '打开 Apple Music 登录页面') : '官方 API 登录';
     }
     if (st) {
       st.className = 'preview';
-      st.textContent = appleCardStatusLine();
+      st.textContent = appleWebMode ? appleCardStatusLine() : appleLoginStatusText();
     }
     if (refreshBtn) {
-      refreshBtn.disabled = appleWebLoginStatus.busy || !canOpenAppleLogin;
-      refreshBtn.textContent = appleWebLoginStatus.busy ? '等待登录…' : (appleWebLoginStatus.configured ? '重新登录 Apple Music' : '登录 Apple Music');
-      refreshBtn.onclick = openAmcAppleWebLogin;
+      if (appleWebMode) {
+        refreshBtn.disabled = appleWebLoginStatus.busy || !canOpenAppleLogin;
+        refreshBtn.textContent = appleWebLoginStatus.busy ? '等待登录…' : (appleWebLoginStatus.configured ? '重新登录 Apple Music' : '登录 Apple Music');
+        refreshBtn.onclick = openAmcAppleWebLogin;
+      } else {
+        refreshBtn.disabled = appleBusy || !canOpenAppleLogin;
+        refreshBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : (appleLoginStatus.privateKeyConfigured ? '连接 Apple Music' : '保存并连接'));
+        refreshBtn.onclick = appleLoginStatus.privateKeyConfigured ? openAppleWebLogin : submitAppleConfigLogin;
+      }
     }
     if (!appleWebLoginStatus.ready) {
       appleWebLoginStatus.ready = true;
