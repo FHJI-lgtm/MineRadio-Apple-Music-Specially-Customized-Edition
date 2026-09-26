@@ -198,6 +198,32 @@ MineRadio 其他激活层、Wallpaper Engine 侧遇到同类 `Sleep(500)` 均可
 + `phase3.7E-benchmark/REPORT-3.7E-STEP5-FINAL.md`（结论）。
 点击路径剩余 1250 ms 固定 sleep（120+450+350+200+130）**不排期**；若恢复审计，先答 §7.1 第 1 问。
 
+### 7.4 第二实证：W2（`am-uia.ps1:415`，450 ms → 0）与**本协议的可分辨性上限**
+
+审计（`phase3.7E-benchmark/AUDIT-5WAITS-5Q.md`）按五问逐个过 5 个 wait 后的选择：W2 是**唯一"后面紧跟 condition-poll"**的
+一个（`:415` 之后 3 行就是 `:477` 250 ms → `:478 Wait-AmRect` 条件轮询），因此预测最尖锐、失败模式有界（只会落到
+`OUT_OF_VIEW` / `TARGET_ROW_NOT_FOUND` / 被 L3 判定的 `SMTC_WRONG_TRACK`，**不会向无关窗口注入输入**）。
+W3（`:517` 350 ms，每次点击都付、无 poll 兜底）在延迟量级上其实更值得研究，但它的正确改法是**替换为可观测状态条件**
+（轮询 `GetForegroundWindow() == $Hwnd`）而不是删数字，且"删掉后盲点点击"会把输入注入到别的窗口——故本轮不动它。
+
+W2 实测（`REPORT-3.7E-STEP6.md`，基线 ④，同一 20 首同序夹具）：
+
+| 观测量 | 结果 |
+|---|---|
+| correctness / 失败集合 | 17/20 → 17/20；`B02 SMTC_TIMEOUT`、`B04 SMTC_TIMEOUT`、`B13 TARGET_ROW_NOT_FOUND` **完全相同** |
+| 逐曲 stage 变化 | **0 例** |
+| occupancy 配对差值（⑥ − ④） | n=20，min **−408**，p50 **−2**，max **+2114**，mean +205；**10 例快 / 10 例慢** |
+| `t6` 配对差值 | min −447，p50 −41，max +1561 |
+
+判定 `NO_ATTRIBUTABLE_GAIN` → **已回退**（提交 `9200c98`），`poc/lib` 与 `0170bca` 逐文件一致。
+
+**由这次实验新增的判据（比"这个 wait 能不能删"更重要）**：本协议在 n=20、每首一次的条件下**分辨不了几百毫秒量级的系统性效应**——
+逐曲 run-to-run 方差达 ±500…±2000 ms，10/10 的正负分散说明任何 ≤450 ms 的位移都被噪声吞没。
+因此：**凡是预期收益小于约 ±1 s 的 wait 微调，不要再用本协议去做**；要做就必须先提高可分辨性
+（更多重复、或把测量窗口收窄到该 wait 直接影响的 stage），否则结论只能是"不可分辨"而不该被写成"无收益"。
+本次 W2 的"≈0"另有歧义（`Scroll-AmView` 仅在行不在视口内时才执行，而 benchmark 行不记录 `scrollSteps`）：
+**"被 poll 吸收"与"该曲根本没走这条分支"在现有数据下无法区分**，报告中已按不可区分处理，不得择一断言。
+
 ---
 
 ## 8. 文件与提交索引
@@ -210,3 +236,4 @@ MineRadio 其他激活层、Wallpaper Engine 侧遇到同类 `Sleep(500)` 均可
 | L2 已排除路线 | `phase3.7B-uia-no-mouse/REPORT-3.7B*.md`、`phase3.8-non-uia-surface/REPORT-3.8*.md` | `010be75`、`a0c001a` |
 | L3 校验/指标 | `poc/lib/am-smtc.ps1`、`poc/analyze-e2e.ps1` | `b9e4983`、`4c251ee` |
 | 等待/时序判据（§7） | `phase3.7E-benchmark/REPORT-3.7E-STEP5-FINAL.md`、`.../reports/bench-20260926-090320.jsonl`、`.../bench-20260926-090905.jsonl` | `4317e3b`、`e4a0082`、`19e881d`、`1d5d575` |
+| 五 wait 审计 + 第二实证（§7.4） | `phase3.7E-benchmark/AUDIT-5WAITS-5Q.md`、`.../REPORT-3.7E-STEP6.md`、`.../reports/bench-20260926-092741.jsonl` | `bcafbda`、`2b8de79`、`9200c98` |
