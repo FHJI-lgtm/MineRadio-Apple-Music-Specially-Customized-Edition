@@ -191,7 +191,9 @@ async function handleAppleAlbumDetailWeb(albumId, opts) {
   let json = null;
   try {
     // Catalog reads work with the bearer alone; the user token is sent when present.
-    const page = await webApi.getCatalog(storefront, '/albums/' + encodeURIComponent(id), { include: 'tracks', limit });
+    // Apple rejects `limit` on this request (400 Invalid Parameter / code 40004: "Limit may not be supplied
+    // on this request"), so the page size is applied locally below - exactly like the Developer handler.
+    const page = await webApi.getCatalog(storefront, '/albums/' + encodeURIComponent(id), { include: 'tracks' });
     if (!page.ok) {
       return { provider: 'apple', album: null, songs: [], total: 0, source: 'web', error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status + (userToken ? '' : '（未配置 media-user-token）') };
     }
