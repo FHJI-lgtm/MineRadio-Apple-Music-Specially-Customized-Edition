@@ -1452,7 +1452,19 @@ async function amcPlayRow(rowEl, model) {
     // step 7: never let the two players sound at once - use the existing pause path, never touch `playing` directly.
     // step 7: pause only if MineRadio is actually sounding (togglePlay is a TOGGLE - calling it blindly
     // would START playback). Goes through the normal play/pause path; playing is never written here.
-    try { if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow() && typeof togglePlay === 'function') togglePlay(); } catch (_) { }
+    // E-A F1-PAUSE-BEGIN: one-way stop. NOT a toggle: the action never depends on the current state and must
+    // never reach playQueueAt()/resume paths - the shipped bug was that togglePlay() repainted the bar from
+    // the queue (playQueueAt clears the context) or resumed internal audio underneath the AM context.
+    try {
+      if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow()) {
+        var amInternalAudio = (typeof audio !== 'undefined' && audio) ? audio : null;
+        if (amInternalAudio && typeof amInternalAudio.pause === 'function') {
+          amInternalAudio.pause();
+          if (typeof syncPlaybackStateFromAudioEvent === 'function') syncPlaybackStateFromAudioEvent('am-external-play');
+        }
+      }
+    } catch (_) { }
+    // E-A F1-PAUSE-END
     // step 6 (partial): repaint the player bar through its single writer, not by writing DOM by hand.
     try { if (typeof updateControlTrackInfo === 'function') updateControlTrackInfo(currentPlaybackContext); } catch (_) { }
   }

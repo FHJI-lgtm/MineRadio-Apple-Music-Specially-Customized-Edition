@@ -87,6 +87,62 @@ test('5. publishing is three-state, evidence-only, and pauses MineRadio first', 
   assert.match(search, /identitySource: 'amc'/);
   assert.match(search, /identityConfidence: 'evidence-only'/);
   assert.equal(/identityConfidence: 'confirmed'/.test(search), false, 'alias/normalized must never be upgraded');
-  assert.match(search, /internalAudioPlayingNow\(\)[\s\S]{0,80}togglePlay\(\)/);
+  // F1: the pause step must be a one-way stop. The old assertion here pinned the shipped bug
+  // (it REQUIRED togglePlay in this path) - string-level tests happily encode defects.
+  assert.match(search, /internalAudioPlayingNow\(\)/);
+  // scope matters: 07-search.js uses togglePlay() for other UI too - only the PAUSE STEP must never toggle
+  // comment-proof: strip comments first, then assert on CODE only
+  const pauseCode = marked(search, 'F1-PAUSE').replace(/\/\/[^\n]*/g, '');
+  assert.equal(/togglePlay\s*\(/.test(pauseCode), false, 'the pause step must never toggle');
+  assert.match(pauseCode, /\.pause\s*\(/, 'the pause step must stop the deck');
+  assert.match(search, /amInternalAudio\.pause\(\)/);
   assert.equal(/\bplaying\s*=/.test(search), false, 'the publish path must not write `playing` directly');
+});
+// ---- F5: behavioural assertions (the shipped bug was invisible to string matching) ----
+const vm2 = require('node:vm');
+const searchSrc = read(searchRel);
+const renderSrc = read('public/js/modules/02-visual/15-ripples-cover-depth.js');
+
+function marked(src, tag) {
+  const m = src.match(new RegExp('// E-A ' + tag + '-BEGIN[\\s\\S]*?// E-A ' + tag + '-END'));
+  assert.ok(m, 'marked block ' + tag + ' must exist');
+  return m[0].replace(/^[ \t]*\/\/ E-A .*-(BEGIN|END).*$/gm, '');
+}
+
+test('6. the pause step is a one-way stop: it never toggles and never reaches playQueueAt()', () => {
+  const calls = { pause: 0, toggle: 0, playQueueAt: 0, sync: 0 };
+  const box = {
+    audio: { pause() { calls.pause++; } },
+    internalAudioPlayingNow: () => true,
+    syncPlaybackStateFromAudioEvent: () => { calls.sync++; },
+    togglePlay: () => { calls.toggle++; },
+    playQueueAt: () => { calls.playQueueAt++; },
+  };
+  vm2.createContext(box);
+  vm2.runInContext(marked(searchSrc, 'F1-PAUSE'), box);
+  assert.equal(calls.pause, 1, 'the internal deck must be stopped exactly once');
+  assert.equal(calls.toggle, 0, 'togglePlay must never be used as a pause');
+  assert.equal(calls.playQueueAt, 0, 'the pause step must never trigger a queue play');
+});
+
+test('7. the pause step does nothing when MineRadio is silent', () => {
+  const calls = { pause: 0 };
+  const box = { audio: { pause() { calls.pause++; } }, internalAudioPlayingNow: () => false, togglePlay: () => { throw new Error('must not toggle'); } };
+  vm2.createContext(box);
+  vm2.runInContext(marked(searchSrc, 'F1-PAUSE'), box);
+  assert.equal(calls.pause, 0);
+});
+
+test('8. queue-side bar repaints are suppressed while an AM context owns the UI', () => {
+  const guard = marked(renderSrc, 'F1-GUARD');
+  const fn = new Function('currentPlaybackContext', guard + '\nreturn "REACHED";');
+  assert.equal(fn({ provider: 'apple', identitySource: 'amc' }), undefined, 'must return early');
+  assert.equal(fn(null), 'REACHED', 'must fall through without an AM context');
+});
+
+test('9. publish stays three-state and alias/normalized never becomes verified', () => {
+  assert.match(searchSrc, /res\.ok === true && !amcContextContradicted/);
+  assert.match(searchSrc, /identityConfidence: 'evidence-only'/);
+  assert.equal(/identityConfidence: 'confirmed'/.test(searchSrc), false);
+  assert.match(searchSrc, /disagreement === true && res\.verified === false/);
 });

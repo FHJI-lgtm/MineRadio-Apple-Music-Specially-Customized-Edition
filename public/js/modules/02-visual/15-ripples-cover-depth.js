@@ -532,6 +532,11 @@ function setControlCoverSrc(src) {
 }
 
 function updateControlTrackInfo(song) {
+  // E-A F1-GUARD-BEGIN
+  // While an external Apple Music context owns the UI, queue-driven repaints must NOT overwrite it.
+  // This changes only the rendering path: playQueue / currentIdx are never touched.
+  if (typeof currentPlaybackContext === 'object' && currentPlaybackContext) return;
+  // E-A F1-GUARD-END
   song = song || {};
   var title = document.getElementById('control-title');
   var artist = document.getElementById('control-artist');
