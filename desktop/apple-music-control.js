@@ -97,8 +97,32 @@ function normalizeItunesTrack(r, requestedCountry) {
 // playback plane (delegates to the verified chain; interprets, never reimplements)
 // ---------------------------------------------------------------------------
 
+/**
+ * Build the Apple Music URL used as the NAVIGATION input for the verified -Url route.
+ * Verified shape (the G3/G4 fixtures): .../{storefront}/song/{slug}/{trackId}.
+ * The trackId is used ONLY to address the song in that URL: it is still never sent as a playback
+ * id, and SMTC remains the only judge of what actually played.
+ */
+function canonicalUrl(result) {
+  const id = result && result.trackId;
+  const sf = (result && result.storefront) || '';
+  if (!id || !sf) return '';
+  const slug = slugify(result.title) || 'song';
+  return 'https://music.apple.com/' + String(sf).toLowerCase() + '/song/' + slug + '/' + String(id);
+}
+
+function slugify(s) {
+  return String(s || '').toLowerCase().normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 function runChain(result, opts) {
   const script = opts.chainScript || DEFAULT_CHAIN_SCRIPT;
+  const route = opts.route || 'url';
+  const url = route === 'url' ? canonicalUrl(result) : '';
+  if (route === 'url' && !url) {
+    return Promise.resolve({ ok: false, stage: 'NO_URL_INPUT', detail: 'route=url requires trackId + storefront', raw: null, url: '' });
+  }
   const args = [
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
     '-Title', String(result.title || ''),
@@ -107,6 +131,7 @@ function runChain(result, opts) {
     '-TimeoutMs', String(opts.timeoutMs || 6000),
     '-SearchWaitMs', String(opts.searchWaitMs || 6000),
   ];
+  if (url) args.push('-Url', url);
   if (opts.pauseFirst) args.push('-PauseFirst');
   if (opts.noLaunch) args.push('-NoLaunch');
   const powershell = opts.powershell || 'powershell.exe';
@@ -117,12 +142,12 @@ function runChain(result, opts) {
     try {
       child = spawn(powershell, args, { windowsHide: true });
     } catch (e) {
-      resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null });
+      resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null, url: url });
       return;
     }
     child.stdout.on('data', (d) => { out += d.toString('utf8'); });
     child.stderr.on('data', (d) => { err += d.toString('utf8'); });
-    child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }));
+    child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null, url: url }));
     child.on('close', (code) => {
       const parsed = lastJsonLine(out);
       resolve({
@@ -131,6 +156,7 @@ function runChain(result, opts) {
         exitCode: code,
         detail: parsed ? '' : (err.trim() || out.trim().slice(-400)),
         raw: parsed,
+        url: url,
       });
     });
   });
@@ -219,30 +245,54 @@ function verifyAgainstSmtc(expected, smtc) {
  *                    expected:object, actual:object, matchedRow?:string, ambiguous?:boolean,
  *                    candidateCount?:number, attempts?:number, timings?:object, error?:string}>}
  */
+/**
+ * Full diagnostics from the chain result. Kept on BOTH the success and the failure path: a bare
+ * SMTC_TIMEOUT once hid the real cause ("clicked a non-SelectionItem element named exactly
+ * 'Out of Time' and played 'Visitor' from another EP"), so failures must explain themselves.
+ */
+function diagnosticsFrom(raw) {
+  if (!raw) return {};
+  return {
+    matchedRow: raw.matchedRow || '',
+    ambiguous: !!raw.ambiguous,
+    candidateCount: raw.candidateCount != null ? raw.candidateCount : null,
+    pickedByPosition: !!raw.pickedByPosition,
+    artistFiltered: !!raw.artistFiltered,
+    attempts: raw.attempts != null ? raw.attempts : null,
+    stageHistory: raw.stageHistory || [],
+    stageDetail: raw.stageDetail || '',
+    mode: raw.mode || '',
+    navigatedBy: raw.navigatedBy || '',
+    searchSubmitted: !!raw.searchSubmitted,
+    navigated: raw.navigated,
+    triedCandidates: raw.triedCandidates || [],
+    smtc: raw.smtc || null,
+    baseline: raw.baseline || null,
+    timings: raw.t || null,
+  };
+}
+
 async function playTrack(result, opts = {}) {
   if (!result || !result.title) {
     return { ok: false, verified: false, stage: 'BAD_INPUT', mismatch: ['input'],
              expected: {}, actual: {}, error: 'title is required' };
   }
-  // rule 1: result.trackId is intentionally NOT forwarded to the player.
+  const route = opts.route || 'url';
+  const url = route === 'url' ? canonicalUrl(result) : '';
+  // rule 1: result.trackId is used only to build the navigation URL; it is never a playback id.
   const run = await runChain(result, opts);
+  const base = { route: route, url: url };
   if (!run.ok || !run.raw) {
-    return { ok: false, verified: false, stage: run.stage || 'FAILED', mismatch: ['playback'],
-             expected: { title: result.title, artist: result.artist || '' },
-             actual: { title: '', artist: '' },
-             error: run.detail || 'chain reported failure' };
+    return Object.assign(base, {
+      ok: false, verified: false, stage: run.stage || 'FAILED', mismatch: ['playback'],
+      expected: { title: result.title, artist: result.artist || '' },
+      actual: { title: '', artist: '' },
+      error: run.detail || 'chain reported failure',
+    }, diagnosticsFrom(run.raw));
   }
   const raw = run.raw;
   const verdict = verifyAgainstSmtc(result, raw.smtc || {});
-  return Object.assign({
-    ok: !!raw.ok,
-    stage: raw.stage || '',
-    matchedRow: raw.matchedRow || '',
-    ambiguous: !!raw.ambiguous,
-    candidateCount: raw.candidateCount != null ? raw.candidateCount : null,
-    attempts: raw.attempts != null ? raw.attempts : null,
-    timings: raw.t || null,
-  }, verdict);
+  return Object.assign(base, { ok: !!raw.ok, stage: raw.stage || '' }, diagnosticsFrom(raw), verdict);
 }
 
 module.exports = {
@@ -250,5 +300,6 @@ module.exports = {
   playTrack,
   verifyAgainstSmtc,
   normalizeItunesTrack,
+  canonicalUrl,
   DEFAULT_CHAIN_SCRIPT,
 };

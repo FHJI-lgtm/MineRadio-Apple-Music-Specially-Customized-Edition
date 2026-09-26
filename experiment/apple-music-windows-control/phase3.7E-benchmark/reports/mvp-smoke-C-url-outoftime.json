@@ -1,0 +1,86 @@
+{
+  "at": "2026-09-26T02:59:03.491Z",
+  "route": "url",
+  "query": "Out of Time The Weeknd",
+  "picked": {
+    "trackId": 1603171870,
+    "title": "Out of Time",
+    "artist": "The Weeknd",
+    "storefront": "us"
+  },
+  "url": "https://music.apple.com/us/song/out-of-time/1603171870",
+  "elapsedMs": 13435,
+  "result": {
+    "route": "url",
+    "url": "https://music.apple.com/us/song/out-of-time/1603171870",
+    "ok": false,
+    "verified": false,
+    "stage": "SMTC_WRONG_TRACK",
+    "mismatch": [
+      "playback"
+    ],
+    "expected": {
+      "title": "Out of Time",
+      "artist": "The Weeknd"
+    },
+    "actual": {
+      "title": "",
+      "artist": ""
+    },
+    "error": "chain reported failure",
+    "matchedRow": "音轨 7 Out of Time 3 分钟，34 秒钟",
+    "ambiguous": false,
+    "candidateCount": 1,
+    "pickedByPosition": false,
+    "artistFiltered": false,
+    "attempts": 1,
+    "stageHistory": [
+      "SMTC_WRONG_TRACK"
+    ],
+    "stageDetail": "playing=\"Out of Time\" status=Playing sawWrong=True",
+    "mode": "deeplink",
+    "navigatedBy": "",
+    "searchSubmitted": false,
+    "navigated": true,
+    "triedCandidates": [
+      "音轨 7 Out of Time 3 分钟，34 秒钟"
+    ],
+    "smtc": {
+      "artist": "Abel Tesfaye — Dawn FM",
+      "hasSession": true,
+      "sawPlayingWrong": true,
+      "pos": "00:00:05",
+      "wrongTitles": [
+        "正在连接…",
+        "Out of Time"
+      ],
+      "posMs": 5000,
+      "sawPlaying": true,
+      "statuses": [
+        "Paused",
+        "Playing"
+      ],
+      "status": "Playing",
+      "title": "Out of Time",
+      "firstWrongMs": 156
+    },
+    "baseline": {
+      "artist": "Out of Time — Scene of the Crime - EP",
+      "status": "Paused",
+      "hasSession": true,
+      "title": "Visitor"
+    },
+    "timings": {
+      "clickMs": 745,
+      "uiRootMs": 958,
+      "ensureAppMs": 23,
+      "realizeMs": 52,
+      "listMs": 2841,
+      "e2eMs": 12881,
+      "settleMs": 2842,
+      "smtcMs": 8079,
+      "searchMs": 0,
+      "selectMs": 0
+    }
+  }
+}
