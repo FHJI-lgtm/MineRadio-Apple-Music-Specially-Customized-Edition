@@ -608,7 +608,9 @@ function resumeHomeDashboardPlayback() {
     if (typeof updateEmptyHomeVisibility === 'function') updateEmptyHomeVisibility();
     if (playing || audio && !audio.paused) return;
     if (typeof togglePlay === 'function') {
-      Promise.resolve(togglePlay()).catch(function (error) { console.warn('[HomeDashboardResume]', error); });
+      // Step 4: this resume is explicitly about MineRadio's own queue, so it never becomes an SMTC toggle
+      // just because an Apple Music session happens to own the bar.
+      Promise.resolve(togglePlay({ internal: true })).catch(function (error) { console.warn('[HomeDashboardResume]', error); });
     }
     return;
   }

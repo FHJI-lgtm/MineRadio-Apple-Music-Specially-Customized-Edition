@@ -21,9 +21,8 @@ function externalLiveSong() {
   var parts = rawArtist.split(/\s+[\u2014\u2013]\s+/);
   var artistOnly = (parts[0] || '').trim() || rawArtist;
   var albumFromArtist = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
-  // No durationMs / positionMs on purpose: the SMTC timeline belongs to the Apple Music player, while the
-  // seek bar still drives MineRadio's own audio element - exporting the external timeline would make the
-  // bar promise a scrub it cannot honour.
+  // Step 4 carries SMTC's OWN timeline: the bar shows it, the seek is disabled for external sessions
+  // (the SMTC channel has no seek command), so exporting it is now truthful instead of a promise to scrub.
   return {
     provider: 'apple',
     source: 'apple',
@@ -31,6 +30,9 @@ function externalLiveSong() {
     artist: artistOnly,
     album: String(smtcStore.album || '') || albumFromArtist,
     artworkUrl: String(smtcStore.thumbnail || ''),
+    durationMs: Number(smtcStore.durationMs) || 0,
+    duration: Math.max(0, Math.round((Number(smtcStore.durationMs) || 0) / 1000)),
+    positionMs: Number(smtcStore.positionMs) || 0,
     external: true,
     identitySource: 'smtc-live',
   };
@@ -638,12 +640,15 @@ function openTrackDetailModal(type, songOverride) {
     // E-A step 6A/6b: when an external Apple Music single-play context owns the UI, the album page shows
     // AMC-known data only: the album endpoint is deliberately NOT called and no album id is derived here.
     // (The empty-URL path already renders the app empty state and guards the fetch, see the album branch below.)
-    var amcExternalContext = !!(typeof currentPlaybackContext === 'object' && currentPlaybackContext && currentPlaybackContext.identitySource === 'amc');
-    var albumUrl = amcExternalContext ? '' : albumDetailUrlForSong(song);
+    // E-A step 6A/6b used to suppress the album endpoint entirely for a published context ("AMC-known data
+    // only"). Superseded 2026-09-26 by an explicit decision: a published context resolves the SAME way a live
+    // identity does - it may carry an explicit albumId from the clicked result, and otherwise goes through the
+    // strict public-catalog resolver. The "never invent an id" rule is unchanged: no lookup, no page.
+    var albumUrl = albumDetailUrlForSong(song);
     // Step 3b: the LIVE external identity has no album id. Resolve it once (strict public-catalog match) and
     // re-enter this function with the id, so the page fetches through the existing web catalog axis.
     // `__amAlbumLookupMissed` makes the retry one-shot: no id -> the normal empty state, never a loop.
-    if (!albumUrl && !amcExternalContext && !song.__amAlbumLookupMissed && songProviderKey(song) === 'apple'
+    if (!albumUrl && !song.__amAlbumLookupMissed && songProviderKey(song) === 'apple'
         && !(song.albumId || song.appleAlbumId) && typeof resolveAppleCatalogAlbumId === 'function') {
       heading.textContent = '专辑详情';
       body.innerHTML = '<div class="detail-loading">正在匹配 Apple Music 专辑…</div>';

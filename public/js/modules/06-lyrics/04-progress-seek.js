@@ -153,6 +153,21 @@ function setProgressVisual(percent) {
   if (thumb) thumb.style.left = percent + '%';
 }
 function updatePlaybackProgressUi() {
+  // Step 4: while an external session owns the bar, the timeline is THAT session's (SMTC pushes position and
+  // duration). Nothing here touches MineRadio's own audio, and no drag preview is offered because the SMTC
+  // channel has no seek command (see commitProgressSeek).
+  if (typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()) {
+    var extDurationMs = Number(typeof smtcStore === 'object' && smtcStore ? smtcStore.durationMs : 0) || 0;
+    var extPositionMs = Number(typeof smtcStore === 'object' && smtcStore ? smtcStore.positionMs : 0) || 0;
+    if (extPositionMs > extDurationMs && extDurationMs > 0) extPositionMs = extDurationMs;
+    setProgressVisual(extDurationMs > 0 ? (extPositionMs / extDurationMs * 100) : 0);
+    var extTimeDisplay = document.getElementById('time-display');
+    if (extTimeDisplay) {
+      extTimeDisplay.textContent = formatProgramTime(extPositionMs / 1000) + ' / '
+        + (extDurationMs > 0 ? formatProgramTime(extDurationMs / 1000) : '0:00');
+    }
+    return;
+  }
   if (isProgressDragPreviewActive() && progressDragState.previewDuration > 0) {
     renderProgressPreview(getProgressPreviewClockSeconds(), progressDragState.previewDuration);
     return;
@@ -390,6 +405,12 @@ function primeProgressSeekPlayback(media, mediaSrc, serial) {
   }
 }
 function commitProgressSeek(targetTime, resumeAfterSeek) {
+  // Step 4: an external session owns the bar -> this timeline is Apple Music's and the SMTC channel has no
+  // seek command, so the drag must not move MineRadio's own audio (it would silently desync the two players).
+  if (typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()) {
+    if (typeof showToast === 'function') showToast('进度由 Apple Music 播放器控制，这里不能拖动');
+    return false;
+  }
   var media = progressDragState.media || audio;
   if (!media) return;
   var durationSec = progressDragState.previewDuration || getPlaybackDurationSeconds();

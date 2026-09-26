@@ -38,6 +38,23 @@
 
 `tests/apple-music-playback-context.test.js`：21 条**运行时**断言（不是源码字符串），覆盖：发布路径真的执行并到达画笔、底栏实时镜像与让位、统一访问器三态、专辑 id 严格/别名/重复条目/缓存、专辑 handler 注入 `catalogId`、专辑行点击分流（Apple→UIA，其余→内部）、Apple 行不再渲染内部控件。
 
+## 6. Step 4 — 底栏控制交还给拥有它的那个 session（2026-09-26）
+
+- `togglePlay(opts)`：外部会话拥有底栏时，底栏 ▶/⏸（以及空格、配置热键）→ `smtcControlCommand('toggle')`，**不再落到**
+  `playQueueAt()` / `attemptAudioPlay()` —— 那正是「Apple Music 在放时按下 ▶，MineRadio 的音频叠上去」的根因。
+  显式表达内部意图的调用方（首页"继续播放"）传 `{internal:true}`，不会被劫持。
+- 底栏播放键图标随 `smtcStore.isPlaying`：ticker 与状态推送两处驱动（不依赖 hover 控件是否存在）；让位时用内部 deck
+  状态重画，图标不会卡在外部那一侧。
+- 进度条：外部会话拥有时显示 **SMTC 自己的 position/duration**（而不是内部 `<audio>` 的时间轴）；`commitProgressSeek()`
+  直接返回并提示 —— SMTC 通道**没有 seek 命令**，拖动只会让两个播放器失步。
+- `externalLiveSong()` 现在带上 `durationMs / duration / positionMs`（上面两条让它成为事实而不是假承诺），
+  详情弹窗的「时长」不再是"未知"。
+- 已发布上下文（从 MineRadio 点过的 AM 结果）也能开专辑页：发布时把该结果的 `collectionId` 作为 `albumId` 显式带上；
+  E-A 6A/6b 对专辑端点的抑制按 2026-09-26 的决定取消（"绝不发明 id" 的规矩不变：不查/歧义就不开）。
+- 测试：**24** 条运行时断言，本轮新增 23（底栏播放键走 SMTC、internal 意图不被劫持）、24（图标随会话并在让位时复原）、
+  25（进度条显示会话时间轴、无时长不除零、拖动预览不生效）。
+
+
 ## 5. 刻意保留的边界（不是遗漏）
 
 - 实时身份**不带** `durationMs/positionMs`：底栏拖动仍驱动 MineRadio 自己的 `<audio>`，带上会承诺一个拖不动的进度。等 Step 4（底栏控制接 SMTC toggle）再解决。

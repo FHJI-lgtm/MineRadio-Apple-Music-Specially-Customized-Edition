@@ -212,13 +212,16 @@ test('13. publishAmcPlaybackContext RUNS and reaches the bar painter (a Referenc
   vm.runInContext(fnSrc + '\nthis.__publish = publishAmcPlaybackContext;', box);
   // publish case: the context is established AND the painter is reached with it
   box.__publish({ ok: true, verified: true, disagreement: false, artistLayer: 'exact' },
-    { title: 'Kiss Land', artist: 'Abel Tesfaye', artworkUrl: 'u', trackId: 1 }, false);
+    { title: 'Kiss Land', artist: 'Abel Tesfaye', artworkUrl: 'u', trackId: 1, collectionId: 1499378108 }, false);
   assert.equal(box.calls.length, 2, 'both setCurrentPlaybackContext and applyControlTrackInfo must run');
   assert.equal(box.calls[0][0], 'context');
   assert.equal(box.calls[0][1].name, 'Kiss Land');
   assert.equal(box.calls[0][1].artist, 'Abel Tesfaye');
   assert.equal(box.calls[0][1].provider, 'apple');
   assert.equal(box.calls[0][1].identitySource, 'amc');
+  // Step 4: the clicked result came from the public iTunes plane, so its collectionId IS a catalog album
+  // id - carried explicitly so the album page opens for a published context without any lookup.
+  assert.equal(box.calls[0][1].albumId, '1499378108');
   assert.equal(box.calls[1][0], 'paint');
   assert.equal(box.calls[1][1].name, 'Kiss Land', 'the painter must receive the context, not null');
   // three-state: an explicit contradiction must not publish at all
@@ -319,6 +322,103 @@ test('19. the comment section is omitted for Apple Music and kept for every othe
   assert.equal(box.__enabled({ provider: 'qq' }), true);
   assert.equal(box.__enabled({ provider: 'qishui' }), true);
   assert.equal(box.__enabled(null), true, 'unknown input keeps the previous behaviour');
+});
+
+test('23. the bar play button is the external session transport while it owns the bar', async () => {
+  const ctrl = read('public/js/modules/05-playback/14-player-controls.js');
+  const start = ctrl.indexOf('async function togglePlay(opts) {');
+  const end = ctrl.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'togglePlay must accept opts');
+  const fnSrc = ctrl.slice(start, end + 2);
+  const box = {
+    calls: [], playQueue: [{ name: 'Q' }], currentIdx: 0, audio: null, playToggleBusy: false,
+    smtcExternalOwnsUi: () => true,
+  };
+  box.smtcControlCommand = (cmd) => box.calls.push(['smtc', cmd]);
+  box.forcePlaybackControlsInteractive = () => box.calls.push(['force']);
+  box.playQueueAt = () => { box.calls.push(['internal-play']); return Promise.resolve(); };
+  box.attemptAudioPlay = () => { box.calls.push(['internal-attempt']); return Promise.resolve(); };
+  box.console = { warn: () => {} };
+  vm.createContext(box);
+  vm.runInContext(fnSrc + '\nthis.__toggle = togglePlay;', box);
+  await box.__toggle();
+  assert.deepEqual(box.calls, [['smtc', 'toggle']], 'an owning session means SMTC toggle and nothing internal');
+  assert.equal(box.playToggleBusy, false, 'the busy flag must not be taken by the external branch');
+  // an explicit internal intent (the home dashboard resume) is never diverted to Apple Music
+  box.calls.length = 0;
+  await box.__toggle({ internal: true });
+  assert.equal(box.calls.filter((c) => c[0] === 'smtc').length, 0);
+  assert.ok(box.calls.some((c) => c[0] === 'internal-play'), 'internal intent drives MineRadio own deck');
+  // no session owning the bar -> the plain internal path, exactly as before
+  box.calls.length = 0;
+  box.smtcExternalOwnsUi = () => false;
+  await box.__toggle();
+  assert.equal(box.calls.filter((c) => c[0] === 'smtc').length, 0);
+  assert.ok(box.calls.some((c) => c[0] === 'internal-play'));
+});
+
+test('24. the bar play icon follows the owning session and is restored when it yields', () => {
+  const uiSrc = read('public/js/modules/12-smtc/03-smtc-ui.js');
+  const start = uiSrc.indexOf('function smtcSyncBarPlayIcon() {');
+  const end = uiSrc.indexOf('function smtcControlCommand(cmd) {');
+  assert.ok(start >= 0 && end > start, 'smtcSyncBarPlayIcon must exist');
+  const box = { smtcStore: { isPlaying: true, active: true }, playing: false, icons: [] };
+  box.smtcExternalOwnsUi = () => true;
+  box.setPlayIcon = (p) => box.icons.push(p);
+  box.playing = true;
+  vm.createContext(box);
+  vm.runInContext(uiSrc.slice(start, end) + '\nthis.__sync = smtcSyncBarPlayIcon;', box);
+  assert.equal(box.__sync(), true);
+  assert.deepEqual(box.icons, [true], 'Apple Music playing -> the pause icon');
+  box.icons.length = 0;
+  box.smtcStore.isPlaying = false;
+  assert.equal(box.__sync(), true);
+  assert.deepEqual(box.icons, [false], 'Apple Music paused -> the play icon');
+  // yielding repaints from MineRadio own deck state, so the icon cannot stick on the external one
+  box.icons.length = 0;
+  box.smtcExternalOwnsUi = () => false;
+  box.playing = false;
+  assert.equal(box.__sync(), false);
+  assert.deepEqual(box.icons, [false]);
+  box.icons.length = 0;
+  box.playing = true;
+  box.__sync();
+  assert.deepEqual(box.icons, [true]);
+});
+
+test('25. the bar timeline shows the owning session position, not MineRadio own audio', () => {
+  const src = read('public/js/modules/06-lyrics/04-progress-seek.js');
+  // slice from setProgressVisual: updatePlaybackProgressUi delegates its painting to it
+  const start = src.indexOf('function setProgressVisual(percent) {');
+  const end = src.indexOf('function playbackTransitionHasAudibleNextDeck() {');
+  assert.ok(start >= 0 && end > start, 'setProgressVisual + updatePlaybackProgressUi must exist');
+  const els = { 'progress-fill': { style: {} }, 'progress-thumb': { style: {} }, 'time-display': { textContent: '' } };
+  const box = {
+    smtcStore: { durationMs: 240000, positionMs: 60000 },
+    progressDragState: { previewDuration: 0 },
+    audio: { duration: 999, currentTime: 999 },
+    document: { getElementById: (id) => els[id] || null },
+    clampRange: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+    formatProgramTime: (s) => { const t = Math.max(0, Math.round(Number(s) || 0)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); },
+    isProgressDragPreviewActive: () => false,
+    smtcExternalOwnsUi: () => true,
+  };
+  vm.createContext(box);
+  vm.runInContext(src.slice(start, end) + '\nthis.__update = updatePlaybackProgressUi;', box);
+  box.__update();
+  assert.equal(els['progress-fill'].style.width, '25%', '60s of 240s');
+  assert.equal(els['time-display'].textContent, '1:00 / 4:00');
+  // a session without a duration must not divide by zero or show a fake total
+  box.smtcStore.durationMs = 0;
+  box.__update();
+  assert.equal(els['progress-fill'].style.width, '0%');
+  assert.equal(els['time-display'].textContent, '1:00 / 0:00');
+  // hovering the external timeline never previews a scrub (the channel has no seek command)
+  box.smtcStore.durationMs = 240000;
+  box.isProgressDragPreviewActive = () => true;
+  box.progressDragState.previewDuration = 240;
+  box.__update();
+  assert.equal(els['progress-fill'].style.width, '25%', 'the external branch runs before any drag preview');
 });
 
 test('22. Apple detail rows/albums lose the MineRadio-only actions; other providers keep them', () => {
@@ -528,7 +628,7 @@ test('16. the unified accessor prefers the LIVE external session; the queue-only
   box.currentIdx = 0;
   box.smtcStore = {
     active: true, title: 'Out of Time', artist: 'Abel Tesfaye \u2014 Dawn FM', album: '',
-    thumbnail: 'data:image/png;base64,AAAA',
+    thumbnail: 'data:image/png;base64,AAAA', durationMs: 251000, positionMs: 12000,
   };
   box.internalAudioPlayingNow = () => false;
   box.smtcExternalOwnsUi = () => true;
@@ -538,6 +638,10 @@ test('16. the unified accessor prefers the LIVE external session; the queue-only
   assert.equal(live.album, 'Dawn FM');
   assert.equal(live.provider, 'apple');
   assert.equal(live.artworkUrl, 'data:image/png;base64,AAAA', 'the modal cover comes from the SMTC thumbnail');
+  // Step 4: the timeline is exported now that the bar shows it and the seek is disabled for sessions
+  assert.equal(live.durationMs, 251000);
+  assert.equal(live.duration, 251);
+  assert.equal(live.positionMs, 12000);
   assert.equal(box.currentLyricSong().name, 'Out of Time', 'the lyric accessor follows the same fact');
   // E-A invariant untouched: statistics / snapshot / like-sync keep the queue-only accessor
   assert.equal(box.currentQueueSong().name, 'Queue Song');

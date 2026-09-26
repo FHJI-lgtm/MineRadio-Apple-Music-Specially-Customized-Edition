@@ -312,6 +312,18 @@ function smtcUpdateControls() {
   }
 }
 
+// Step 4: the BAR's play button reflects the SESSION while it owns the bar (⏸ while Apple Music plays).
+// Only the icon is painted - `playing` and MineRadio's deck are never written. When the session yields, the
+// icon is repainted from the internal state so it cannot stick on the external one.
+function smtcSyncBarPlayIcon() {
+  if (smtcExternalOwnsUi()) {
+    if (typeof setPlayIcon === 'function') setPlayIcon(smtcStore.isPlaying === true);
+    return true;
+  }
+  if (typeof setPlayIcon === 'function') setPlayIcon(typeof playing !== 'undefined' && !!playing);
+  return false;
+}
+
 function smtcControlCommand(cmd) {
   var api = window.desktopWindow;
   if (!api || typeof api.smtcControl !== 'function') {
@@ -340,6 +352,7 @@ function smtcRenderChip() {
   if (!chip) return;
   smtcUpdateCover();    // Phase 4A: 封面随 ticker 同步 (事件即时 + 此处兜底)
   smtcUpdateControls(); // Phase 4B: 控制按钮状态/图标随 ticker 同步 (事件即时 + 此处兜底)
+  smtcSyncBarPlayIcon(); // Step 4: 底栏播放键图标 = 拥有底栏的那个 session 的状态 (不依赖 hover 控件是否存在)
   smtcRenderHoverPanelInfo(); // UI 重构: hover 面板歌名/歌手/歌词源随 ticker 同步
   var text = smtcChipText();
   if (text === smtcPlayerCfg.lastChipText) return;

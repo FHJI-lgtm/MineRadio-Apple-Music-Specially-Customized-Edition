@@ -1438,6 +1438,10 @@ function publishAmcPlaybackContext(res, model, amcContextContradicted) {
       name: String(model.title || model.trackName || model.name || ''),
       artist: String(model.artistName || model.artist || ''),
       album: String(model.collectionName || model.album || ''),
+      // The clicked result came from the public iTunes plane, so its collectionId IS a catalog album id -
+      // carried explicitly (never derived from another id form) so the album page can open for a published
+      // context without any lookup at all.
+      albumId: model.collectionId != null ? String(model.collectionId) : '',
       artworkUrl: String(model.artworkUrl || model.cover || ''),
       durationMs: Number(model.trackTimeMillis || model.durationMs) || 0,
       external: true,

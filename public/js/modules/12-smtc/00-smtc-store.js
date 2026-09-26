@@ -304,6 +304,8 @@ function smtcApplyBridgeState(state) {
   // Step 3: hand the bar the LIVE identity (no-op unless an external session owns it and the identity
   // actually changed). Queued before the generic state callback so listeners see the same title.
   try { if (typeof smtcMirrorControlBarIdentity === 'function') smtcMirrorControlBarIdentity(); } catch (_) { }
+  try { if (typeof smtcMirrorControlBarIdentity === 'function') smtcMirrorControlBarIdentity(); } catch (_) { }
+  try { if (typeof smtcSyncBarPlayIcon === 'function') smtcSyncBarPlayIcon(); } catch (_) { }
   if (typeof onSmtcStateChanged === 'function') {
     onSmtcStateChanged(prevActive, prevPlaying);
   }

@@ -536,7 +536,18 @@ async function playAudio(opts) {
   opts = opts || {};
   return attemptAudioPlay({ manual: !!opts.manual, silent: !!opts.silent || !!opts.startupAutoplay || !!opts.trackSwitch, startupAutoplay: !!opts.startupAutoplay, fade: opts.fade, preserveGain: !!opts.preserveGain, trackSwitch: !!opts.trackSwitch, resumeRecovery: !!opts.resumeRecovery, expectedMedia: opts.expectedMedia || audio, expectedToken: opts.expectedToken == null ? trackSwitchToken : opts.expectedToken });
 }
-async function togglePlay() {
+async function togglePlay(opts) {
+  opts = opts || {};
+  // Step 4: while an external Apple Music session owns the bar, this button IS that session's transport.
+  // Falling through would call playQueueAt()/attemptAudioPlay() and start MineRadio's own audio UNDER Apple
+  // Music - the shipped double-audio foot-gun. Nothing is written locally: the icon/state come back from
+  // SMTC (PlaybackInfoChanged -> smtcStore.isPlaying -> smtcSyncBarPlayIcon).
+  // Callers whose intent is explicitly MineRadio's own deck (the home dashboard's resume) pass {internal:true}.
+  if (!opts.internal && typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()
+      && typeof smtcControlCommand === 'function') {
+    smtcControlCommand('toggle');
+    return;
+  }
   if (playToggleBusy) return;
   playToggleBusy = true;
   try {
