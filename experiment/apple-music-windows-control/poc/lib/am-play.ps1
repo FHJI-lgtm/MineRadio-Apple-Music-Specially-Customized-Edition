@@ -123,6 +123,11 @@ function Invoke-AmPlaySong {
           $contentTitle = $false; $contentArtist = $false; $contentMatchMs = -1
           $pick = $null; $items = @()
           $normTitle = Normalize-AmText $Title
+          # Materialize budget for long album/playlist pages (see below).
+          $materializeSteps = 0
+          $maxMaterializeSteps = 8
+          $materializeIntervalMs = 1000
+          $nextMaterializeMs = $materializeIntervalMs
           do {
             Start-Sleep -Milliseconds 300
             $items = Get-AmListItems $root
@@ -158,6 +163,17 @@ function Invoke-AmPlaySong {
             $pick = Select-AmCandidateWithGeometry $items $Title $Artist
             $a.listMs = [int]$tPage.ElapsedMilliseconds
             if ($pick.ok -and $pick.hadGeometry) { break }
+            # Materialize step: on a long album or playlist page the target row can sit below the
+            # viewport and therefore not exist in the UIA tree at all (virtualized list), in which
+            # case no amount of waiting can ever find it.  Advance the list with the chain own wheel
+            # scroll (Scroll-AmView, already part of this chain) in a bounded number of downward
+            # steps and re-scan each iteration.  Never scrolls upward, never extends the 12s cap.
+            if ($hwnd -and $hwnd -ne [IntPtr]::Zero -and $materializeSteps -lt $maxMaterializeSteps -and $tPage.ElapsedMilliseconds -ge $nextMaterializeMs) {
+              Scroll-AmView $hwnd -1 3
+              $materializeSteps++
+              try { $a.materializeSteps = $materializeSteps } catch { }
+              $nextMaterializeMs = [int]$tPage.ElapsedMilliseconds + $materializeIntervalMs
+            }
           } while ($tPage.ElapsedMilliseconds -lt $PageWaitMs)
           $a.settleMs = [int]$tPage.ElapsedMilliseconds
           $result.navigated = $navigated
