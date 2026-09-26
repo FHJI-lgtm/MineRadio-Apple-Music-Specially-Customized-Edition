@@ -1283,7 +1283,7 @@ function openProviderWebLogin() {
   if (loginProvider === 'kugou') return openKugouWebLogin();
   if (loginProvider === 'qishui') return openQishuiWebLogin();
   if (loginProvider === 'spotify') return openSpotifyWebLogin();
-  if (loginProvider === 'apple') return openAppleWebLogin();
+  if (loginProvider === 'apple') return openAmcAppleWebLogin();
   return openNeteaseWebLogin();
 }
 async function openSpotifyWebLogin() {
