@@ -470,7 +470,11 @@ function openTrackDetailModal(type, songOverride) {
   var seq = ++trackDetailSeq;
   detailCommentSong = song;
   if (type === 'album') {
-    var albumUrl = albumDetailUrlForSong(song);
+    // E-A step 6A/6b: when an external Apple Music single-play context owns the UI, the album page shows
+    // AMC-known data only: the album endpoint is deliberately NOT called and no album id is derived here.
+    // (The empty-URL path already renders the app empty state and guards the fetch, see the album branch below.)
+    var amcExternalContext = !!(typeof currentPlaybackContext === 'object' && currentPlaybackContext && currentPlaybackContext.identitySource === 'amc');
+    var albumUrl = amcExternalContext ? '' : albumDetailUrlForSong(song);
     var albumTitle = song.album || (song.type === 'podcast' ? (song.radioName || 'Podcast') : '未知专辑');
     var albumKey = currentAlbumKey(song);
     detailAlbumGaplessUserTouched = false;
