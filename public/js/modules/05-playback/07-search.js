@@ -1325,12 +1325,8 @@ function ensureAmcSearchSectionStyle() {
   st.textContent = '.search-amc-section{margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.18)}'
     + '.search-amc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-weight:600;margin:4px 0 8px;opacity:.9}'
     + '.search-amc-head>span:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
-    + '.search-amc-login{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:400;opacity:.85;flex:0 0 auto;position:relative;z-index:2;pointer-events:auto}'
-    + '.search-amc-login-err{flex:1 1 100%;color:#FF9E9E;font-size:12px;line-height:1.45;white-space:normal;word-break:break-word}'
     + '.search-amc-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.35);display:inline-block}'
     + '.search-amc-dot.on{background:#7CFFB2}'
-    + '.search-amc-login-btn{margin-left:4px;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:inherit;font-size:12px;cursor:pointer}'
-    + '.search-amc-login-btn:hover{background:rgba(255,255,255,.16)}'
     + '.search-amc-head i{font-style:normal;opacity:.6;font-weight:400;margin-left:6px;font-size:12px}'
     + '.search-amc-item{display:flex;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}'
     + '.search-amc-cover{width:44px;height:44px;border-radius:6px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.08)}'
@@ -1369,12 +1365,10 @@ function renderAmcSearchSection(results) {
   ensureAmcSearchSectionStyle();
   amcCurrentResults = results;
   ensureAmcResultClickHandler();
-  var html = '<div class="search-amc-section"><div class="search-amc-head"><span>Apple Music App<i>iTunes Search API</i></span><span class="search-amc-login" id="search-amc-login"></span></div>';
+  var html = '<div class="search-amc-section"><div class="search-amc-head"><span>Apple Music App<i>iTunes Search API</i></span></div>';
   for (var i = 0; i < results.length; i++) html += amcResultRowHtml(results[i], i);
   html += '</div>';
   $results.insertAdjacentHTML('beforeend', html);
-  renderAmcLoginIndicator();
-  refreshAmcLoginStatus();
   if (window.gsap) animateListItems($results, '.search-amc-item', { x: 0, y: 6, stagger: 0.012, duration: 0.18, limit: 12 });
   return true;
 }
@@ -1501,14 +1495,12 @@ async function refreshAmcLoginStatus() {
     amcLoginState.loggedIn = false;
   }
   amcLoginState.ready = true;
-  renderAmcLoginIndicator();
 }
 async function amcLoginClick() {
   if (amcLoginState.busy) return;
   var api = amcLoginBridge();
   if (!api || typeof api.openLogin !== 'function') {
     amcLoginState.lastError = 'mineradio.amc.openLogin 桥不可用';
-    renderAmcLoginIndicator();
     return;
   }
   amcLoginState.busy = true;
@@ -1522,7 +1514,6 @@ async function amcLoginClick() {
     if (res && res.ok === false) {
       console.warn('amc login window reported:', res.error || '', res.message || '');
       amcLoginState.lastError = String(res.message || res.error || '登录未完成');
-      renderAmcLoginIndicator();
     }
   } catch (err) {
     console.warn('amc login window failed:', err);
@@ -1535,7 +1526,6 @@ if (!window.__amcLoginFocusBound) {
   window.__amcLoginFocusBound = true;
   window.addEventListener('focus', function () {
     amcLoginState.busy = false;
-    refreshAmcLoginStatus();
   });
 }async function appendAmcSearchSection(q, requestSeq) {
   if (!q || !amcSearchAvailable()) return;

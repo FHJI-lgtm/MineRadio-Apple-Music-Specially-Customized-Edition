@@ -3433,6 +3433,8 @@ async function clearAppleMusicLoginSession() {
     storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage'],
   });
   clearAppleToken();
+  // Also clear the Apple Music WEB credential (media-user-token), so a web logout survives a restart.
+  try { if (typeof appleMusicLyricsCredentialStore !== 'undefined' && appleMusicLyricsCredentialStore) appleMusicLyricsCredentialStore.clear(); } catch (_) { }
   return { ok: true, provider: 'apple' };
 }
 

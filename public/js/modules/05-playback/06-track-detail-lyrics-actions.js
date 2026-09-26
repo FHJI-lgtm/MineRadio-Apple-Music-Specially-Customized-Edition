@@ -1234,8 +1234,8 @@ var SONG_ACCOUNT_ACTION_ADAPTERS = {
   apple: {
     provider: 'apple',
     label: 'Apple Music',
-    like: true,
-    collect: true,
+    like: false,   // Apple writes are disabled in this phase (Developer-authenticated POST)
+    collect: false,   // Apple writes are disabled in this phase
     createPlaylist: false,
     likeCheckUrl: '/api/apple/song/like/check',
     likeCheckParam: 'ids',
