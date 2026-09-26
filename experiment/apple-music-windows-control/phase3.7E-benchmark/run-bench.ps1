@@ -176,22 +176,32 @@ foreach ($c in $todo) {
   Stop-AmBenchObserver $obs $samples
   $rows = Read-AmBenchSamples $samples
 
-  # ---- derive T3 (only samples at/after T0) and T6 (only samples at/after T3) ----
+  # ---- derive T3, then T6 (rev 3: no "two stable samples" requirement) --------
+  # rev 3 rationale: requiring two consecutive samples with a settled cursor turned an
+  # observer sampling condition into an experiment success condition; at ~80 ms real
+  # resolution the frozen chain's move-and-double-click can leave only ONE sample away
+  # from the original cursor.  T6 is therefore the LAST observed sample before the SMTC
+  # hit whose cursor differs from the original.  Rules kept: T6 must be >= T3, and if no
+  # cursor change is ever observed the field stays null.  Nothing is extrapolated.
   $base = $t0.Ticks
   $rel = { param($ticks) [int]((($ticks - $base) / 10000)) }
   $t3 = $null
   foreach ($s in $rows) { if ((& $rel $s.ticks) -ge 0 -and $s.amIsForeground) { $t3 = $s; break } }
   $t3ms = $null; if ($t3) { $t3ms = & $rel $t3.ticks }
-  $t6 = $null
-  if ($t3) {
-    $prev = $null
-    foreach ($s in $rows) {
-      $st = & $rel $s.ticks
-      if ($st -lt $t3ms) { $prev = $s; continue }
-      if ($prev -ne $null -and $prev.x -eq $s.x -and $prev.y -eq $s.y -and ($s.x -ne $env0.cursorX -or $s.y -ne $env0.cursorY)) { $t6 = $prev; break }
-      $prev = $s
-    }
+  $hitTicks = $null
+  foreach ($s in $rows) {
+    if ($s.smtc -like ('*' + $c.title + '*Playing*')) { $hitTicks = $s.ticks; break }
   }
+  $t6 = $null
+  $cursorChangeSeen = $false
+  foreach ($s in $rows) {
+    $st = & $rel $s.ticks
+    if ($st -lt 0) { continue }
+    if ($t3ms -ne $null -and $st -lt $t3ms) { continue }
+    if ($hitTicks -ne $null -and $s.ticks -ge $hitTicks) { break }
+    if ($s.x -ne $env0.cursorX -or $s.y -ne $env0.cursorY) { $t6 = $s; $cursorChangeSeen = $true }
+  }
+  if (-not $cursorChangeSeen) { $t6 = $null }
   $t6ms = $null; if ($t6) { $t6ms = & $rel $t6.ticks }
   if ($t6ms -ne $null -and $t3ms -ne $null -and $t6ms -le $t3ms) { $t6ms = $null }
   $smtcHit = $null
