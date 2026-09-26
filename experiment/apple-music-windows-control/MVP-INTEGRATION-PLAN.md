@@ -208,3 +208,18 @@ Apple Music 全程保持 Paused（无任何播放副作用）。
 **长绕路的根因（存档）**：`node_modules\electron\dist\*` 是 OneDrive 按需占位符（`Archive, ReparsePoint`），
 app 模式无法加载运行时，在任何 JS 之前以 `0x80000003 STATUS_BREAKPOINT` 静默死亡；Node 模式仍可运行，
 于是出现"一种情况看到 shim 报错、另一种情况什么都没有"。项目已水合并迁移至 `F:\mineradio-apple-music`。
+
+## 15. 旧 apple provider 移除：运行时 UI 已验证（2026-09-26 12:17，commit 6ab8c5f）
+
+截图取自 F: 上运行的 app：
+
+| 检查项 | 实测 |
+|---|---|
+| 搜索模式标签 | `All` `NE` `QQ` `KG` `QS` `SP` `Podcast` —— **`AM` 标签消失** |
+| provider 顺序 | 其余五个未变 |
+| amc 通道 | 左下角 `AM App 搜索` 仍存在 |
+| app 启动 | 正常 |
+
+未覆盖：逐 provider 的实际搜索请求（本次未输入查询）；`amc:playTrack` 的 IPC 跳（面板按设计无播放按钮）。
+
+最终架构：5 个原生 provider（netease/qq/kugou/qishui/spotify）+ 独立 `amc` 通道（iTunes Search API → Apple Music Windows → SMTC → `verifyAgainstSmtc`）。
