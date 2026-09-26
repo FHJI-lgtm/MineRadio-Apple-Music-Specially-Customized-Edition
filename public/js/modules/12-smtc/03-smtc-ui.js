@@ -272,19 +272,48 @@ function smtcEnsureControls() {
 // (12-smtc/01-smtc-lyric-loader.js) and the hover panel already read.
 // This only PAINTS: it never touches playQueue / currentIdx / playing / the published context.
 var smtcBarMirrorKey = '';
-// ONE predicate for "an external session owns the UI": SMTC active AND MineRadio's deck silent. The bar
-// suppression and the unified accessor (externalLiveSong) both hang off it, so they cannot disagree.
+// The MineRadio selection that was current when the Apple Music session took the bar (see below).
+var smtcBarLatchKey = '';
+// ONE predicate for "an external session owns the UI": SMTC active, MineRadio's deck silent, AND the user's
+// current intent is not a MineRadio source. The bar suppression, the unified accessor (externalLiveSong), the
+// bar's transport (togglePlay / prevTrack / nextTrack), the play icon and the timeline all hang off it.
+//
+// The intent rule (2026-09-26): if what the user has loaded in MineRadio is QQ / 网易 / 酷狗 / local / a
+// podcast, MineRadio's original logic keeps the bar - an Apple Music session merely sitting there must not
+// steal a song the user chose here. The session takes the bar when it actually PLAYS (that is the user's
+// "play in Apple Music" decision), and the latch below keeps that decision stable so pausing Apple Music
+// does not snap the bar back mid-session. Selecting another MineRadio song releases the latch.
 function smtcExternalOwnsUi() {
-  if (typeof smtcStore !== 'object' || !smtcStore || smtcStore.active !== true) return false;
-  if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow()) return false;
-  return true;
+  if (typeof smtcStore !== 'object' || !smtcStore || smtcStore.active !== true) { smtcBarLatchKey = ''; return false; }
+  if (typeof internalAudioPlayingNow === 'function' && internalAudioPlayingNow()) { smtcBarLatchKey = ''; return false; }
+  // A published context IS an Apple play started from MineRadio itself - nothing to defend here.
+  if (typeof currentPlaybackContext === 'object' && currentPlaybackContext) { smtcBarLatchKey = ''; return true; }
+  if (typeof currentQueueSong !== 'function') return true;
+  var song = currentQueueSong();
+  var provider = (song && typeof songProviderKey === 'function') ? songProviderKey(song) : '';
+  var key = song ? [provider, song.id != null ? song.id : '', song.name || '', song.artist || ''].join('|') : '';
+  // nothing loaded, or an Apple track loaded -> the session owns the bar
+  if (!song || provider === 'apple') { smtcBarLatchKey = key; return true; }
+  if (smtcBarLatchKey === key) return true;        // same selection as when the session took the bar
+  if (smtcStore.isPlaying === true) { smtcBarLatchKey = key; return true; }   // Apple Music is playing
+  return false;
 }
 function smtcMirrorControlBarIdentity() {
   // The identity is built ONCE, in externalLiveSong() (05-playback/06-track-detail-lyrics-actions.js):
   // title, the artist/album split of SMTC's "Artist <em dash> Album", artwork and provider all come from
   // there, so the bar and the unified accessor can never show two different artists.
   var live = (typeof externalLiveSong === 'function') ? externalLiveSong() : null;
-  if (!live) { smtcBarMirrorKey = ''; return false; }
+  if (!live) {
+    // Just yielded (the user chose a MineRadio source): repaint the bar from the queue NOW, otherwise it
+    // would keep showing the Apple Music track until some unrelated queue render happens.
+    if (smtcBarMirrorKey) {
+      smtcBarMirrorKey = '';
+      if (typeof applyControlTrackInfo === 'function' && typeof currentQueueSong === 'function') {
+        try { applyControlTrackInfo(currentQueueSong()); } catch (_) { }
+      }
+    }
+    return false;
+  }
   var key = live.name + '|' + live.artist;
   // identity unchanged -> do not repaint: the painter rebuilds the badge innerHTML (and its source
   // switcher), and the SMTC bridge pushes position updates far more often than identity changes.

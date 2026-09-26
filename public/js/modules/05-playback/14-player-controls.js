@@ -637,6 +637,13 @@ function reorderQueueForShufflePlaybackOrder(startIdx, opts) {
   return currentIdx;
 }
 function nextTrack(userInitiated) {
+  // Step 4 (transport): a USER click on the bar's next button is the owning session's next. The internal
+  // auto-advance calls nextTrack(false) and must never be diverted to Apple Music.
+  if (userInitiated && typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()
+      && typeof smtcControlCommand === 'function') {
+    smtcControlCommand('next');
+    return;
+  }
   if (!playQueue.length) return;
   playToggleBusy = false;
   forcePlaybackControlsInteractive();
@@ -661,6 +668,12 @@ function nextTrack(userInitiated) {
   Promise.resolve(playQueueAt(currentIdx, opts)).finally(forcePlaybackControlsInteractive);
 }
 function prevTrack(userInitiated) {
+  // Step 4 (transport): same rule as nextTrack - only a user action can be handed to the session.
+  if (userInitiated && typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()
+      && typeof smtcControlCommand === 'function') {
+    smtcControlCommand('previous');
+    return;
+  }
   if (!playQueue.length) return;
   playToggleBusy = false;
   forcePlaybackControlsInteractive();

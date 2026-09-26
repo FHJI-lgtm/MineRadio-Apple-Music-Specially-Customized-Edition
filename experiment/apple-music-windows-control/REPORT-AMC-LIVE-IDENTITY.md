@@ -55,6 +55,24 @@
   25（进度条显示会话时间轴、无时长不除零、拖动预览不生效）。
 
 
+## 7. Step 4 续 —— 上一首/下一首 + 「谁在拥有底栏」的意图判定（2026-09-26）
+
+- `prevTrack(userInitiated)` / `nextTrack(userInitiated)`：**用户**点底栏 ⏮/⏭（或方向键/热键）时，若外部会话拥有底栏 →
+  `smtcControlCommand('previous'|'next')`；内部自动切歌调用的是 `nextTrack(false)`，**永远不会**被转给 Apple Music。
+- `smtcExternalOwnsUi()` 现在回答的是**意图**问题（原先只看「SMTC active 且内部静音」）：
+
+  1. 内部在响 → MineRadio 拥有；
+  2. 有已发布上下文（= 从 MineRadio 发起的 AM 播放）→ session 拥有；
+  3. MineRadio 里当前加载的是 **QQ / 网易 / 酷狗 / 本地 / 播客** → **MineRadio 原逻辑拥有底栏**（一个只是待命的 AM 会话
+     不该抢走用户在这里选的歌）；
+  4. 用户**真的播放了 AM**（`smtcStore.isPlaying === true`）→ session 接管，并用 latch 记住「接管时 MineRadio 选的是哪首」；
+     之后**暂停 AM 不会把底栏弹回去**（避免闪烁），直到用户在 MineRadio 里换了另一首歌才交还；
+  5. MineRadio 里加载的本身就是 Apple 曲目 / 什么都没加载 → session 拥有。
+
+- 让位时立刻用队列重画笔（不再等某个无关的队列渲染事件），底栏不会残留 AM 那一首。
+- 测试：**26** 条运行时断言，本轮新增 26（⏮/⏭ 分流 + 内部自动切歌豁免）、27（意图判定与 latch 的七种状态）。
+
+
 ## 5. 刻意保留的边界（不是遗漏）
 
 - 实时身份**不带** `durationMs/positionMs`：底栏拖动仍驱动 MineRadio 自己的 `<audio>`，带上会承诺一个拖不动的进度。等 Step 4（底栏控制接 SMTC toggle）再解决。

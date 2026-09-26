@@ -324,6 +324,94 @@ test('19. the comment section is omitted for Apple Music and kept for every othe
   assert.equal(box.__enabled(null), true, 'unknown input keeps the previous behaviour');
 });
 
+test('26. the bar prev/next follow the session; the internal auto-advance never does', () => {
+  const ctrl = read('public/js/modules/05-playback/14-player-controls.js');
+  const nStart = ctrl.indexOf('function nextTrack(userInitiated) {');
+  const nEnd = ctrl.indexOf('\n}', nStart);
+  const pStart = ctrl.indexOf('function prevTrack(userInitiated) {');
+  const pEnd = ctrl.indexOf('\n}', pStart);
+  assert.ok(nStart >= 0 && nEnd > nStart && pStart >= 0 && pEnd > pStart, 'nextTrack/prevTrack must exist');
+  const box = {
+    calls: [], playQueue: [{ name: 'A' }, { name: 'B' }], currentIdx: 0, playMode: 'normal',
+    queueHydrationState: null, playToggleBusy: false,
+    smtcExternalOwnsUi: () => true,
+  };
+  box.smtcControlCommand = (cmd) => box.calls.push(['smtc', cmd]);
+  box.forcePlaybackControlsInteractive = () => {};
+  box.playQueueAt = (i) => { box.calls.push(['internal', i]); return Promise.resolve(); };
+  box.showToast = () => {};
+  box.console = { warn: () => {} };
+  vm.createContext(box);
+  vm.runInContext(ctrl.slice(nStart, nEnd + 2) + '\n' + ctrl.slice(pStart, pEnd + 2) + '\nthis.__next = nextTrack; this.__prev = prevTrack;', box);
+  box.__next(true);
+  box.__prev(true);
+  assert.deepEqual(box.calls, [['smtc', 'next'], ['smtc', 'previous']]);
+  assert.equal(box.currentIdx, 0, 'a session-owned bar never moves MineRadio own queue');
+  // the internal auto-advance (userInitiated === false) is never diverted to Apple Music
+  box.calls.length = 0;
+  box.__next(false);
+  assert.equal(box.calls.filter((c) => c[0] === 'smtc').length, 0);
+  assert.equal(box.calls.filter((c) => c[0] === 'internal').length, 1);
+  assert.equal(box.currentIdx, 1);
+  // no session owning the bar -> a user click is the internal path again
+  box.smtcExternalOwnsUi = () => false;
+  box.calls.length = 0;
+  box.__prev(true);
+  assert.equal(box.calls.filter((c) => c[0] === 'smtc').length, 0);
+  assert.equal(box.calls.filter((c) => c[0] === 'internal').length, 1);
+});
+
+test('27. a MineRadio source keeps the bar until the user actually plays Apple Music', () => {
+  const uiSrc = read('public/js/modules/12-smtc/03-smtc-ui.js');
+  const start = uiSrc.indexOf('function smtcExternalOwnsUi() {');
+  const end = uiSrc.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'smtcExternalOwnsUi must exist');
+  const box = {
+    smtcBarLatchKey: '',
+    smtcStore: { active: true, isPlaying: false },
+    internalAudioPlayingNow: () => false,
+    currentPlaybackContext: null,
+    queueSong: { provider: 'netease', id: 7, name: 'N', artist: 'A' },
+    songProviderKey: (song) => (song && (song.provider || song.source)) || 'netease',
+  };
+  box.currentQueueSong = () => box.queueSong;
+  vm.createContext(box);
+  vm.runInContext(uiSrc.slice(start, end + 2) + '\nthis.__owns = smtcExternalOwnsUi;', box);
+  // QQ/网易/酷狗 loaded in MineRadio and Apple Music merely sitting there -> MineRadio keeps the bar
+  assert.equal(box.__owns(), false);
+  // the user PLAYS Apple Music -> the session takes the bar ...
+  box.smtcStore.isPlaying = true;
+  assert.equal(box.__owns(), true);
+  // ... and keeps it when Apple Music is paused again (no snap-back mid-session)
+  box.smtcStore.isPlaying = false;
+  assert.equal(box.__owns(), true);
+  // the user picks another MineRadio song -> MineRadio's own logic is back
+  box.queueSong = { provider: 'qq', id: 9, name: 'Q', artist: 'B' };
+  assert.equal(box.__owns(), false);
+  // Apple Music playing again re-takes it
+  box.smtcStore.isPlaying = true;
+  assert.equal(box.__owns(), true);
+  box.smtcStore.isPlaying = false;
+  // an Apple track loaded in MineRadio is never 'defended'
+  box.queueSong = { provider: 'apple', id: '1', name: 'A' };
+  assert.equal(box.__owns(), true);
+  // nothing loaded at all -> the session owns the bar
+  box.queueSong = null;
+  assert.equal(box.__owns(), true);
+  // a published context is an Apple play started from MineRadio -> always wins
+  box.queueSong = { provider: 'netease', id: 7, name: 'N', artist: 'A' };
+  box.currentPlaybackContext = { provider: 'apple' };
+  assert.equal(box.__owns(), true);
+  // the internal deck sounding always keeps the bar
+  box.currentPlaybackContext = null;
+  box.internalAudioPlayingNow = () => true;
+  assert.equal(box.__owns(), false);
+  // no session at all -> never
+  box.internalAudioPlayingNow = () => false;
+  box.smtcStore.active = false;
+  assert.equal(box.__owns(), false);
+});
+
 test('23. the bar play button is the external session transport while it owns the bar', async () => {
   const ctrl = read('public/js/modules/05-playback/14-player-controls.js');
   const start = ctrl.indexOf('async function togglePlay(opts) {');
