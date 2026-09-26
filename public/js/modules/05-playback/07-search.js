@@ -1415,25 +1415,7 @@ function amcVerdictText(res) {
   if (v.artistObserved) bits.push('SMTC 实际艺人：' + v.artistObserved + (v.artistObservedAlbum ? ' — ' + v.artistObservedAlbum : ''));
   return bits.join(' · ');
 }
-async function amcPlayRow(rowEl, model) {
-  if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) {
-    setAmcRowStatus(rowEl, '播放通道不可用（window.mineradio.amc.playTrack 不存在）', 'err');
-    return;
-  }
-  if (amcPlayBusy) { setAmcRowStatus(rowEl, '上一次播放仍在等待 SMTC 判定…（返回后可再次点击）', 'busy'); return; }
-  amcPlayBusy = true;
-  setAmcRowStatus(rowEl, '正在播放并等待 SMTC 判定…', 'busy');
-  amcPlayWatchdog = setTimeout(function () {
-    setAmcRowStatus(rowEl, '仍在等待 SMTC 判定…若 Apple Music 里目标歌曲尚未出现在可视区域，请先滚动到它（此等待不计失败）', 'busy');
-  }, 20000);
-  try {
-    var res = await window.mineradio.amc.playTrack({ result: model });
-    console.log('[amc] playTrack result', res);
-  // E-A step 4: THE single publish point for the external single-play context.
-  // Three-state rule: publish only when the chain navigated (ok) AND SMTC produced no explicit
-  // contradiction. artistLayer is evidence only - it never gates the publish and never upgrades to
-  // verified. The UI context changes here and nothing touches playQueue / currentIdx.
-  var amcContextContradicted = !!(res && res.disagreement === true && res.verified === false);
+function publishAmcPlaybackContext(res, model) {
   if (res && res.ok === true && !amcContextContradicted && model) {
     var amcCatalogId = model.trackId != null ? String(model.trackId) : (model.catalogId != null ? String(model.catalogId) : null);
     setCurrentPlaybackContext({
@@ -1468,6 +1450,47 @@ async function amcPlayRow(rowEl, model) {
     // step 6 (partial): repaint the player bar through its single writer, not by writing DOM by hand.
     try { if (typeof updateControlTrackInfo === 'function') updateControlTrackInfo(currentPlaybackContext); } catch (_) { }
   }
+  // E-A F4: drop the previous internal track's cover background - stale visual state must never stand in
+  // for the Apple Music track that is now the current context.
+  try { if (typeof setAlbumBackground === 'function') setAlbumBackground(''); } catch (_) { }
+}
+// E-A F6: hand a canonical Apple playlist track to Apple Music and publish it through the SAME path.
+// Identity rule: provider === 'apple' AND an explicit catalogId only - nothing is derived from any id form.
+async function playAmcTrackFromSong(song) {
+  if (!(song && song.provider === 'apple' && song.catalogId)) return false;
+  if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) return false;
+  var amModel = {
+    trackName: String(song.name || ''),
+    artistName: String(song.artist || ''),
+    collectionName: String(song.albumName || song.album || ''),
+    artworkUrl: String(song.cover || ''),
+    trackId: String(song.catalogId),
+  };
+  var res = await window.mineradio.amc.playTrack({ result: amModel });
+  console.log('[amc] playlist track playTrack result', res);
+  publishAmcPlaybackContext(res, amModel);
+  return true;
+}
+async function amcPlayRow(rowEl, model) {
+  if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) {
+    setAmcRowStatus(rowEl, '播放通道不可用（window.mineradio.amc.playTrack 不存在）', 'err');
+    return;
+  }
+  if (amcPlayBusy) { setAmcRowStatus(rowEl, '上一次播放仍在等待 SMTC 判定…（返回后可再次点击）', 'busy'); return; }
+  amcPlayBusy = true;
+  setAmcRowStatus(rowEl, '正在播放并等待 SMTC 判定…', 'busy');
+  amcPlayWatchdog = setTimeout(function () {
+    setAmcRowStatus(rowEl, '仍在等待 SMTC 判定…若 Apple Music 里目标歌曲尚未出现在可视区域，请先滚动到它（此等待不计失败）', 'busy');
+  }, 20000);
+  try {
+    var res = await window.mineradio.amc.playTrack({ result: model });
+    console.log('[amc] playTrack result', res);
+  // E-A step 4: THE single publish point for the external single-play context.
+  // Three-state rule: publish only when the chain navigated (ok) AND SMTC produced no explicit
+  // contradiction. artistLayer is evidence only - it never gates the publish and never upgrades to
+  // verified. The UI context changes here and nothing touches playQueue / currentIdx.
+  var amcContextContradicted = !!(res && res.disagreement === true && res.verified === false);
+  publishAmcPlaybackContext(res, model);
     setAmcRowStatus(rowEl, amcVerdictText(res), res && res.verified === true ? 'ok' : 'err');
   } catch (err) {
     console.warn('amc playTrack failed:', err);

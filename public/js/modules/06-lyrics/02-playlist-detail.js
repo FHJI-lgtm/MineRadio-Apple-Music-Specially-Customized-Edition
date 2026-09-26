@@ -495,6 +495,14 @@ async function togglePlaylistPanelCollection(collected) {
 function playPlaylistPanelDetailTrack(index) {
   var tracks = playlistPanelDetailState.tracks || [];
   if (!tracks[index]) return;
+  // E-A F6: an Apple Music track from a Web playlist is played BY Apple Music, through the identical
+  // identity rule as the search path: provider 'apple' AND an explicit catalogId. Anything else (including
+  // an apple row without a catalogId) keeps the original internal-queue behaviour below.
+  var panelSong = tracks[index];
+  if (panelSong && panelSong.provider === 'apple' && panelSong.catalogId && typeof playAmcTrackFromSong === 'function') {
+    playAmcTrackFromSong(panelSong);
+    return;
+  }
   var parts = playlistPanelDetailState.key.split(':');
   var provider = normalizePlaylistProvider(parts[0]);
   var pid = parts.slice(1).join(':');

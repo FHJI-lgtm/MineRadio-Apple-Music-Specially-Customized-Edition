@@ -160,7 +160,16 @@ async function handleApplePlaylistTracksWeb(playlistId, opts) {
     return Object.assign({ provider: 'apple', playlistId: id, tracks: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false }, detail);
   }
   const items = Array.isArray(json.data) ? json.data : [];
-  const tracks = items.map((item, index) => mapAppleTrack(item, startOffset + index, id, { storefront })).filter(Boolean);
+  // F6: carry the EXPLICIT catalog identity from attributes.playParams.catalogId onto each mapped track, so
+  // the renderer can hand this track to Apple Music without ever decoding the `a.<...>` id form. No inference.
+  const tracks = items.map((item, index) => {
+    const mapped = mapAppleTrack(item, startOffset + index, id, { storefront });
+    if (mapped) {
+      const pp = (item && item.attributes && item.attributes.playParams) || {};
+      if (pp.catalogId !== undefined && pp.catalogId !== null && String(pp.catalogId) !== '') mapped.catalogId = String(pp.catalogId);
+    }
+    return mapped;
+  }).filter(Boolean);
   const total = Math.max(tracks.length + startOffset, Number(json.meta && json.meta.total) || (tracks.length + startOffset));
   const nextOffset = startOffset + tracks.length;
   return {
