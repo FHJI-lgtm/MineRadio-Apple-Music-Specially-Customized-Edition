@@ -197,7 +197,8 @@ function updateSearchModeTabs() {
     amBtn.classList.toggle('active', searchMode === 'am');
     amBtn.setAttribute('aria-selected', searchMode === 'am' ? 'true' : 'false');
   }
-  if ($input && searchMode === 'am') $input.placeholder = '搜索 Apple Music App（iTunes）...';  if (podcastBtn) {
+  if ($input && searchMode === 'am') $input.placeholder = '搜索 Apple Music App（iTunes）...';
+  if (podcastBtn) {
     podcastBtn.classList.toggle('active', searchMode === 'podcast');
     podcastBtn.setAttribute('aria-selected', searchMode === 'podcast' ? 'true' : 'false');
   }
