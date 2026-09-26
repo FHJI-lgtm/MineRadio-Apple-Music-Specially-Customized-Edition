@@ -1,8 +1,11 @@
-# Phase 3.7E-④ — Baseline 运行结果：**正确性 20/20，但时间指标无效（harness 缺陷）**
+# Phase 3.7E-④ — Baseline 运行结果：**正确性 17/20，且时间指标无效（harness 缺陷）**
 
-**结论先写**：20 组全部执行、20/20 `stage=OK`、20/20 `targetPlaying=True`（**正确性有效**）。
-**但 T3/T6/occupancy/total 这一组时间指标不可用**，原因是我 harness 的三个缺陷（下节）。
-**不得**把这些数字当作 baseline（否则会得到"AM 抢前台 3.5–5.0 秒"的伪结论）。
+> ⚠ **本文档已更正**：初稿我根据控制台**尾部输出**写了"20/20 正确性"，随后逐行核对
+> `bench-20260926-084848.jsonl` 发现实际是 **17/20**（18 行 OK 计数有误，见下）。以本表为准。
+
+**结论先写**：20 组全部执行；**17/20 `stage=OK` 且 `targetPlaying=True`**（3 首失败，见第 1 节）。
+**但 T3/T6/occupancy/total 这一组时间指标不可用**，原因是我 harness 的三个缺陷（第 2 节）。
+**不得**把这些数字当作 baseline（否则会得到"AM 抢前台 3.5–13.2 秒"的伪结论）。
 
 原始数据：`reports/bench-20260926-084848.jsonl`（20 条，未改动、未重跑）。
 
@@ -13,12 +16,18 @@
 | 项 | 结果 |
 |---|---|
 | 执行组数 | **20/20**（每首一次、`Retries 0`、无重试、无覆盖） |
-| `stage` | **20/20 `OK`** |
-| `targetPlaying` | **20/20 `True`**（SMTC 标题匹配目标曲目且 `Playing`） |
-| 每首耗时（`t10`，仅供参考，见下） | 3.49s – 5.01s |
+| `stage=OK` 且 `targetPlaying=True` | **17/20 = 85%** |
+| 失败 3 首 | **B02 `SMTC_TIMEOUT`**、**B04 `SMTC_TIMEOUT`**、**B13 `TARGET_ROW_NOT_FOUND`** |
+| B02 详情 | `status=Paused title="BIRDS OF A FEATHER" sawPlaying=False` —— SMTC 停**上一首**，新曲从未开始 |
+| B04 详情 | `status=Paused title="Good Luck, Babe!" sawPlaying=False` —— 同上（停在上一首） |
+| B13 详情 | `page changed but no row matched "Numb" (listItems=43)` —— 页面已换但目标行未实现/未匹配 |
 | 环境 | build 26200、AM 1.1540.23042.0、单显示器、AM 与用户同一桌面 |
 
-→ **fixture（20 首钉住的 URL）与冻结链本身工作正常**：deep link → UIA → 双击 → SMTC 全部走通。
+**这两类失败本身就是有价值的一手数据**：
+- 2×`SMTC_TIMEOUT`：SMTC 明确停在**上一首且 Paused** → 该轮的 deep link + 点击**没有产生播放**（不是"播错歌"，是"没播起来"）；
+- 1×`TARGET_ROW_NOT_FOUND`：与 3.7A 曾修过的现象同类（页面切换与行实现的时序窗口）。
+- 即：**新 fixture（全新主流曲目）暴露了 ~15% 的间歇失败**，而此前 15/15 回归只用了 3 首老曲目（A/B/C）——这正是"20 首全新曲目"的价值。
+
 
 ## 2. 本轮**无效**的结果（三个缺陷，含根因）
 
