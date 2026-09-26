@@ -25,7 +25,7 @@ function loginProviderSupportsCookieMode(provider) {
 function loginProviderOfficialModeText(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'spotify') return { title: 'OAuth', sub: '弹出 Spotify 授权窗口' };
-  if (provider === 'apple') return { title: '网页登录', sub: '展开登录入口（不自动打开）' };
+  if (provider === 'apple') return { title: '官方登录', sub: '展开登录入口（不自动打开）' };
   if (provider === 'qishui') return { title: '扫码', sub: '使用抖音 App 官方授权' };
   if (provider === 'kugou') return { title: '官网', sub: '弹出酷狗官方窗口' };
   return { title: '扫码', sub: '连接后弹出官方窗口' };
@@ -463,9 +463,9 @@ function updateLoginNodeGraphUi() {
     var cookieTitle = cookie.querySelector('b');
     var cookieSub = cookie.querySelector('small');
     var appleWebLoginEntry = loginProvider === 'apple';
-    if (cookieTitle) cookieTitle.textContent = appleWebLoginEntry ? '打开 Apple Music 登录页面' : 'Cookie';
+    if (cookieTitle) cookieTitle.textContent = appleWebLoginEntry ? '网页登录' : 'Cookie';
     if (cookieSub) cookieSub.textContent = appleWebLoginEntry
-      ? '登录 Apple Music 网页账号，自动获取登录态；点击后才会打开'
+      ? '登录 Apple Music 网页账号；在连线后的按钮中打开登录页面'
       : (loginProviderSupportsCookieMode(loginProvider) ? '连接后打开手动导入' : '该平台不支持 Cookie 导入');
     cookie.disabled = appleWebLoginEntry ? false : !loginProviderSupportsCookieMode(loginProvider);
     cookie.classList.toggle('active', appleWebLoginEntry ? false : isManualCookieOpenForProvider(loginProvider));
@@ -488,7 +488,9 @@ function connectLoginProvider(provider) {
 }
 function selectLoginMode(mode) {
   if (mode === 'cookie' && loginProvider === 'apple') {
-    openAmcAppleWebLogin();
+    // Apple's node 2 is the 网页登录 mode entry: it only reveals the panel, never opens a page by itself.
+    setLoginAuthDrawerOpen(true);
+    updateLoginProviderUi();
     return;
   }
   if (mode === 'cookie' && !loginProviderSupportsCookieMode(loginProvider)) {
@@ -512,7 +514,9 @@ function connectLoginMode(mode) {
   markLoginNodeConnecting();
   if (mode === 'cookie') {
     if (loginProvider === 'apple') {
-      openAmcAppleWebLogin();
+      // 网页登录 mode: the login page is opened only from the explicit button after the connection.
+      setLoginAuthDrawerOpen(true);
+      updateLoginProviderUi();
       return;
     }
     if (!loginProviderSupportsCookieMode(loginProvider)) {
@@ -981,7 +985,7 @@ function updateLoginProviderUi() {
       var amCardMark = qqCard.querySelector('b');
       var amCardLabel = qqCard.querySelector('span');
       if (amCardMark) amCardMark.textContent = 'AM';
-      if (amCardLabel) amCardLabel.textContent = appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '登录 Apple Music';
+      if (amCardLabel) amCardLabel.textContent = appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '打开 Apple Music 登录页面';
     }
     if (st) {
       st.className = 'preview';
