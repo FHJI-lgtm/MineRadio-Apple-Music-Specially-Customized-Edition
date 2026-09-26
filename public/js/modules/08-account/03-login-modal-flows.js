@@ -807,7 +807,7 @@ function openQishuiPublicSearch() {
 // The official Apple Music API credentials (Team ID / Key ID / P8) keep their own axis and are
 // shown next to it; neither one gates the other any more.
 // ------------------------------------------------------------
-var appleWebLoginStatus = { ready: false, refreshing: false, configured: false, busy: false, lastError: '' };
+// appleWebLoginStatus now lives in 00-state/00-core-stores.js (single source of truth).
 function appleWebLoginBridge() {
   return (window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.openLogin === 'function')
     ? window.mineradio.amc
@@ -831,6 +831,12 @@ function appleCardStatusLine() {
 }
 async function refreshAppleWebLoginStatus() {
   if (appleWebLoginStatus.refreshing) return;
+  // After a web logout the store may still say configured: keep it revoked until the next login.
+  if (appleWebLoginStatus.revoked === true) {
+    appleWebLoginStatus.configured = false;
+    appleWebLoginStatus.ready = true;
+    return;
+  }
   appleWebLoginStatus.refreshing = true;
   try {
     if (!(window.desktopWindow && typeof window.desktopWindow.getAppleLyricsCredentialStatus === 'function')) {
@@ -861,6 +867,7 @@ async function openAmcAppleWebLogin() {
     if (statusEl) { statusEl.textContent = appleWebLoginStatus.lastError; statusEl.className = 'fail'; }
     return;
   }
+  if (typeof clearAppleWebLoginRevocation === 'function') clearAppleWebLoginRevocation();   // a new login attempt clears the revocation
   appleWebLoginStatus.busy = true;
   appleWebLoginStatus.lastError = '';
   if (statusEl) { statusEl.textContent = '等待 Apple Music 网页登录…'; statusEl.className = 'preview'; }

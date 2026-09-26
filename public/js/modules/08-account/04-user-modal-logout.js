@@ -63,7 +63,7 @@ function updateUserModalUi() {
   if (addKugou) addKugou.textContent = hasPlatformLogin('kugou') ? '查看酷狗音乐' : '补登酷狗音乐';
   if (addQishui) addQishui.textContent = hasPlatformLogin('qishui') ? '重新登录汽水' : '登录汽水音乐';
   if (addSpotify) addSpotify.textContent = hasPlatformLogin('spotify') ? '查看 Spotify' : '连接 Spotify';
-  if (addApple) addApple.textContent = hasPlatformLogin('apple') ? '查看 Apple Music' : '连接 Apple Music';
+  if (addApple) addApple.textContent = appleAccountAvailable() ? '查看 Apple Music' : '连接 Apple Music';
   if (logoutBtn) logoutBtn.textContent =
     activeAccountProvider === 'qq' ? '退出 QQ 音乐' :
     (activeAccountProvider === 'kugou' ? '退出酷狗音乐' :
@@ -160,6 +160,7 @@ function resetAllProviderRendererLoginState() {
   qishuiPlaylists = [];
   spotifyPlaylists = [];
   applePlaylists = [];
+  if (typeof revokeAppleWebLoginStatus === 'function') revokeAppleWebLoginStatus();
   userPlaylists = [];
   myPodcastCollections = [];
   myPodcastItems = {};
@@ -243,6 +244,7 @@ async function logoutActiveAccount() {
     } catch (e) { }
     appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
     applePlaylists = [];
+  if (typeof revokeAppleWebLoginStatus === 'function') revokeAppleWebLoginStatus();
     userPlaylists = userPlaylists.filter(function (pl) { return pl.provider !== 'apple'; });
     playlistCatalogRevision += 1;
     dualAccountMode = false;

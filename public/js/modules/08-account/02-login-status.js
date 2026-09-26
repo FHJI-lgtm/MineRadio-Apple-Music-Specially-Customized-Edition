@@ -538,6 +538,30 @@ function normalizeAppleLoginStatus(info) {
     reauthRequired: !!(info && info.reauthRequired)
   });
 }
+
+// ---- Apple Web axis accessors (single source of truth; boolean only) ----
+// appleWebLoginStatus describes "a media-user-token is stored and was accepted once".
+// It is NOT the developer axis (appleLoginStatus) and must not be substituted for one another.
+function appleWebAccountAvailable() {
+  return !!(typeof appleWebLoginStatus === 'object' && appleWebLoginStatus && appleWebLoginStatus.ready && appleWebLoginStatus.configured === true && appleWebLoginStatus.revoked !== true);
+}
+// Union, for the few UI spots that genuinely mean "some Apple auth exists".
+// Callers that need a specific axis must use the specific predicate instead.
+function appleAccountAvailable() {
+  return appleWebAccountAvailable() || (typeof hasPlatformLogin === 'function' && hasPlatformLogin('apple'));
+}
+// Logout of the web axis is renderer-side until the main process can clear the store (later step):
+// suppress a stale `configured` from flipping the UI back at the next refresh.
+function revokeAppleWebLoginStatus() {
+  if (typeof appleWebLoginStatus !== 'object' || !appleWebLoginStatus) return;
+  appleWebLoginStatus.revoked = true;
+  appleWebLoginStatus.configured = false;
+  appleWebLoginStatus.ready = true;
+  appleWebLoginStatus.lastError = '';
+}
+function clearAppleWebLoginRevocation() {
+  if (typeof appleWebLoginStatus === 'object' && appleWebLoginStatus) appleWebLoginStatus.revoked = false;
+}
 async function refreshAppleLoginStatus() {
   try {
     var info = await apiJson('/api/apple/status?t=' + Date.now());
@@ -570,6 +594,8 @@ async function refreshAppleLoginStatus() {
 function startAppleLoginStatusAutoRefresh() {
   if (appleLoginAutoRefreshTimer) clearInterval(appleLoginAutoRefreshTimer);
   appleLoginAutoRefreshTimer = setInterval(function () {
+    // Same tick, no extra timer: keep the web axis fresh as well (single source of truth).
+    if (typeof refreshAppleWebLoginStatus === 'function') { try { refreshAppleWebLoginStatus(); } catch (_) { } }
     refreshAppleLoginStatus().catch(function (e) { console.warn('Apple Music login auto refresh failed:', e); });
   }, 45000);
 }
