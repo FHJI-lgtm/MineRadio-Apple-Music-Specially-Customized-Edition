@@ -4919,6 +4919,14 @@ ipcMain.handle('amc:play', async (_event, payload = {}) => {
   return await appleMusicControl.playTrack(result || {}, opts);
 });
 
+// Same transport-only contract as amc:play: the handler passes the payload through and returns the
+// chain's own verdict. It never turns "clicked" into "playing" and never rewrites a stage. A playlist
+// has no expected track, so the result carries verification:'smtc-transition' instead of a title match.
+ipcMain.handle('amc:play-playlist', async (_event, payload = {}) => {
+  const opts = (payload && payload.opts) || {};
+  return await appleMusicControl.playPlaylist(payload || {}, opts);
+});
+
 // ------------------------------------------------------------
 // Apple Music App section: dedicated login entry.
 // Single purpose: establish the Apple Music Web account session / media-user-token only.

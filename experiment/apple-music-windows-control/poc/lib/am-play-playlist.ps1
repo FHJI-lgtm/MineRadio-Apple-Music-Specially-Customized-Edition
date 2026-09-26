@@ -15,14 +15,21 @@
 # Ambiguity is never resolved by guessing: 0 matches -> PLAYLIST_NOT_FOUND;
 # 2+ matches -> AMBIGUOUS and nothing is clicked.
 #
-# SAFETY: the default mode is PROBE - nothing is clicked. -Commit performs the click.
-# The "did playback start" verification is deliberately NOT wired yet (see the TODO): this slice
-# reports exactly what it did and never claims a result it cannot observe.
+# SAFETY: the default mode is PROBE - nothing is clicked (-CardIndex included: it only selects).
+# -Commit performs the click.
+# Playback entry (measured): the card's OWN hover play button (bottom-left overlay, AutomationId=PlayButton)
+# starts it directly; clicking the card body only navigates and is kept as a fallback.
+# "Did playback start" IS wired now (B-i step 4): SMTC before/after the click, and the only success is a
+# transition to Playing. A playlist has no expected track title, so Wait-AmPlayback(Title,Artist) cannot be
+# used without inventing a title; the honest criterion is the transition (see the commit branch).
 #
 # ASCII-only on purpose: the localized scope label is supplied by the caller via -ScopeLabel.
 #
-# Stages: APP_NOT_RUNNING, AM_UI_NOT_FOUND, SEARCH_FAILED, SCOPE_CHIP_NOT_FOUND,
-#         PLAYLIST_NOT_FOUND, AMBIGUOUS, CARD_NOT_CLICKABLE, PLAYLIST_CLICKED, PROBE_ONLY
+# Stages: APP_NOT_RUNNING, AM_UI_NOT_FOUND, SEARCH_FAILED, SCOPE_CHIP_NOT_FOUND, SCOPE_SWITCH_FAILED,
+#         PLAYLIST_NOT_FOUND, AMBIGUOUS, CARD_NOT_CLICKABLE, PLAY_BUTTON_NOT_FOUND, URL_NAVIGATION_FAILED,
+#         PROBE_ONLY, HOVER_PROBE,
+#         PLAYBACK_STARTED (ok), PLAYBACK_UNCHANGED, SMTC_TIMEOUT, PLAYLIST_CLICKED (clicked, no SMTC
+#         session to verify against). Only PLAYBACK_STARTED sets ok=true.
 # ============================================================
 
 function Find-AmScopeChip($root, [string]$Label) {
@@ -59,12 +66,64 @@ function Get-AmPlaylistCardCandidates($root, [string]$Name) {
       if ($hit) { $clickable = $cur; break }
       try { $cur = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($cur) } catch { $cur = $null }
     }
-    if ($clickable) { $hits += [pscustomobject]@{ element = $clickable; name = $nm } }
+    if ($clickable) {
+      # Region-first exclusion (measured root cause): the QUERY STRING itself sits in the search box at the
+      # top-left, so a plain text match lands there - the cursor then stops on the scope chip and any click
+      # does nothing. So: never accept the search control, and only accept a card that lies BELOW the search
+      # box and to the RIGHT of it (which also excludes the sliding left sidebar overlay seen while searching).
+      $selfCt = ''
+      try { $selfCt = [string]$clickable.Current.ControlType.ProgrammaticName } catch { }
+      if ($selfCt -match 'Edit|Document') { continue }
+      # Find-AmEnabledEdit returns @{ element; count; index }, NOT the element itself: reading
+      # .Current off the hashtable threw and the surrounding catch swallowed it, so this region
+      # exclusion silently never ran.
+      $box = $null
+      try { $box = (Find-AmEnabledEdit $root).element } catch { }
+      if ($box) {
+        try {
+          $br = $box.Current.BoundingRectangle
+          $clickRect = $clickable.Current.BoundingRectangle
+          if ($clickRect.Top -lt ($br.Top + $br.Height)) { continue }
+          if ($clickRect.Left -lt ($br.Left + $br.Width)) { continue }
+        } catch { }
+      }
+      # NO cover-Image gate here: it was tried and REFUTED by measurement (2026-09-26, live app).
+      # A search-result playlist CARD exposes ONLY { ListItem, Group, Text x2 } in its UIA subtree
+      # (4 nodes, 0 Image at any depth) - the artwork is not surfaced as a UIA Image control. So
+      # 'must contain a cover Image' rejected 10/10 exact-name matches, INCLUDING both genuine result
+      # cards, and the engine reported 0 candidates where the truth was 2. What actually separates a
+      # result card from the sidebar/nav is the REGION test above: sidebar rows sit at x 5..502 (left of
+      # the search box, whose bottom-right is ~491,145) and the scope chips at y~131 (above it).
+      # Self-evidence for the hit: its own type/rect plus 3 ancestor levels. This tells us immediately whether
+      # the name matched a result CARD or something else that merely carries the same text (search box, sidebar).
+      $selfType = ''; $selfRect = ''
+      try { $selfType = [string]$clickable.Current.ControlType.ProgrammaticName } catch { }
+      try {
+        $rr = $clickable.Current.BoundingRectangle
+        $selfRect = ([int]$rr.Left).ToString() + ',' + ([int]$rr.Top).ToString() + ',' + ([int]$rr.Width).ToString() + ',' + ([int]$rr.Height).ToString()
+      } catch { }
+      $anc = @()
+      try {
+        $up = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($clickable)
+        for ($lvl = 0; $lvl -lt 3 -and $up; $lvl++) {
+          $an = ''; $at = ''; $ar = ''
+          try { $an = (Truncate-AmText ([string]$up.Current.Name) 30) } catch { }
+          try { $at = [string]$up.Current.ControlType.ProgrammaticName } catch { }
+          try {
+            $q = $up.Current.BoundingRectangle
+            $ar = ([int]$q.Left).ToString() + ',' + ([int]$q.Top).ToString() + ',' + ([int]$q.Width).ToString() + ',' + ([int]$q.Height).ToString()
+          } catch { }
+          $anc += ($at + ' name=' + $an + ' rect=' + $ar)
+          try { $up = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($up) } catch { $up = $null }
+        }
+      } catch { }
+      $hits += [pscustomobject]@{ element = $clickable; name = $nm; selfType = $selfType; selfRect = $selfRect; ancestors = @($anc) }
+    }
   }
   # Dedupe by BOUNDING RECT: one visual card exposes several nested clickable ancestors with the same box,
   # so a runtime-id dedupe over-counts. The surviving count is the number of VISUAL cards (option 4 relies
   # on this index meaning "the Nth matching card on screen").
-  $uniq = @(); $seen = @{}
+  $uniq = @(); $seenRects = @()
   foreach ($h in $hits) {
     $key = ''
     try {
@@ -72,10 +131,29 @@ function Get-AmPlaylistCardCandidates($root, [string]$Name) {
       $key = ([int]$r.Left).ToString() + ',' + ([int]$r.Top).ToString() + ',' + ([int]$r.Width).ToString() + ',' + ([int]$r.Height).ToString()
     } catch { $key = '' }
     if (-not $key) { $key = 'norect-' + [guid]::NewGuid().ToString() }
-    if ($seen.ContainsKey($key)) { continue }
-    $seen[$key] = $true
-    $uniq += [pscustomobject]@{ element = $h.element; name = $h.name; rectKey = $key }
+    else {
+      # TOLERANT rect dedupe. An exact-string key let the SAME visual card through twice when the two
+      # elements differed by 1px: measured twice in the catalogue scope ONE snapshot held both
+      # 573,297,367,483 and 573,297,367,482, i.e. a phantom AMBIGUOUS on a scope holding 2 cards.
+      # Two genuinely different cards are never within 2px of each other, so merge a <=2px box difference.
+      $p = @($key -split ',')
+      $dupe = $false
+      foreach ($s in $seenRects) {
+        if ([Math]::Abs($s[0] - [int]$p[0]) -le 2 -and [Math]::Abs($s[1] - [int]$p[1]) -le 2 -and [Math]::Abs($s[2] - [int]$p[2]) -le 2 -and [Math]::Abs($s[3] - [int]$p[3]) -le 2) { $dupe = $true; break }
+      }
+      if ($dupe) { continue }
+      $seenRects += ,@([int]$p[0], [int]$p[1], [int]$p[2], [int]$p[3])
+    }
+    $uniq += [pscustomobject]@{
+      element = $h.element; name = $h.name; rectKey = $key
+      selfType = $h.selfType; selfRect = $h.selfRect; ancestors = @($h.ancestors)
+    }
   }
+  # CONTRACT: one object { ok; errors; candidates } - the catch path above already returns that shape and
+  # both callers read .candidates. Returning the bare $uniq array instead made @($res.candidates) collapse
+  # to @($null) (PowerShell yields nothing for a member no element has, and @($null) has Count 1), so
+  # 'nothing matched' AND 'two matched' both arrived as a single NULL card - a PROBE_ONLY false positive.
+  return @{ ok = $true; errors = @($errors); candidates = @($uniq) }
 }
 function Find-AmPlaylistCards($items, [string]$Name) {
   $want = Normalize-AmText $Name
@@ -91,16 +169,195 @@ function Find-AmPlaylistCards($items, [string]$Name) {
   return $out
 }
 
+function Refind-AmPlaylistCard($root, [string]$Name, [string]$RectKey) {
+  # UI Automation elements go stale the moment the page repaints - and hovering a card repaints it. So the
+  # card must be re-located (fresh root + fresh candidates) right before anything is read or clicked.
+  # Matching: exact rectangle first, otherwise the candidate whose top-left is closest to the recorded one.
+  $res = Get-AmPlaylistCardCandidates $root $Name
+  $cands = @($res.candidates)
+  if ($cands.Count -eq 0) { return $null }
+  if ($RectKey) {
+    foreach ($c in $cands) { if ($c.rectKey -eq $RectKey) { return $c } }
+    $want = @($RectKey -split ',')
+    $best = $null; $bestScore = -1
+    foreach ($c in $cands) {
+      $p = @($c.rectKey -split ',')
+      if ($p.Count -lt 4) { continue }
+      $dx = [Math]::Abs(([int]$p[0]) - ([int]$want[0]))
+      $dy = [Math]::Abs(([int]$p[1]) - ([int]$want[1]))
+      $score = 1000000 - ($dx + $dy)
+      if ($score -gt $bestScore) { $bestScore = $score; $best = $c }
+    }
+    if ($best) { return $best }
+  }
+  return $cands[0]
+}
+
+# ------------------------------------------------------------
+# B-i step 4: SMTC transition + the playlist page's play button
+# ------------------------------------------------------------
+
+function Hide-AmAfterClick([IntPtr]$Hwnd, [switch]$NoMinimize) {
+  # Same order as the verified song chain (am-play.ps1:307-310): let the click land (250ms), hand the
+  # screen back, and only THEN verify through SMTC. Reuses the song chain's own Minimize-AmWindow when
+  # the caller dot-sourced am-play.ps1; if that file is not loaded this returns false and nothing else
+  # changes (the engine stays usable on its own).
+  if ($NoMinimize) { return $false }
+  Start-Sleep -Milliseconds 250
+  if (-not (Get-Command Minimize-AmWindow -ErrorAction SilentlyContinue)) { return $false }
+  try { return [bool](Minimize-AmWindow $Hwnd) } catch { return $false }
+}
+
+function Invoke-AmSingleClick([IntPtr]$Hwnd, $Element, [int]$X, [int]$Y, [switch]$NoForeground) {
+  # EXACTLY ONE synthesized click (one down/up pair), with the same foreground + geometry-recompute
+  # discipline as the frozen Invoke-AmRowPlay.
+  # WHY: user-reported and measured (2026-09-26) - in Apple Music the FIRST click on a play control really
+  # starts playback (after a short load), while clicking play AGAIN PAUSES it. The frozen Invoke-AmRowPlay
+  # sends a DOUBLE click because it is built for song ROWS, so on a play/pause control it is play-then-pause.
+  # That is exactly why the card's hover play button looked "found, clicked, but playback never started".
+  # The frozen file is NOT touched; every play-control click in this file goes through here instead.
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $usedX = $X; $usedY = $Y
+  try {
+    if (-not $NoForeground) {
+      Invoke-AmForeground $Hwnd
+      Start-Sleep -Milliseconds 350
+    }
+    if ($Element) {
+      try {
+        $r2 = $Element.Current.BoundingRectangle
+        if (Test-AmRectSane $r2) { $pt2 = Get-AmSafeClickPoint $r2; $usedX = $pt2.x; $usedY = $pt2.y }
+      } catch { }
+    }
+    [void][AmUiaNative]::SetCursorPos($usedX, $usedY)
+    Start-Sleep -Milliseconds 200
+    [AmUiaNative]::mouse_event(2, 0, 0, 0, 0)
+    [AmUiaNative]::mouse_event(4, 0, 0, 0, 0)
+  } catch {
+    return @{ ok = $false; stage = 'CLICK_FAILED'; ms = [int]$sw.ElapsedMilliseconds; detail = $_.Exception.Message; x = $usedX; y = $usedY; clicks = 1 }
+  }
+  return @{ ok = $true; stage = 'OK'; ms = [int]$sw.ElapsedMilliseconds; detail = ''; x = $usedX; y = $usedY; clicks = 1 }
+}
+
+function Find-AmInCardPlayButton([IntPtr]$Hwnd, $CardRect, [string]$PlayLabel) {
+  # ONE query pass. The card's hover overlay controls are SIBLINGS of the card, not part of its subtree:
+  # the card subtree stays at 4 nodes (ListItem/Group/2 Text) even while the overlay is visible, so
+  # containment of the button's BOX inside the card rectangle is the only usable predicate.
+  $root = (Get-AmRoot $Hwnd).root
+  $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'PlayButton')
+  $els = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  for ($i = 0; $i -lt $els.Count; $i++) {
+    $e = $els.Item($i)
+    $z = $null
+    try { $z = $e.Current.BoundingRectangle } catch { continue }
+    if (-not (Test-AmRectSane $z)) { continue }
+    if ($z.Left -lt $CardRect.Left -or $z.Left -gt ($CardRect.Left + $CardRect.Width)) { continue }
+    if ($z.Top -lt $CardRect.Top -or $z.Top -gt ($CardRect.Top + $CardRect.Height)) { continue }
+    if ($PlayLabel) { try { if (([string]$e.Current.Name).Trim() -ne $PlayLabel.Trim()) { continue } } catch { continue } }
+    return @{ element = $e; name = [string]$e.Current.Name; rectKey = ('{0},{1},{2},{3}' -f [int]$z.Left, [int]$z.Top, [int]$z.Width, [int]$z.Height) }
+  }
+  return $null
+}
+
+function Find-AmCardHoverPlayButton([IntPtr]$Hwnd, $CardRect, [string]$PlayLabel, [int]$Attempts = 3, [int]$PollsPerAttempt = 8, [int]$PollMs = 150) {
+  # MEASURED (2026-09-26, live app): hovering a search-result CARD reveals Button name="播放"
+  # AutomationId=PlayButton at the card's bottom-left (rect 594,585,56,56 inside card 573,295,367,483)
+  # plus Button name="更多" at the bottom-right. Clicking the PlayButton starts playback DIRECTLY
+  # (SMTC Opened->Playing in 688ms) - no navigation step. The overlay IS a normal UIA element, unlike
+  # the cover art, which is not exposed as an Image at all.
+  # The overlay appears ONLY when the pointer MOVES while it is over the card. A pointer that merely
+  # RESTS on the card - or on the cover - shows nothing (reported by the user, reproduced here); that is
+  # why SetCursorPos to the position the cursor already occupies changes nothing. So every attempt
+  # performs a two-point stroke across the card (the two points always differ) and then polls briefly.
+  $cx = [int]($CardRect.Left + ($CardRect.Width / 2))
+  $cy = [int]($CardRect.Top + ($CardRect.Height / 2))
+  # Park OUTSIDE the card first, then approach in three moves. Measured 2026-09-26: a pointer that is
+  # already inside the card - or that only jitters WITHIN it - can leave the app without a new enter
+  # event and the overlay never renders (24/24 inside-only samples produced zero overlays, and four
+  # consecutive in-card strokes found nothing either). Park -> edge -> near-centre -> centre produced the
+  # overlay on the first poll, so every attempt now leaves the card and re-enters it.
+  $parkX = [int]($CardRect.Left + $CardRect.Width + 70)
+  $parkY = [int]($CardRect.Top + 30)
+  for ($a = 1; $a -le $Attempts; $a++) {
+    [void][AmUiaNative]::SetCursorPos($parkX, $parkY)
+    Start-Sleep -Milliseconds 260
+    [void][AmUiaNative]::SetCursorPos(($cx - 140), ($cy - 120))
+    Start-Sleep -Milliseconds 180
+    [void][AmUiaNative]::SetCursorPos(($cx - 40), ($cy - 20))
+    Start-Sleep -Milliseconds 180
+    [void][AmUiaNative]::SetCursorPos($cx, $cy)
+    for ($q = 1; $q -le $PollsPerAttempt; $q++) {
+      Start-Sleep -Milliseconds $PollMs
+      $hit = Find-AmInCardPlayButton $Hwnd $CardRect $PlayLabel
+      if ($hit) { return @{ ok = $true; element = $hit.element; attempts = $a; polls = $q; rectKey = $hit.rectKey } }
+    }
+  }
+  return @{ ok = $false; element = $null; attempts = $Attempts; polls = 0; rectKey = '' }
+}
+
+function Wait-AmPlaylistTransition($Before, [int]$TimeoutMs, [int]$PollMs = 120) {
+  # SMTC is the only judge (CONTROL-PLANE I1). A playlist has NO expected track title, so
+  # Wait-AmPlayback(Title,Artist) cannot be used without inventing one. The observable is a
+  # TRANSITION: status Playing AND (it was not Playing before OR the title changed).
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $state = $Before; $transition = $false
+  while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
+    $state = Get-AmSmtcState
+    if ($state.ok -and $state.status -eq 'Playing') {
+      if ($Before.status -ne 'Playing' -or $state.title -ne $Before.title) { $transition = $true }
+      break
+    }
+    Start-Sleep -Milliseconds $PollMs
+  }
+  return @{ transition = $transition; state = $state; ms = [int]$sw.ElapsedMilliseconds }
+}
+
+function Find-AmPlaylistPagePlayButton($root, [string]$PlayLabel, [switch]$AllowAlternateId) {
+  # MEASURED (2026-09-26, live app): clicking a result CARD only NAVIGATES to the playlist page; playback
+  # starts from the page header button AutomationId=PlayButton (clicked -> Paused->Playing in 275ms).
+  # Matching is by AutomationId (locale-independent); $PlayLabel is only an extra guard when supplied.
+  # A page opened by a DEEP LINK exposes a different id for the same Chinese label 播放: an album/song
+  # page reached from a URL had AutomationId=PlayButtonElement (measured; the /cn/ link was ignored, the
+  # /us/ link opened Dawn FM). That alternate id is only accepted when the caller opts in, so the verified
+  # name route's behaviour is unchanged.
+  $ids = @('PlayButton')
+  if ($AllowAlternateId) { $ids += 'PlayButtonElement' }
+  $out = @()
+  foreach ($aid in $ids) {
+    try {
+      $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $aid)
+      $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+      for ($i = 0; $i -lt $all.Count; $i++) {
+        $e = $all.Item($i)
+        $isButton = $false
+        try { $isButton = (([string]$e.Current.ControlType.ProgrammaticName) -match 'Button') } catch { }
+        if (-not $isButton) { continue }
+        $r = $null
+        try { $r = $e.Current.BoundingRectangle } catch { continue }
+        if (-not (Test-AmRectSane $r)) { continue }
+        if ($PlayLabel) { try { if (([string]$e.Current.Name).Trim() -ne $PlayLabel.Trim()) { continue } } catch { continue } }
+        $out += [pscustomobject]@{ element = $e; name = [string]$e.Current.Name; automationId = $aid }
+      }
+    } catch { }
+    if ($out.Count -gt 0) { break }
+  }
+  return $out
+}
+
 function Invoke-AmPlayPlaylist {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory = $true)][string]$Name,
     [string]$ScopeLabel = '',
+    [string]$Url = '',   # a playlist (or song) link: navigation replaces search entirely when present
     [int]$SearchWaitMs = 6000,
     [switch]$Commit,
     [switch]$HoverProbe,   # read-only: hover the card and dump its subtree, never clicks
     [string]$PlayLabel = '',   # localized play-button label, supplied by the caller (keeps this file ASCII-only)
     [int]$CardIndex = 0,   # option 4: which matching card to pick (1-based); 0 = refuse when ambiguous
+    [int]$SmtcTimeoutMs = 8000,   # how long to watch SMTC for the post-click Playing transition
+    [switch]$TryHoverPlay,   # opt-in: actively hover the card to reveal its play button (measured unreliable in-engine; see the commit branch)
+    [switch]$NoMinimize,   # keep Apple Music in front (default: minimize right after a successful play click, like the song chain)
     [switch]$DumpItems,
     [switch]$NoLaunch,
     [switch]$NoForeground,
@@ -110,7 +367,9 @@ function Invoke-AmPlayPlaylist {
     ok = $false; stage = 'UNKNOWN'; stageDetail = ''; stageHistory = @()
     name = $Name; scopeLabel = $ScopeLabel; mode = $(if ($Commit) { 'commit' } else { 'probe' })
     candidateCount = 0; ambiguous = $false; clicked = $false; cards = @()
-    smtc = @{ title = ''; artist = ''; status = '' }
+    playVia = ''; playButtonFound = $false; playButtonClicked = $false
+    hoverPlayButton = $false; hoverAttempts = 0; hoverPolls = 0; minimizedAfterClick = $false
+    smtc = @{ title = ''; artist = ''; status = ''; beforeTitle = ''; beforeArtist = ''; beforeStatus = ''; posMs = 0; hasSession = $false; transitionMs = 0 }
     ts = (Get-AmIsoNow); tsMs = (Get-AmNowMs)
   }
   $stage = 'UNKNOWN'; $detail = ''
@@ -124,19 +383,37 @@ function Invoke-AmPlayPlaylist {
     if (-not $rootRes.ok) { $stage = 'AM_UI_NOT_FOUND'; $detail = 'tries=' + $rootRes.tries }
   }
 
-  if ($stage -eq 'UNKNOWN') {
+  # ---- URL route: when the caller HAS a link, navigation replaces the whole "search by name -> switch
+  # to the library scope -> locate the card" dance. Deterministic: no name collision, no scope chip, no
+  # ambiguity. Uses the frozen navigation helper the song chain verified (G3/G4): AppleMusic.exe /url.
+  if ($stage -eq 'UNKNOWN' -and $Url) {
+    $nav = Invoke-AmNavigateUrl $Url
+    $result.url = $Url
+    $result.navigatedBy = $nav.method
+    # NOTE (measured): a link whose storefront does not match the account is accepted by the app but the"
+    # page does not change - /cn/song/... left the UI untouched while /us/song/... opened the album page.
+    if (-not $nav.ok) { $stage = 'URL_NAVIGATION_FAILED'; $detail = 'method=' + $nav.method }
+  }
+
+  if ($stage -eq 'UNKNOWN' -and -not $Url) {
     $root = $rootRes.root
     $sr = Invoke-AmSearch $root $Name $app.hwnd $SearchWaitMs
     $result.searchSubmitted = [bool]$sr.submitted
     if (-not $sr.ok) { $stage = 'SEARCH_FAILED'; $detail = [string]$sr.detail }
     else {
       if ($ScopeLabel) {
+        # The scope chips render together with the search UI, which can lag the submit: a single immediate
+        # lookup produced a real SCOPE_CHIP_NOT_FOUND (measured 2026-09-26), so retry on a fresh root.
         $chip = Find-AmScopeChip $root $ScopeLabel
-        if (-not $chip) { $stage = 'SCOPE_CHIP_NOT_FOUND'; $detail = 'label=' + $ScopeLabel }
+        for ($cs = 1; $cs -le 6 -and -not $chip; $cs++) {
+          Start-Sleep -Milliseconds 300
+          $chip = Find-AmScopeChip (Get-AmRoot $app.hwnd).root $ScopeLabel
+        }
+        if (-not $chip) { $stage = 'SCOPE_CHIP_NOT_FOUND'; $detail = 'label=' + $ScopeLabel + ' after ' + (($cs - 1) * 300) + 'ms' }
         else {
           try {
             $pt0 = Get-AmSafeClickPoint $chip.Current.BoundingRectangle
-            [void](Invoke-AmRowPlay $app.hwnd $chip $pt0.x $pt0.y -NoForeground:$NoForeground)
+            [void](Invoke-AmSingleClick $app.hwnd $chip $pt0.x $pt0.y -NoForeground:$NoForeground)
             Start-Sleep -Milliseconds 1200
             $result.scopeSwitched = $true
           } catch { $stage = 'SCOPE_SWITCH_FAILED'; $detail = $_.Exception.Message }
@@ -145,14 +422,17 @@ function Invoke-AmPlayPlaylist {
     }
   }
 
-  if ($stage -eq 'UNKNOWN') {
+  if ($stage -eq 'UNKNOWN' -and -not $Url) {
     $rootFresh = (Get-AmRoot $app.hwnd).root
+    # $items was never assigned, so -DumpItems dumped nothing and the PLAYLIST_NOT_FOUND detail always
+    # reported listItems=0 - a diagnostic that lied. am-play.ps1 fills the same variable the same way.
+    $items = @(Get-AmListItems $rootFresh)
     $candRes = Get-AmPlaylistCardCandidates $rootFresh $Name
     $cards = @($candRes.candidates)
     $result.dumpErrors = @($candRes.errors)
 
     $result.candidateCount = $cards.Count
-    $result.cards = @($cards | ForEach-Object { @{ name = $_.name; rect = $_.rectKey } })
+    $result.cards = @($cards | ForEach-Object { @{ name = $_.name; rect = $_.rectKey; selfRect = $_.selfRect; selfType = $_.selfType; ancestors = @($_.ancestors) } })
     if ($DumpItems) {
       $dump = @()
       foreach ($it in @($items)) {
@@ -173,25 +453,33 @@ function Invoke-AmPlayPlaylist {
       }
       $result.items = $dump
     }
+    # option 4: the caller supplies the position; nothing is guessed here. It only SELECTS - whether that
+    # selection is allowed to click is decided below, after the PROBE check.
+    $indexPicks = ($CardIndex -ge 1 -and $CardIndex -le $cards.Count)
     if ($cards.Count -eq 0) { $stage = 'PLAYLIST_NOT_FOUND'; $detail = 'listItems=' + @($items).Count }
-    elseif ($cards.Count -gt 1 -and $CardIndex -ge 1 -and $CardIndex -le $cards.Count) {
-      # option 4: the caller supplies the position; nothing is guessed here.
-      $c = $cards[$CardIndex - 1]
-      $pt1 = Get-AmSafeClickPoint $c.element.Current.BoundingRectangle
-      $ck = Invoke-AmRowPlay $app.hwnd $c.element $pt1.x $pt1.y -NoForeground:$NoForeground
-      if ($ck.ok) { $result.clicked = $true; $result.pickedByIndex = $true; $stage = 'PLAYLIST_CLICKED' } else { $stage = 'CARD_NOT_CLICKABLE'; $detail = [string]$ck.detail }
-    }
-    elseif ($cards.Count -gt 1) { $stage = 'AMBIGUOUS'; $result.ambiguous = $true; $detail = 'cards=' + $cards.Count }
+    elseif ($cards.Count -gt 1 -and -not $indexPicks) { $stage = 'AMBIGUOUS'; $result.ambiguous = $true; $detail = 'cards=' + $cards.Count }
     elseif ($HoverProbe) {
       # read-only: the play button only materializes on hover, so move the cursor onto the card first and
       # then dump what the subtree exposes. Nothing is clicked in this mode.
       $c0 = $cards[0]
+      $rectKey0 = $c0.rectKey
       $r0 = $c0.element.Current.BoundingRectangle
-      [void](Move-AmCursor ([int]($r0.Left + ($r0.Width / 2))) ([int]($r0.Top + ($r0.Height / 2))))
+      # Move-AmCursor is defined nowhere in this repo (grep over experiment/) - it was a bare
+      # CommandNotFoundException. Use the verified idiom from the frozen am-uia.ps1
+      # (Invoke-AmRowPlay): AmUiaNative.SetCursorPos in physical pixels, DPI awareness already declared.
+      [void][AmUiaNative]::SetCursorPos([int]($r0.Left + ($r0.Width / 2)), [int]($r0.Top + ($r0.Height / 2)))
       Start-Sleep -Milliseconds 700
+      # Hovering repaints the page, so the element captured before the hover is stale: re-fetch the root and
+      # re-locate the card before reading anything.
+      $rootHover = (Get-AmRoot $app.hwnd).root
+      $c0 = Refind-AmPlaylistCard $rootHover $Name $rectKey0
       $hover = @()
       try {
-        $sub = $c0.element.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
+        if (-not $c0) {
+          $result.dumpErrors = @($result.dumpErrors) + @('card stale after hover and could not be re-located')
+        }
+        $sub = @()
+        if ($c0) { $sub = $c0.element.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition) }
         foreach ($d in $sub) {
           $hn = ''; $ht = ''; $hp = @()
           try { $hn = [string]$d.Current.Name } catch { }
@@ -207,22 +495,156 @@ function Invoke-AmPlayPlaylist {
       $result.playLabel = $PlayLabel
       $stage = 'HOVER_PROBE'; $detail = 'hoverItems=' + @($hover).Count + ' playLabelHit=' + @($hover | Where-Object { $_.playLabelHit }).Count
     }
-    elseif (-not $Commit) { $stage = 'PROBE_ONLY'; $detail = 'card found; nothing clicked (pass -Commit to click)' }
+    elseif (-not $Commit) {
+      # PROBE contract: nothing in this branch clicks. -CardIndex ALONE must not click either (it used to,
+      # which meant a "probe" could start playback just because the caller disambiguated by position).
+      $stage = 'PROBE_ONLY'
+      if ($indexPicks -and $cards.Count -gt 1) { $detail = 'card #' + $CardIndex + ' of ' + $cards.Count + ' selected by -CardIndex; nothing clicked (pass -Commit to click)' }
+      else { $detail = 'card found; nothing clicked (pass -Commit to click)' }
+    }
     else {
-      $c = $cards[0]
-      $pt1 = Get-AmSafeClickPoint $c.element.Current.BoundingRectangle
-      $ck = Invoke-AmRowPlay $app.hwnd $c.element $pt1.x $pt1.y -NoForeground:$NoForeground
-      if (-not $ck.ok) { $stage = 'CARD_NOT_CLICKABLE'; $detail = [string]$ck.detail }
+      if ($indexPicks) { $c = $cards[$CardIndex - 1]; $result.pickedByIndex = $true; $result.pickedIndex = $CardIndex }
+      else { $c = $cards[0] }
+      # Two measured paths, in order: (1) the card's OWN hover play button - starts playback directly;
+      # (2) fall back to clicking the card (which only NAVIGATES) and then the playlist page's PlayButton.
+      # Elements come from an earlier root and hovering repaints the page, so re-locate the card first.
+      $rectKeyClick = $c.rectKey
+      $rootClick = (Get-AmRoot $app.hwnd).root
+      $cRefound = Refind-AmPlaylistCard $rootClick $Name $rectKeyClick
+      if ($cRefound) { $c = $cRefound } else { $result.dumpErrors = @($result.dumpErrors) + @('card could not be re-located before the click; using the original reference') }
+
+      $smtcBefore = Get-AmSmtcState
+      $after = $smtcBefore; $transition = $false; $why = ''; $smtcMs = 0; $acted = $false
+
+      # ---- fast path: an in-card PlayButton ALREADY in the tree (typically because the user is hovering
+      # the card with a real mouse). One free query, no synthetic hovering, ~50ms. ----
+      $hoverRect = $null
+      try { $hoverRect = $c.element.Current.BoundingRectangle } catch { }
+      $hover = @{ ok = $false; element = $null; attempts = 0; polls = 0; rectKey = '' }
+      if ($hoverRect) {
+        $hit = Find-AmInCardPlayButton $app.hwnd $hoverRect $PlayLabel
+        if ($hit) { $hover = @{ ok = $true; element = $hit.element; attempts = 0; polls = 0; rectKey = $hit.rectKey } }
+        elseif ($TryHoverPlay) {
+          # OPT-IN active hover. MEASURED 2026-09-26: inside the engine flow this failed 6/6 even after the
+          # park-outside + 3-step approach (an inside-only trace produced 24/24 samples with no overlay at
+          # all), while the navigation path below succeeded 7/7. So it is NOT the default; it is kept for
+          # hosts/versions where the overlay does render, and for further measurement.
+          $hover = Find-AmCardHoverPlayButton $app.hwnd $hoverRect $PlayLabel
+        }
+      }
+      if ($hover.ok) {
+        $result.hoverPlayButton = $true; $result.hoverAttempts = $hover.attempts; $result.hoverPolls = $hover.polls
+        $ptH = Get-AmSafeClickPoint $hover.element.Current.BoundingRectangle
+        $hk = Invoke-AmSingleClick $app.hwnd $hover.element $ptH.x $ptH.y -NoForeground:$NoForeground
+        if ($hk.ok) {
+          $result.clicked = $true; $result.playVia = 'card-hover-play-button'; $acted = $true
+          $result.minimizedAfterClick = Hide-AmAfterClick $app.hwnd -NoMinimize:$NoMinimize
+          $w1 = Wait-AmPlaylistTransition $smtcBefore $SmtcTimeoutMs
+          $after = $w1.state; $transition = $w1.transition; $smtcMs = $w1.ms
+        } else { $why = 'card overlay PlayButton click failed: ' + [string]$hk.detail }
+      }
+
+      # ---- path 2 (fallback only): card click navigates, then the page header PlayButton plays ----
+      if (-not $acted -and -not $why) {
+        $pt1 = Get-AmSafeClickPoint $c.element.Current.BoundingRectangle
+        $ck = Invoke-AmSingleClick $app.hwnd $c.element $pt1.x $pt1.y -NoForeground:$NoForeground
+        if (-not $ck.ok) { $why = 'card click failed: ' + [string]$ck.detail }
+        else {
+          $result.clicked = $true; $result.playVia = 'card-click'; $acted = $true
+          # some views may start playback on the card click itself - give SMTC a short window first
+          $w0 = Wait-AmPlaylistTransition $smtcBefore 1500
+          if ($w0.transition) { $after = $w0.state; $transition = $true; $smtcMs = $w0.ms }
+          else {
+            $pb = $null
+            for ($t = 0; $t -lt 10 -and -not $pb; $t++) {
+              Start-Sleep -Milliseconds 300
+              $rootPage = (Get-AmRoot $app.hwnd).root
+              $pbList = @(Find-AmPlaylistPagePlayButton $rootPage $PlayLabel)
+              if ($pbList.Count -gt 0) { $pb = $pbList[0] }
+            }
+            if (-not $pb) { $why = 'card clicked, but the playlist page exposed no PlayButton within 3000ms' }
+            else {
+              $result.playButtonFound = $true
+              # Same stale-element discipline as for the card: re-read from a freshly queried element.
+              $rootPage2 = (Get-AmRoot $app.hwnd).root
+              $pbList2 = @(Find-AmPlaylistPagePlayButton $rootPage2 $PlayLabel)
+              if ($pbList2.Count -gt 0) { $pb = $pbList2[0] }
+              $pt2 = Get-AmSafeClickPoint $pb.element.Current.BoundingRectangle
+              $pk = Invoke-AmSingleClick $app.hwnd $pb.element $pt2.x $pt2.y -NoForeground:$NoForeground
+              if (-not $pk.ok) { $why = 'page PlayButton click failed: ' + [string]$pk.detail }
+              else {
+                $result.playButtonClicked = $true; $result.playVia = 'page-play-button'
+                $result.minimizedAfterClick = Hide-AmAfterClick $app.hwnd -NoMinimize:$NoMinimize
+                $w2 = Wait-AmPlaylistTransition $smtcBefore $SmtcTimeoutMs
+                $after = $w2.state; $transition = $w2.transition; $smtcMs = $w2.ms
+              }
+            }
+          }
+        }
+      }
+
+      $result.smtc = @{
+        title = $after.title; artist = $after.artist; status = $after.status
+        beforeTitle = $smtcBefore.title; beforeArtist = $smtcBefore.artist; beforeStatus = $smtcBefore.status
+        posMs = $after.posMs; hasSession = [bool]$after.ok; transitionMs = $smtcMs
+      }
+      if ($transition) { $stage = 'PLAYBACK_STARTED'; $detail = 'SMTC ' + $smtcBefore.status + ' -> Playing via ' + $result.playVia + ' (' + $smtcMs + 'ms)' }
+      elseif ($why) { $stage = 'PLAY_BUTTON_NOT_FOUND'; $detail = $why + ' (playback NOT started)' }
+      elseif (-not $after.ok) { $stage = 'PLAYLIST_CLICKED'; $detail = 'clicked, but there is no SMTC session to verify against (playback NOT proven)' }
+      elseif ($after.status -eq 'Playing') { $stage = 'PLAYBACK_UNCHANGED'; $detail = 'SMTC was already Playing and the title did not change; playlist playback NOT proven' }
+      else { $stage = 'SMTC_TIMEOUT'; $detail = 'no Playing within ' + $SmtcTimeoutMs + 'ms after the click (status=' + $after.status + ')' }
+    }
+  }
+
+  # ---- URL route, step 2: the page's own PlayButton, then the same SMTC criterion. Deliberately a
+  # separate block from the name route's fallback (duplicated on purpose: that path is verified and must
+  # not be disturbed by an unverified feature).
+  if ($stage -eq 'UNKNOWN' -and $Url -and -not $Commit) {
+    # PROBE contract: a URL still means navigation only; nothing is clicked without -Commit.
+    $stage = 'PROBE_ONLY'
+    $detail = 'URL opened (navigatedBy=' + $result.navigatedBy + '); nothing clicked (pass -Commit to click the page PlayButton)'
+  }
+
+  if ($stage -eq 'UNKNOWN' -and $Url) {
+    $smtcBefore = Get-AmSmtcState
+    $pb = $null
+    for ($t = 0; $t -lt 12 -and -not $pb; $t++) {
+      Start-Sleep -Milliseconds 400
+      $rootPage = (Get-AmRoot $app.hwnd).root
+      $pbList = @(Find-AmPlaylistPagePlayButton $rootPage $PlayLabel -AllowAlternateId)
+      if ($pbList.Count -gt 0) { $pb = $pbList[0] }
+    }
+    $after = $smtcBefore; $transition = $false; $smtcMs = 0
+    if (-not $pb) { $stage = 'PLAY_BUTTON_NOT_FOUND'; $detail = 'no PlayButton on the page opened by the URL within 4800ms' }
+    else {
+      $result.playButtonFound = $true
+      $pt2 = Get-AmSafeClickPoint $pb.element.Current.BoundingRectangle
+      $pk = Invoke-AmSingleClick $app.hwnd $pb.element $pt2.x $pt2.y -NoForeground:$NoForeground
+      if (-not $pk.ok) { $stage = 'PLAY_BUTTON_NOT_FOUND'; $detail = 'PlayButton click failed: ' + [string]$pk.detail }
       else {
-        $result.clicked = $true; $stage = 'PLAYLIST_CLICKED'
-        # TODO(B-i step 4): verify "playback started" through the am-smtc.ps1 state getter once its
-        # function name and contract are confirmed by reading that file. Never guess an API.
+        $result.clicked = $true; $result.playButtonClicked = $true
+        $result.playVia = 'url-page-play-button'
+        $result.minimizedAfterClick = Hide-AmAfterClick $app.hwnd -NoMinimize:$NoMinimize
+        $w = Wait-AmPlaylistTransition $smtcBefore $SmtcTimeoutMs
+        $after = $w.state; $transition = $w.transition; $smtcMs = $w.ms
+        $result.smtc = @{
+          title = $after.title; artist = $after.artist; status = $after.status
+          beforeTitle = $smtcBefore.title; beforeArtist = $smtcBefore.artist; beforeStatus = $smtcBefore.status
+          posMs = $after.posMs; hasSession = [bool]$after.ok; transitionMs = $smtcMs
+        }
+        if ($transition) { $stage = 'PLAYBACK_STARTED'; $detail = 'URL -> SMTC ' + $smtcBefore.status + ' -> Playing via url-page-play-button (' + $smtcMs + 'ms)' }
+        elseif (-not $after.ok) { $stage = 'PLAYLIST_CLICKED'; $detail = 'clicked, but there is no SMTC session to verify against (playback NOT proven)' }
+        elseif ($after.status -eq 'Playing') { $stage = 'PLAYBACK_UNCHANGED'; $detail = 'SMTC was already Playing and the title did not change; playback NOT proven' }
+        else { $stage = 'SMTC_TIMEOUT'; $detail = 'no Playing within ' + $SmtcTimeoutMs + 'ms after the URL page PlayButton (status=' + $after.status + ')' }
       }
     }
   }
 
   $result.stage = $stage; $result.stageDetail = $detail
-  $result.ok = ($stage -eq 'PLAYLIST_CLICKED')
+  # Success is SMTC's call, not the click's (CONTROL-PLANE invariant I1): only a proven Playing transition
+  # counts. PLAY_BUTTON_NOT_FOUND / PLAYLIST_CLICKED / PLAYBACK_UNCHANGED / SMTC_TIMEOUT all mean
+  # "clicked, not proven".
+  $result.ok = ($stage -eq 'PLAYBACK_STARTED')
   if (-not $result.ok -and $ShotPath) { [void](Save-AmShot $ShotPath) }
   return $result
 }

@@ -643,6 +643,55 @@ function bindPlaylistPanelLazyRender() {
     }
   }, { passive: true });
 }
+// ------------------------------------------------------------
+// Apple Music APP: play ONE whole playlist (B-i).
+//
+// This is NOT the same action as the detail view's 播放歌单 button (which hands the playlist's first
+// Apple track to the AMC track chain). Here the playlist itself is handed to Apple Music: the chain
+// searches the NAME, switches the search scope to the app's LIBRARY, clicks the card's hover play
+// button and verifies the SMTC transition. A playlist has no expected track, so the verdict is
+// verification:'smtc-transition' - "SMTC went Playing", never "the right song played".
+//
+// The library scope chip carries a LOCALIZED label; it is measured, not guessed. Measured in the
+// zh-CN app: '你的资料库' (experiment/apple-music-windows-control/REPORT-B-I-PLAYLIST-CARD.md 4.1).
+// If the app language changes, change this one constant.
+// ------------------------------------------------------------
+var AMC_PLAYLIST_SCOPE_LABEL = '你的资料库';
+function playApplePlaylistInAppleMusic(name, btn, statusEl, url) {
+  var label = String(name || '').trim();
+  var amc = window.mineradio && window.mineradio.amc;
+  var target = String(url || '').trim();
+  function say(glyph, ok, stage, via) {
+    var text = (label || target || '?') + ' → ' + (stage || '') + (via ? ' / ' + via : '');
+    if (btn) {
+      btn.textContent = glyph;
+      btn.style.color = ok ? 'rgba(0,245,212,.95)' : 'rgba(255,120,120,.95)';
+      if (btn.title !== undefined) btn.title = text;
+    }
+    if (statusEl) statusEl.textContent = glyph + ' ' + text;
+  }
+  if (!label && !target) { say('×', false, 'NO_NAME'); return; }
+  if (!amc || typeof amc.playPlaylist !== 'function') { say('×', false, 'IPC_UNAVAILABLE'); return; }
+  say('…', true, 'RUNNING');
+  var payload = { name: label, scopeLabel: AMC_PLAYLIST_SCOPE_LABEL };
+  // A playlist URL, when the caller has one, replaces the name search entirely (deterministic: no name
+  // collision, no scope switch). The chain navigates and then uses the playlist page's own PlayButton.
+  if (target) payload.url = target;
+  Promise.resolve(amc.playPlaylist(payload))
+    .then(function (res) {
+      console.log('[amc] playPlaylist result', res);
+      var stage = (res && res.stage) || 'NO_RESULT';
+      var via = (res && res.playVia) || '';
+      if (res && res.verified) say('✓', true, stage, via);
+      else if (stage === 'AMBIGUOUS') say('!', false, stage + '（同名多个，需指定第几个）', via);
+      else if (stage === 'PLAYLIST_NOT_FOUND') say('×', false, stage + '（资料库里没找到这个歌单）', via);
+      else say('×', false, stage, via);
+    })
+    .catch(function (err) {
+      console.warn('amc playPlaylist failed:', err);
+      say('×', false, 'IPC_ERROR');
+    });
+}
 function renderUserPlaylistsList(opts) {
   opts = opts || {};
   var $pl = document.getElementById('pl-list');
@@ -663,9 +712,15 @@ function renderUserPlaylistsList(opts) {
     var key = playlistPanelKey(provider, pl.id);
     var isExpanded = playlistPanelDetailState.key === key;
     var expanded = isExpanded ? ' expanded' : '';
-    return '<div class="pl-card' + expanded + '" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" data-playlist-provider="' + provider + '" data-playlist-id="' + escHtml(String(pl.id || '')) + '" data-playlist-title="' + escHtml(pl.name || '') + '" data-playlist-index="' + sourceIndex + '">' +
+    // AM whole-playlist playback entry. Only REAL Apple playlists: the virtual library / liked cards are
+    // synthesised by MineRadio and have no counterpart to locate in the app's library search.
+    var amcWholeBtn = (provider === 'apple' && !pl.virtual && String(pl.id || '').indexOf('apple-liked') === -1)
+      ? '<button type="button" data-pl-amc-whole="1" title="让 Apple Music App 播放整个歌单（UIA 链 + SMTC 校验）" style="flex:0 0 auto;width:26px;height:26px;margin-left:6px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:rgba(0,245,212,.9);font-size:11px;line-height:1;cursor:pointer">▶</button>'
+      : '';
+    return '<div class="pl-card' + expanded + '" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" data-playlist-provider="' + provider + '" data-playlist-id="' + escHtml(String(pl.id || '')) + '" data-playlist-title="' + escHtml(pl.name || '') + '" data-playlist-url="' + escHtml(pl.appleUrl || '') + '" data-playlist-index="' + sourceIndex + '">' +
       imgTag +
       '<div style="flex:1;min-width:0"><div class="pl-name">' + escHtml(pl.name) + '<span class="tag-source ' + provider + '" style="margin-left:6px;vertical-align:1px">' + providerLabel + '</span></div><div class="pl-sub">' + pl.trackCount + ' 首 · ' + escHtml(pl.creator || '') + '</div></div>' +
+      amcWholeBtn +
       '</div>';
   }
   var cache = playlistPanelBuildVirtualEntries();
@@ -744,10 +799,32 @@ document.getElementById('pl-list').addEventListener('click', function (e) {
     if (playDetail) {
       e.preventDefault();
       e.stopPropagation();
-      // E-A F6-③: an APPLE playlist's "播放歌单" hands its first playable Apple track to Apple Music instead
-      // of loading the whole playlist into MineRadio's internal queue. Same identity rule and same normalised
-      // model as the row path (provider 'apple' AND an explicit catalogId; playAmcTrackFromSong).
+      // B-i (2026-09-26): an APPLE playlist's 播放歌单 means "let Apple Music play THIS PLAYLIST", not
+      // "play its first track". The first-track path below is now only the fallback for when the playlist
+      // plane is unreachable (no IPC bridge) - it is NEVER used to paper over a failed playlist attempt,
+      // because silently playing a different thing is exactly what this project forbids.
       // SCOPED to this button only - no other click in the panel is ever intercepted.
+      var detailPl = playlistPanelDetailState.playlist || null;
+      var detailProvider = normalizePlaylistProvider(detailPl && detailPl.provider);
+      var detailName = (detailPl && detailPl.name) || '';
+      // The playlist mapper (apple-music-api.js:892) already carries attributes.url as appleUrl - prefer it,
+      // because a URL replaces the whole name/scope/ambiguity dance with one deterministic navigation.
+      var detailUrl = (detailPl && (detailPl.appleUrl || detailPl.url || (detailPl.attributes && detailPl.attributes.url))) || '';
+      var amcBridge = window.mineradio && window.mineradio.amc;
+      if (detailProvider === 'apple' && (detailName || detailUrl) && typeof playApplePlaylistInAppleMusic === 'function'
+          && amcBridge && typeof amcBridge.playPlaylist === 'function') {
+        var amcState = playDetail.parentNode && playDetail.parentNode.querySelector ? playDetail.parentNode.querySelector('.pl-detail-amc-state') : null;
+        if (!amcState && playDetail.parentNode && playDetail.parentNode.appendChild) {
+          amcState = document.createElement('span');
+          amcState.className = 'pl-detail-amc-state';
+          amcState.style.cssText = 'font-size:11px;margin-left:8px;color:rgba(0,245,212,.9);white-space:nowrap';
+          playDetail.parentNode.appendChild(amcState);
+        }
+        playApplePlaylistInAppleMusic(detailName, null, amcState, detailUrl);
+        return;
+      }
+      // E-A F6-③ fallback: hand the playlist's first playable Apple track to Apple Music (provider 'apple'
+      // AND an explicit catalogId; playAmcTrackFromSong), or fall back to the internal queue.
       var amcPlaylistFirst = null;
       for (var amcPi = 0; amcPi < ((playlistPanelDetailState.tracks || []).length); amcPi++) {
         var amcCand = playlistPanelDetailState.tracks[amcPi];
@@ -776,6 +853,17 @@ document.getElementById('pl-list').addEventListener('click', function (e) {
     e.preventDefault();
     e.stopPropagation();
     playPlaylistPanelDetailTrack(Number(row.getAttribute('data-pl-detail-row')));
+    return;
+  }
+  // The ▶ on an Apple playlist card: whole-playlist playback in the Apple Music APP. Scoped to this
+  // button only (stopPropagation), so the card's own click still opens the detail view.
+  var amcWhole = e.target && e.target.closest ? e.target.closest('[data-pl-amc-whole]') : null;
+  if (amcWhole) {
+    e.preventDefault();
+    e.stopPropagation();
+    var amcWholeCard = amcWhole.closest ? amcWhole.closest('.pl-card') : null;
+    playApplePlaylistInAppleMusic(amcWholeCard ? (amcWholeCard.getAttribute('data-playlist-title') || '') : '', amcWhole, null,
+      amcWholeCard ? (amcWholeCard.getAttribute('data-playlist-url') || '') : '');
     return;
   }
   var card = e.target && e.target.closest ? e.target.closest('.pl-card') : null;

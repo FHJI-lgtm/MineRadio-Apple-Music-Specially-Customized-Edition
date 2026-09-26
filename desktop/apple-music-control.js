@@ -35,6 +35,12 @@ const DEFAULT_CHAIN_SCRIPT = path.join(
   __dirname, '..', 'experiment', 'apple-music-windows-control', 'poc', 'play-song.ps1'
 );
 
+// The playlist plane shells out to the B-i playlist engine instead of the song engine. Same rule: this
+// file only builds argv and interprets JSON, it never reimplements playback.
+const DEFAULT_PLAYLIST_SCRIPT = path.join(
+  __dirname, '..', 'experiment', 'apple-music-windows-control', 'poc', 'play-playlist.ps1'
+);
+
 // ---------------------------------------------------------------------------
 // search plane
 // ---------------------------------------------------------------------------
@@ -388,6 +394,111 @@ async function playTrack(result, opts = {}) {
   }, diagnosticsFrom(raw), verdict);
 }
 
+/**
+ * Play one of the user's OWN Apple Music playlists, addressed by NAME.
+ *
+ * Why this is a separate plane from playTrack(): a playlist is not a track. There is no expected
+ * title/artist to compare against, so this function CANNOT claim track-level verification and does not
+ * pretend to. What it does report is the chain's own criterion - the SMTC TRANSITION
+ * (poc/lib/am-play-playlist.ps1: Playing AND (was not Playing OR the title changed)) - plus the raw
+ * before/after SMTC state, the stage and which click path actually produced playback.
+ *
+ * The chain: search the name -> switch the search scope to the Apple Music LIBRARY -> locate the
+ * playlist card -> click the card's hover play button (fallback: click the card, then the playlist
+ * page's PlayButton) -> verify through SMTC. A playlist that matches 2+ cards is AMBIGUOUS and is
+ * never guessed at; the caller can pass cardIndex to pick one explicitly.
+ *
+ * @param {{name?:string, playlist?:string, scopeLabel?:string, cardIndex?:number, tryHoverPlay?:boolean}} payload
+ * @param {{chainScript?:string, smtcTimeoutMs?:number, powershell?:string}} [opts]
+ */
+async function playPlaylist(payload = {}, opts = {}) {
+  const name = String(payload.name || payload.playlist || '').trim();
+  if (!name) {
+    return { ok: false, verified: false, stage: 'BAD_INPUT', playVia: '', name: '', mismatch: ['input'],
+             smtc: null, error: 'playlist name is required' };
+  }
+  const scopeLabel = String((payload.scopeLabel != null ? payload.scopeLabel : opts.scopeLabel) || '').trim();
+  const script = opts.chainScript || DEFAULT_PLAYLIST_SCRIPT;
+  const args = [
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+    '-Name', name,
+    '-Commit',
+    '-SmtcTimeoutMs', String(opts.smtcTimeoutMs || 8000),
+  ];
+  // The library scope chip is a LOCALIZED label; the caller must measure it, never guess it.
+  // zh-CN Apple Music: '你的资料库' (experiment/.../REPORT-B-I-PLAYLIST-CARD.md 4.1).
+  if (scopeLabel) args.push('-ScopeLabel', scopeLabel);
+  if (payload.cardIndex) args.push('-CardIndex', String(payload.cardIndex));
+  if (payload.url) args.push('-Url', String(payload.url));
+  if (payload.tryHoverPlay) args.push('-TryHoverPlay');
+  if (payload.noMinimize) args.push('-NoMinimize');
+  const powershell = opts.powershell || 'powershell.exe';
+
+  const run = await new Promise((resolve) => {
+    let out = '', err = '';
+    let child;
+    try {
+      child = spawn(powershell, args, { windowsHide: true });
+    } catch (e) {
+      resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null });
+      return;
+    }
+    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }));
+    child.on('close', (code) => {
+      const parsed = lastJsonLine(out);
+      resolve({
+        ok: !!(parsed && parsed.ok),
+        stage: parsed ? parsed.stage : 'NO_JSON',
+        exitCode: code,
+        detail: parsed ? '' : (err.trim() || out.trim().slice(-400)),
+        raw: parsed,
+      });
+    });
+  });
+
+  const raw = run.raw;
+  const base = { name: name, scopeLabel: scopeLabel, verification: 'smtc-transition', route: 'playlist' };
+  if (!raw) {
+    return Object.assign(base, {
+      ok: false, verified: false, stage: run.stage || 'FAILED', playVia: '',
+      mismatch: ['playback'], smtc: null, error: run.detail || 'chain reported failure',
+    });
+  }
+  // One fact, reported once: only the chain's PLAYBACK_STARTED (a proven SMTC transition) counts.
+  // Everything else - PLAY_BUTTON_NOT_FOUND / PLAYLIST_CLICKED / PLAYBACK_UNCHANGED / SMTC_TIMEOUT /
+  // AMBIGUOUS / PLAYLIST_NOT_FOUND - is "not proven", never a silent success.
+  const stage = raw.stage || run.stage || '';
+  const ok = !!raw.ok;
+  const smtc = raw.smtc || null;
+  return Object.assign(base, {
+    ok: ok,
+    verified: ok,
+    chainOk: ok,
+    chainStage: stage,
+    stage: stage,
+    mismatch: ok ? [] : [stage || 'playback'],
+    error: ok ? '' : (raw.stageDetail || run.detail || ''),
+    playVia: raw.playVia || '',
+    clicked: !!raw.clicked,
+    ambiguous: !!raw.ambiguous,
+    candidateCount: raw.candidateCount != null ? raw.candidateCount : null,
+    pickedByIndex: !!raw.pickedByIndex,
+    hoverPlayButton: !!raw.hoverPlayButton,
+    hoverAttempts: raw.hoverAttempts != null ? raw.hoverAttempts : null,
+    hoverPolls: raw.hoverPolls != null ? raw.hoverPolls : null,
+    playButtonFound: !!raw.playButtonFound,
+    playButtonClicked: !!raw.playButtonClicked,
+    searchSubmitted: !!raw.searchSubmitted,
+    scopeSwitched: !!raw.scopeSwitched,
+    stageDetail: raw.stageDetail || '',
+    cards: raw.cards || [],
+    smtc: smtc,
+    chain: raw,
+  });
+}
+
 module.exports = {
   searchTracks,
   playTrack,
@@ -399,4 +510,6 @@ module.exports = {
   splitArtistAlbum,
   ARTIST_ALIASES,
   DEFAULT_CHAIN_SCRIPT,
+  playPlaylist,
+  DEFAULT_PLAYLIST_SCRIPT,
 };
