@@ -957,71 +957,6 @@ async function handleAppleUserPlaylists(options) {
   };
 }
 
-// ---- Apple Music WEB path for user playlists (step 3A) -------------------------------------------------
-// Same response contract as handleAppleUserPlaylists above, but the data comes from the Web API
-// (AMPWeb bearer + media-user-token) instead of the Developer JWT. The Developer handler is kept
-// untouched and still exported; this route simply no longer uses it.
-// identity note: the web credential store carries no nickname/userId, so userId is '' on this path.
-async function handleAppleUserPlaylistsWeb(options) {
-  options = options || {};
-  const webApi = require('./desktop/apple-music-web-api');
-  const userToken = webApi.getMediaUserToken();
-  if (!userToken) {
-    return { provider: 'apple', loggedIn: false, playlists: [], message: '需要先登录 Apple Music 网页账号（media-user-token 未配置）。', error: '' };
-  }
-  const maxTotal = Math.max(1, Math.min(500, Number(options.limit) || 300));
-  const startOffset = Math.max(0, Number(options.offset) || 0);
-  const playlists = [];
-  let offset = startOffset;
-  let playlistError = null;
-  let lastJson = null;
-  try {
-    while (playlists.length < maxTotal) {
-      const pageLimit = Math.min(APPLE_LIBRARY_PAGE_LIMIT, maxTotal - playlists.length);
-      // GET only: the web layer is in read-only mode for this phase.
-      const page = await webApi.getLibrary('/playlists', { limit: pageLimit, offset });
-      if (!page.ok) { playlistError = { error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status }; break; }
-      const json = page.json || {};
-      lastJson = json;
-      const items = Array.isArray(json.data) ? json.data : [];
-      items.forEach((item) => { const mapped = mapAppleLibraryPlaylist(item); if (mapped) playlists.push(mapped); });
-      if (!items.length || !json.next) break;
-      offset += items.length;
-    }
-  } catch (err) {
-    playlistError = appleErrorDetails(err);
-  }
-  const likedCard = {
-    provider: 'apple',
-    source: 'apple',
-    id: APPLE_LIKED_PLAYLIST_ID,
-    virtual: true,
-    name: 'Apple Music 资料库',
-    cover: '',
-    creator: 'Apple Music',
-    trackCount: 0,
-    playCount: 0,
-    subscribed: false,
-    shelfPane: 'fav',
-  };
-  const total = Math.max(playlists.length + startOffset, Number(lastJson && lastJson.meta && lastJson.meta.total) || (playlists.length + startOffset));
-  const nextOffset = startOffset + playlists.length;
-  return {
-    provider: 'apple',
-    loggedIn: true,
-    userId: '',
-    playlists: (startOffset === 0 ? [likedCard] : []).concat(playlists),
-    total,
-    offset: startOffset,
-    limit: maxTotal,
-    nextOffset,
-    hasMore: !!(lastJson && lastJson.next) && nextOffset < total,
-    partial: true,
-    source: 'web',
-    error: playlistError && playlistError.error || '',
-    message: playlistError && playlistError.message || '',
-  };
-}
 async function handleAppleLibrarySongs(limit, offset, userToken) {
   const json = await appleGet('/v1/me/library/songs', {
     limit: Math.max(1, Math.min(APPLE_LIBRARY_PAGE_LIMIT, Number(limit) || 48)),
@@ -1049,59 +984,6 @@ async function handleAppleLibrarySongs(limit, offset, userToken) {
   };
 }
 
-// ---- Apple Music WEB path for playlist tracks (step 3B) ----------------------------------------------
-// Same mapper and same response contract as handleApplePlaylistTracks below, but reading the Web API.
-// ID RULE (hard): a playlist track keeps the `a.<catalogId>` id the payload carries. It is NEVER
-// re-wrapped into `i.*` (that namespace belongs to /v1/me/library/songs only), and a catalog id is only
-// ever taken from attributes.playParams.catalogId - never parsed out of an id or a URL.
-// PAGINATION (honest): the Web payload's next-page link has not been observed for this endpoint, so
-// hasMore is derived from what is actually present (json.next) and never fabricated.
-async function handleApplePlaylistTracksWeb(playlistId, opts) {
-  opts = opts || {};
-  const webApi = require('./desktop/apple-music-web-api');
-  const id = normalizeText(playlistId);
-  const limit = Math.max(1, Math.min(APPLE_PLAYLIST_PAGE_LIMIT, Number(opts.limit) || 48));
-  const startOffset = Math.max(0, Number(opts.offset) || 0);
-  if (!id) return { provider: 'apple', playlistId: '', tracks: [], total: 0, offset: 0, limit, nextOffset: 0, hasMore: false, error: 'MISSING_PLAYLIST_ID', message: '' };
-  const userToken = webApi.getMediaUserToken();
-  if (!userToken) {
-    return { provider: 'apple', playlistId: id, tracks: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, error: '', message: '需要先登录 Apple Music 网页账号（media-user-token 未配置）。' };
-  }
-  const storefront = DEFAULT_APPLE_STOREFRONT;
-  let json = null;
-  try {
-    // The virtual "Apple Music 资料库" card (APPLE_LIKED_PLAYLIST_ID) has no library playlist id:
-    // its content is the library SONGS collection, whose ids are the i.* namespace. Real playlists
-    // keep reading /v1/me/library/playlists/<id>/tracks (a.* namespace) - the two are never merged.
-    const page = (id === APPLE_LIKED_PLAYLIST_ID)
-      ? await webApi.getLibrary('/songs', { limit, offset: startOffset })
-      : await webApi.getLibrary('/playlists/' + encodeURIComponent(id) + '/tracks', { limit, offset: startOffset });
-    if (!page.ok) {
-      return { provider: 'apple', playlistId: id, tracks: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, source: 'web', error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status };
-    }
-    json = page.json || {};
-  } catch (err) {
-    const detail = appleErrorDetails(err);
-    return Object.assign({ provider: 'apple', playlistId: id, tracks: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false }, detail);
-  }
-  const items = Array.isArray(json.data) ? json.data : [];
-  const tracks = items.map((item, index) => mapAppleTrack(item, startOffset + index, id, { storefront })).filter(Boolean);
-  const total = Math.max(tracks.length + startOffset, Number(json.meta && json.meta.total) || (tracks.length + startOffset));
-  const nextOffset = startOffset + tracks.length;
-  return {
-    provider: 'apple',
-    playlistId: id,
-    tracks,
-    total,
-    offset: startOffset,
-    limit,
-    nextOffset,
-    hasMore: !!json.next && nextOffset < total,
-    source: 'web',
-    error: '',
-    message: '',
-  };
-}
 async function handleApplePlaylistTracks(playlistId, opts) {
   opts = opts || {};
   playlistId = normalizeText(playlistId);
@@ -1561,9 +1443,7 @@ module.exports = {
   handleAppleStatus,
   handleAppleSearch,
   handleAppleUserPlaylists,
-  handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracks,
-  handleApplePlaylistTracksWeb,
   handleAppleAlbumDetail,
   handleAppleLibraryCheck,
   handleAppleLibrarySet,

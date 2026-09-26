@@ -137,15 +137,14 @@ const {
   handleAppleStatus,
   handleAppleSearch,
   handleAppleUserPlaylists,
-    handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracks,
-    handleApplePlaylistTracksWeb,
   handleAppleAlbumDetail,
   handleAppleLibraryCheck,
   handleAppleLibrarySet,
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
+const { handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
