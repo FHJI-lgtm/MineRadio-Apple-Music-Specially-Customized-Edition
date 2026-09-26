@@ -191,7 +191,12 @@
     render();
   }
 
+  // Debug / fallback entry only. The floating button is OFF by default so the app stays clean;
+  // the verified channel lives in the search bar's AM tab now. Enable with either
+  //   ?amcPanel=1  in the URL, or  window.__AMC_PANEL_DEBUG = true  in the console.
+  var AMC_PANEL_DEBUG = !!(window.__AMC_PANEL_DEBUG || String(location.search || '').indexOf('amcPanel=1') >= 0);
   function boot() {
+    if (!AMC_PANEL_DEBUG) return;
     if (!document.body) { document.addEventListener('DOMContentLoaded', boot, { once: true }); return; }
     build();
   }

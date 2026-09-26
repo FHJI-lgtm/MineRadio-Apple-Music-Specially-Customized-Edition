@@ -5,7 +5,7 @@ var searchLastResultQuery = '';
 var searchProviderNotice = '';
 var SEARCH_HISTORY_STORE_KEY = 'mineradio-search-history';
 var SEARCH_HISTORY_STORE_VERSION = 3;
-var SEARCH_HISTORY_MODES = ['song', 'netease', 'qq', 'kugou', 'qishui', 'spotify', 'podcast'];
+var SEARCH_HISTORY_MODES = ['song', 'netease', 'qq', 'kugou', 'qishui', 'spotify', 'am', 'podcast'];
 var MUSIC_SEARCH_INITIAL_VISIBLE = 18;
 var MUSIC_SEARCH_APPEND_BATCH = 14;
 var MUSIC_SEARCH_MAX_RESULTS = 180;
@@ -192,7 +192,12 @@ function updateSearchModeTabs() {
     spotifyBtn.classList.toggle('active', searchMode === 'spotify');
     spotifyBtn.setAttribute('aria-selected', searchMode === 'spotify' ? 'true' : 'false');
   }
-  if (podcastBtn) {
+  var amBtn = document.getElementById('search-mode-am');
+  if (amBtn) {
+    amBtn.classList.toggle('active', searchMode === 'am');
+    amBtn.setAttribute('aria-selected', searchMode === 'am' ? 'true' : 'false');
+  }
+  if ($input && searchMode === 'am') $input.placeholder = '搜索 Apple Music App（iTunes）...';  if (podcastBtn) {
     podcastBtn.classList.toggle('active', searchMode === 'podcast');
     podcastBtn.setAttribute('aria-selected', searchMode === 'podcast' ? 'true' : 'false');
   }
@@ -206,7 +211,7 @@ function updateSearchModeTabs() {
   requestAnimationFrame(updateSearchPillGlassDisplacementMap);
 }
 function setSearchMode(mode) {
-  mode = (mode === 'podcast' || mode === 'netease' || mode === 'qq' || mode === 'kugou' || mode === 'qishui' || mode === 'spotify') ? mode : 'song';
+  mode = (mode === 'podcast' || mode === 'netease' || mode === 'qq' || mode === 'kugou' || mode === 'qishui' || mode === 'spotify' || mode === 'am') ? mode : 'song';
   if (searchMode === mode) return;
   searchMode = mode;
   updateSearchModeTabs();
@@ -777,7 +782,7 @@ function searchProviderCanSearch(provider) {
   return provider === 'netease' || provider === 'qq' || provider === 'kugou' || provider === 'qishui';
 }
 function searchModeProvider(mode) {
-  return mode === 'netease' || mode === 'qq' || mode === 'kugou' || mode === 'qishui' || mode === 'spotify' ? mode : '';
+  return mode === 'netease' || mode === 'qq' || mode === 'kugou' || mode === 'qishui' || mode === 'spotify' || mode === 'am' ? mode : '';
 }
 function activeSearchProvidersForMode(mode) {
   var specific = searchModeProvider(mode);
@@ -1249,6 +1254,36 @@ function appendNextSearchResults(expectedKey) {
   });
   return true;
 }
+// Apple Music App dedicated mode: search ONLY through the amc channel (iTunes Search API).
+// Still no song-model conversion and no play button - this is the search/display plane only.
+async function doAmcOnlySearch(q, requestSeq) {
+  resetSearchMusicRenderState();
+  playlist = [];
+  setSearchHistorySurface(false);
+  searchLastResultQuery = searchResultKey(q, 'am');
+  if (!amcSearchAvailable()) {
+    $results.innerHTML = '<div class="search-empty">Apple Music App 通道不可用（window.mineradio.amc 不存在）</div>';
+    $results.classList.add('show');
+    return;
+  }
+  $results.innerHTML = '<div class="search-empty">正在搜索 Apple Music App…</div>';
+  $results.classList.add('show');
+  try {
+    var res = await window.mineradio.amc.searchTracks({ query: q, country: 'us', limit: 25 });
+    var list = res && Array.isArray(res.results) ? res.results : [];
+    if (requestSeq !== searchRequestSeq) return;
+    if (String(($input && $input.value) || '').trim() !== q) return;
+    $results.innerHTML = '';
+    if (!renderAmcSearchSection(list)) $results.innerHTML = '<div class="search-empty">Apple Music App 没有找到相关歌曲</div>';
+    $results.classList.add('show');
+  } catch (err) {
+    console.warn('amc dedicated search failed:', err);
+    if (requestSeq === searchRequestSeq) {
+      $results.innerHTML = '<div class="search-empty">Apple Music App 搜索失败，请稍后重试</div>';
+      $results.classList.add('show');
+    }
+  }
+}
 function renderSongSearchResults(songs) {
   setSearchHistorySurface(false);
   var plan = pendingSearchProviderPages || {};
@@ -1343,6 +1378,10 @@ async function doSearch(q, opts) {
     doPodcastSearch(q);
     return;
   }
+  if (searchMode === 'am') {
+    doAmcOnlySearch(q, requestSeq);
+    return;
+  }
   var requestSeq = ++searchRequestSeq;
   disconnectSearchLoadMoreObserver();
   setSearchHistorySurface(false);
@@ -1369,7 +1408,7 @@ async function doSearch(q, opts) {
       hasMore: !!searchData.hasMore
     };
     renderSongSearchResults(songs);
-    appendAmcSearchSection(q, requestSeq);
+    if (mode === 'song') appendAmcSearchSection(q, requestSeq);
     if (opts.autoPlayFirst) playSearchResult(0);
   } catch (err) {
     console.error('Search:', err);
