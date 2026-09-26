@@ -158,3 +158,39 @@ identity 层只是确认它与目标 `The Weeknd` 属于同一已知艺人别名
 
 **结论**：`iTunes -> -Url -> Apple Music Windows -> 真实播放 -> SMTC -> verified` 模块级链路**闭环**。
 仍未做：`amc:search`/`amc:play` IPC、搜索 UI。
+
+## 12. 台账定稿（IPC runtime 记为 untested）
+
+| 层 | 状态 | 依据 |
+|---|---|---|
+| 底层 Apple Music 播放链 | OK | `9461ce9`（真播放 E2E） |
+| SMTC identity / alias | OK | 8/8 单测 + 真实 E2E（`artistLayer=alias`） |
+| main/preload 静态接缝 | OK | `f0cf061`（纯搬运，`node --check` 通过） |
+| Electron runtime 真实性 | OK | 42.4.1 / `electron.exe`（`process.versions.electron` + `execPath`） |
+| Electron IPC runtime 跳 | **— untested** | 5 次 harness/app 启动尝试均止于环境墙，见 `REPORT-IPC-HARNESS-LIMIT.md` |
+| IPC 透明性对照 | **— untested** | 依赖上一行 |
+
+`—` 的字面含义是 **untested**：既不是失败，也不是"推测通过"。
+为填这个勾而引入 `ws`、改依赖、研究 Electron 单实例与启动参数，属于扩大变量，已明确停止。
+
+本轮边界复核：未碰 `public/js/modules/05-playback/07-search.js`、未碰 provider 注册表与 `provider-fallback`、
+未碰 `server.js` / `apple-music-api.js` / 搜索 UI；`poc/lib` 与 `0170bca` 逐文件一致；`main` 与 `origin/main` 仍 `4a6ae2f`；
+Apple Music 全程保持 Paused（无任何播放副作用）。
+
+## 13. 下一步 ④-search（只接搜索，不接播放按钮）
+
+隔离原则：**新增一个平行面板，不进入既有 provider 链**。
+
+```
+新面板搜索框
+   -> window.mineradio.amc.searchTracks({ query, country, limit })
+   -> amc:search (IPC, 静态接缝 f0cf061)
+   -> desktop/apple-music-control.js searchTracks()
+   -> iTunes Search API
+   -> 结果列表（trackId/title/artist/album/artwork/durationMs/storefront）
+```
+
+- 只显示结果；**播放按钮这一刀不接**，避免把已验证的 `-Url -> SMTC -> identity` 链重新卷进 UI 变量。
+- 失败时责任分层清晰：UI / preload / IPC（理论上）/ iTunes API —— 四者可单独定位。
+- 需要先读 `public/index.html` 与一个既有模块，确认脚本挂载与命名约定（本仓库模块按编号目录组织），再落地。
+- 已知风险：本仓库文档/JSON 的 PowerShell 读取陷阱（CONTROL-PLANE §7.5）——UI 调试输出请用浏览器 console 或 .NET 读取，别用 `Get-Content` 做行数判据。
