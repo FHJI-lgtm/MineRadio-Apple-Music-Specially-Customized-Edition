@@ -106,3 +106,28 @@ MineRadio 现有歌词 / 可视化 / Artwork （不变，仍由 desktop/smtc-bri
   必须与解析器的 `phase3-resolve/lib/version36-markers.json` 对齐，否则搜索面与验证面对"版本"的判定不一致。
 - `storefront` 必须记录**请求用的 2 字母 country**（iTunes 返回的 `country` 字段是 `USA` 这类显示值，
   不能当 URL 里的 storefront）——此 bug 已在首次烟雾测试中被抓出并修复。
+
+## 10. 台账更新（artist identity 落地后）
+
+| 项目 | 状态 |
+|---|---|
+| iTunes -> trackId | OK |
+| URL 构造 | OK `us/song/out-of-time/1603171870` |
+| Deep Link 导航 | OK (`mode=deeplink`, `navigated=true`) |
+| UIA 定位/点击链 | OK (`音轨 7 Out of Time 3 分钟，34 秒钟`, `candidateCount=1`, 无歧义) |
+| Apple Music 实际播放 | OK |
+| SMTC 标题 | OK `Out of Time` |
+| SMTC 艺人原始字符串 | OK `Abel Tesfaye — Dawn FM`（不写成 The Weeknd） |
+| verifyAgainstSmtc | **已修复别名假阴性**：该例现在 `verified=true` / `artistLayer=alias` |
+| 单测 | **8/8 PASS**（7 例既有 + 1 例别名）；负对照 `Fame on Fire — Album` -> `layer=none, ok=false` |
+| 播放链故障 / URL 导航故障 | 无 |
+| 仍未做 | E2E 复跑（证明模块级 verified=true）、`amc:search`/`amc:play` IPC、搜索 UI |
+
+identity 规则的来源（只读复用，未改冻结链）：`poc/lib/am-common.ps1:64` `Normalize-AmText`、
+`:134` `Test-AmSmtcArtistMatch`（**没有别名层**，只做 相等/StartsWith/Contains）；别名的唯一来源是
+`phase3-resolve/lib/resolve35.ps1:41-43` 的校验过的表 + `Test-AmArtistLayer` 的层级顺序。
+模块里的层级与之对齐：`exact` / `normalized`（含 Contains 形式）/ `alias` / `none`，
+别名表独立于验证器（`ARTIST_ALIASES`），验证器只消费其判定。
+
+记录措辞（订正）：SMTC 实际播放与目标歌曲一致；艺人字段存在已知的 `The Weeknd ↔ Abel Tesfaye` 署名差异，
+当前验证器因此产生假阴性 —— 而不是 "SMTC = Out of Time / The Weeknd"。

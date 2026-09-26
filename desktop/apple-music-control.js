@@ -177,13 +177,88 @@ function lastJsonLine(text) {
 // verification: UI action is intent, SMTC is fact
 // ---------------------------------------------------------------------------
 
-function normText(s) {
-  return String(s || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u2018\u2019\u201c\u201d]/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+/**
+ * Port of the frozen chain's Normalize-AmText (poc/lib/am-common.ps1:64-82), read-only reuse:
+ * lowercase, full-width -> half-width, drop "(feat ...)"/"[ft ...]" noise, drop a dash followed by a
+ * version marker, keep letters/digits of ANY script (CJK included), collapse spaces.
+ * NOTE: this REPLACES the em-dash/en-dash with a space, which is why artist/album must be split
+ * BEFORE normalising (see splitArtistAlbum).
+ */
+function normalizeAmText(s) {
+  if (!s) return '';
+  let t = String(s).toLowerCase();
+  let out = '';
+  for (const ch of t) {
+    const c = ch.codePointAt(0);
+    if (c >= 0xFF01 && c <= 0xFF5E) out += String.fromCharCode(c - 0xFEE0);
+    else if (c === 0x3000) out += ' ';
+    else out += ch;
+  }
+  t = out;
+  t = t.replace(/\((feat|ft|with)[^)]*\)/g, ' ');
+  t = t.replace(/\[(feat|ft|with)[^\]]*\]/g, ' ');
+  t = t.replace(/\s*[-\u2013\u2014]\s*(remaster(ed)?|single version|album version|radio edit|live|explicit)\b.*$/g, ' ');
+  t = t.replace(/[^\p{L}\p{Nd}]+/gu, ' ');
+  return t.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Artist identity rules. These live HERE, not inside verifyAgainstSmtc: the alias knowledge belongs
+ * to artist identity, and the verifier only consumes its verdict.
+ *
+ * The alias table mirrors the resolver's validated table (phase3-resolve/lib/resolve35.ps1:41-43):
+ * exactly one pair, observed in real storefront data. Anything not listed must match through the
+ * normal layers, so two unrelated artists can never be merged.
+ */
+const ARTIST_ALIASES = [
+  ['the weeknd', 'abel tesfaye'],
+];
+
+function artistKey(name) {
+  return normalizeAmText(name).replace(/ /g, '');
+}
+
+/**
+ * Apple Music's SMTC artist string is "<artist> <separator> <album>" - verified live as
+ * "Abel Tesfaye - Dawn FM" (U+2014). Split on a dash with surrounding spaces BEFORE normalising,
+ * because normalising would turn the separator into a plain space.
+ */
+function splitArtistAlbum(smtcArtist) {
+  const raw = String(smtcArtist || '');
+  const parts = raw.split(/\s+[\u2014\u2013-]\s+/);
+  return { artist: (parts[0] || '').trim(), album: parts.slice(1).join(' - ').trim() };
+}
+
+/**
+ * Layers, aligned with the resolver's Test-AmArtistLayer order:
+ *   exact      - raw trimmed case-insensitive equality
+ *   normalized - Normalize-AmText equality, or the wanted artist contained in the observed one
+ *                (this second form mirrors the frozen Test-AmSmtcArtistMatch, which accepts
+ *                 Contains so that "Post Malone" matches "Post Malone, Swae Lee")
+ *   alias      - the table above, space-stripped keys, either direction
+ *   none       - no match
+ * Containment is one-directional on purpose: the observed value may be longer than the wanted one,
+ * never shorter - the same strictness as the frozen matcher.
+ */
+function artistLayer(expectedArtist, smtcArtist) {
+  const want = String(expectedArtist || '').trim();
+  const split = splitArtistAlbum(smtcArtist);
+  const observed = split.artist;
+  const base = { layer: 'none', observed: observed, observedAlbum: split.album };
+  if (!want) return Object.assign(base, { ok: true, layer: 'none' });
+  if (!observed) return Object.assign(base, { ok: false });
+  if (want.toLowerCase() === observed.toLowerCase()) return Object.assign(base, { ok: true, layer: 'exact' });
+  const w = normalizeAmText(want);
+  const o = normalizeAmText(observed);
+  if (w && o && (w === o || o.indexOf(w) >= 0)) return Object.assign(base, { ok: true, layer: 'normalized' });
+  const wk = artistKey(want);
+  const ok = artistKey(observed);
+  for (const pair of ARTIST_ALIASES) {
+    const a = artistKey(pair[0]);
+    const b = artistKey(pair[1]);
+    if ((wk === a && ok === b) || (wk === b && ok === a)) return Object.assign(base, { ok: true, layer: 'alias' });
+  }
+  return Object.assign(base, { ok: false });
 }
 
 /**
@@ -209,17 +284,17 @@ const VERSION_MARKERS = /\b(live|remix|remaster(?:ed)?|acoustic|instrumental|kar
  * the raw values attached, never silently forgiven.
  */
 function verifyAgainstSmtc(expected, smtc) {
-  const eTitleRaw = normText(expected.title);
-  const eArtist = normText(expected.artist);
-  const aTitleRaw = normText(smtc && smtc.title);
-  const aArtist = normText(smtc && smtc.artist);
+  const eTitleRaw = normalizeAmText(expected.title);
+  const aTitleRaw = normalizeAmText(smtc && smtc.title);
   const aStatus = (smtc && smtc.status) || '';
 
   const bare = aTitleRaw.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
   const titleBase = !!eTitleRaw && (aTitleRaw === eTitleRaw || bare === eTitleRaw || aTitleRaw.indexOf(eTitleRaw) === 0);
   const versionMismatch = VERSION_MARKERS.test(aTitleRaw) && !VERSION_MARKERS.test(eTitleRaw);
   const titleOk = titleBase && !versionMismatch;
-  const artistOk = !eArtist || aArtist.indexOf(eArtist) >= 0 || eArtist.indexOf(aArtist) >= 0;
+
+  const al = artistLayer(expected.artist, (smtc && smtc.artist) || '');
+  const artistOk = al.ok;
 
   const mismatch = [];
   if (!titleBase) mismatch.push('title');
@@ -230,6 +305,9 @@ function verifyAgainstSmtc(expected, smtc) {
   return {
     verified: mismatch.length === 0,
     titleOk, artistOk,
+    artistLayer: al.layer,
+    artistObserved: al.observed,
+    artistObservedAlbum: al.observedAlbum,
     status: aStatus,
     mismatch,
     expected: { title: expected.title || '', artist: expected.artist || '' },
@@ -301,5 +379,9 @@ module.exports = {
   verifyAgainstSmtc,
   normalizeItunesTrack,
   canonicalUrl,
+  normalizeAmText,
+  artistLayer,
+  splitArtistAlbum,
+  ARTIST_ALIASES,
   DEFAULT_CHAIN_SCRIPT,
 };
