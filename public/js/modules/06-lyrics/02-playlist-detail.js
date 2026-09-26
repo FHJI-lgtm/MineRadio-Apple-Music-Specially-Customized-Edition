@@ -276,7 +276,7 @@ function playlistPanelDetailHtml(pl, provider, detailWindow) {
   if (playlistPanelDetailState.key !== key) return '';
   var tracks = playlistPanelDetailState.tracks || [];
   var loading = playlistPanelDetailState.loading;
-  var cover = pl && pl.cover ? (provider === 'netease' ? (pl.cover + '?param=96y96') : pl.cover) : '';
+  var cover = (pl && pl.cover) ? (provider === 'netease' ? (pl.cover + '?param=96y96') : pl.cover) : (pl ? playlistCoverOrFallback(pl) : '');
   var img = cover ? '<img class="pl-detail-cover" src="' + escHtml(cover) + '" alt="" decoding="async" onerror="this.style.opacity=0.2">' : '<div class="pl-detail-cover"></div>';
   var expectedTotal = Math.max(tracks.length, Number(playlistPanelDetailState.total) || Number(pl.trackCount) || 0);
   var rows = playlistPanelDetailRowsHtml(detailWindow);
@@ -650,7 +650,7 @@ function renderUserPlaylistsList(opts) {
   function playlistCardHtml(pl, sourceIndex) {
     var provider = normalizePlaylistProvider(pl.provider);
     var providerLabel = playlistProviderLabel(provider);
-    var thumb = pl.cover ? (provider === 'netease' ? (pl.cover + '?param=88y88') : pl.cover) : '';
+    var thumb = pl.cover ? (provider === 'netease' ? (pl.cover + '?param=88y88') : pl.cover) : (pl.virtual || String(pl.id || '').indexOf('apple-liked') !== -1 ? playlistCoverOrFallback(pl) : '');
     var imgTag = thumb ? '<img src="' + thumb + '" alt="" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">' : '<div style="width:44px;height:44px;border-radius:8px;background:rgba(255,255,255,.06);flex-shrink:0"></div>';
     var key = playlistPanelKey(provider, pl.id);
     var isExpanded = playlistPanelDetailState.key === key;

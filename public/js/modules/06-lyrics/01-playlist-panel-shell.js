@@ -495,6 +495,18 @@ function setPlaylistCatalogProviderArray(provider, rows) {
   else if (provider === 'spotify') spotifyPlaylists = rows;
   else if (provider === 'apple') applePlaylists = rows;
 }
+// Step 3B follow-up: the virtual "Apple Music 资料库" card carries no real artwork (cover === ''), which
+// rendered as an empty box. Fall back to a self-contained glyph (inline SVG data URL): no new asset file,
+// no Apple trademark reproduction, and callers keep treating it as a plain image URL.
+var AM_LIKED_COVER_DATA_URL = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1c1c1e"/><path d="M44 12v28.4a8 8 0 1 1-4-6.9V19.6l-16 4v20.8a8 8 0 1 1-4-6.9V17.2z" fill="#fa2d48"/></svg>');
+function playlistCoverOrFallback(pl) {
+  if (!pl) return '';
+  if (pl.cover) return pl.cover;
+  var id = String(pl.id || '');
+  if (pl.virtual === true || id.indexOf('apple-liked') !== -1) return AM_LIKED_COVER_DATA_URL;
+  return '';
+}
 function playlistCatalogProviderLoggedIn(provider) {
   if (provider === 'netease') return !!loginStatus.loggedIn;
   if (provider === 'qq') return !!qqLoginStatus.loggedIn;

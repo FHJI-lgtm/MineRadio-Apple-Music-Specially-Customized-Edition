@@ -74,7 +74,7 @@ function makeShelfManager() {
         if (provider === 'apple' && String(pl.id || '').indexOf('apple:') !== 0) pl = Object.assign({}, pl, { id: 'apple:' + pl.id });
         return {
           type: 'playlist', title: pl.name, sub: sourceLabel + ' · ' + (pl.trackCount ? pl.trackCount + ' 首 · 播放 ' : '') + compactCount(pl.playCount || 0),
-          cover: pl.cover || '', tag: (pl.shelfPane || pl.shelf_pane) === 'fav' || (!(pl.shelfPane || pl.shelf_pane) && pl.subscribed) ? '收藏歌单' : (provider === 'qishui' ? '汽水歌单' : '我的歌单'), playlistId: (provider === 'qq' ? 'qq:' : (provider === 'kugou' ? 'kugou:' : (provider === 'qishui' ? 'qishui:' : (provider === 'spotify' ? 'spotify:' : (provider === 'apple' ? 'apple:' : ''))))) + pl.id, provider: provider
+          cover: playlistCoverOrFallback(pl), tag: (pl.shelfPane || pl.shelf_pane) === 'fav' || (!(pl.shelfPane || pl.shelf_pane) && pl.subscribed) ? '收藏歌单' : (provider === 'qishui' ? '汽水歌单' : '我的歌单'), playlistId: (provider === 'qq' ? 'qq:' : (provider === 'kugou' ? 'kugou:' : (provider === 'qishui' ? 'qishui:' : (provider === 'spotify' ? 'spotify:' : (provider === 'apple' ? 'apple:' : ''))))) + pl.id, provider: provider
         };
       });
       if (shelfShowsPodcasts() && (shelfPane === 'mine' || shelfMergesCollections()) && myPodcastCollections.length) {
