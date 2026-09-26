@@ -12,6 +12,31 @@ Declared measurement resolution: requested 50 ms poll -> measured gap median 80 
 (empty baseline 20260926-084630, 255 samples). Medians and P90 are meaningful; a single minimum is a lower
 bound only; T7 is not observable and is not reported anywhere here.
 
+## Disposition: reverted
+
+The 500 ms -> 0 edit was rolled back in commit `19e881d`. `poc/lib/am-uia.ps1:245` is again
+`Start-Sleep -Milliseconds 500`, and all four frozen-chain files (`am-play.ps1`, `am-uia.ps1`, `am-smtc.ps1`,
+`am-common.ps1`) are byte-identical to the step-4 baseline `0170bca`.
+
+The reason is not that 0 ms is worse. It is that the edit is an unproven behaviour change: it removed a wait
+whose purpose has not been established, and bought no stable, attributable latency gain. This is not described
+as a successful optimisation at product level. The accurate statement is:
+
+> Deleting the 500 ms fixed wait did not change correctness, but under this 20-song, one-attempt-per-song
+> experiment it produced no latency gain that can be stably attributed to the deletion.
+
+mainline keeps the original behaviour. The experiment branch keeps the evidence: `4317e3b` (the edit),
+`bench-20260926-090905.jsonl` (raw data), this report (result). Rolling the code back loses none of it.
+
+The 1250 ms of click-path fixed sleeps (120 + 450 + 350 + 200 + 130) are explicitly **not** scheduled for audit
+now. This experiment established the fact that wall-clock fixed sleep does not translate one-for-one into
+observable latency reduction, so a large number is not by itself a reason to delete a wait. Before any of those
+sleeps is touched, the first question is what state each one waits for, and whether a following condition-poll
+would absorb it the way most of this 500 ms was absorbed. If that audit is ever resumed, it keeps the existing
+protocol: one sleep changed at a time, same 20 songs, same order, `Retries 0`, and a paired comparison of
+correctness, SMTC outcome, occupancy and every `t.*` field - and it should start from the sleep with the
+clearest theoretical justification, not from the largest number.
+
 ## Correctness: did the change break anything
 
 | | step 4 | step 5 |
