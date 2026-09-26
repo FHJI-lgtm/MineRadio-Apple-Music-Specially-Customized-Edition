@@ -149,6 +149,12 @@ foreach ($c in $todo) {
   if ($pre.appleMusicIsOnCurrentDesktop -ne $true) { $g1 += 'AM not on current desktop' }
   $amfg = ((Get-AmBenchSample).amIsForeground)
   if ($amfg -eq $true) { $g1 += 'AM is ALREADY foreground' }
+  # (ii) pre-existing target playback: -PauseFirst pauses INSIDE the frozen call, i.e. after
+  # T0, so it cannot undo a stale Playing state that the observer sees before T0.  Such a
+  # run would produce a pre-T0 SMTC hit and a bogus T6, so it is refused up front.
+  $preSmtc = Get-AmNavSmtcSnapshot
+  $preTargetPlaying = (('' + $preSmtc.status) -eq 'Playing' -and (('' + $preSmtc.title).ToLowerInvariant()).Contains(('' + $c.title).ToLowerInvariant()))
+  if ($preTargetPlaying) { $g1 += ('the TARGET song is already Playing before the run (smtc=[' + $preSmtc.title + '/' + $preSmtc.status + '])') }
   if ($g1.Count -gt 0) {
     foreach ($x in $g1) { Write-Host ('   INVALID_PRECONDITION: ' + $x) }
     $rec = [ordered]@{ case = $c.id; run = $runNo; stamp = $stamp; song = $c.title; artist = $c.artist; songId = $c.songId; url = $c.canonicalUrl
@@ -188,8 +194,12 @@ foreach ($c in $todo) {
   $t3 = $null
   foreach ($s in $rows) { if ((& $rel $s.ticks) -ge 0 -and $s.amIsForeground) { $t3 = $s; break } }
   $t3ms = $null; if ($t3) { $t3ms = & $rel $t3.ticks }
+  # (i) the SMTC hit must be a THIS-RUN event: only samples at or after T0 count, otherwise
+  # a stale Playing state left behind by a previous run is mistaken for this run's
+  # confirmation (the same principle already applied to T3).
   $hitTicks = $null
   foreach ($s in $rows) {
+    if ((& $rel $s.ticks) -lt 0) { continue }
     if ($s.smtc -like ('*' + $c.title + '*Playing*')) { $hitTicks = $s.ticks; break }
   }
   $t6 = $null
