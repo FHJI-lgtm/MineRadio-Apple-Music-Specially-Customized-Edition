@@ -194,3 +194,17 @@ Apple Music 全程保持 Paused（无任何播放副作用）。
 - 失败时责任分层清晰：UI / preload / IPC（理论上）/ iTunes API —— 四者可单独定位。
 - 需要先读 `public/index.html` 与一个既有模块，确认脚本挂载与命名约定（本仓库模块按编号目录组织），再落地。
 - 已知风险：本仓库文档/JSON 的 PowerShell 读取陷阱（CONTROL-PLANE §7.5）——UI 调试输出请用浏览器 console 或 .NET 读取，别用 `Get-Content` 做行数判据。
+
+## 14. 台账更新：04-search 已在真实 app 中验证（2026-09-26 12:06）
+
+| 层 | 状态 | 依据 |
+|---|---|---|
+| 面板挂载与渲染 | OK | 真实 app 截图：浮动按钮 + 面板 + 结果列表 |
+| **Electron IPC runtime 跳** | **OK** | 面板调用 `window.mineradio.amc.searchTracks()` 成功返回 iTunes 结果 |
+| iTunes 数据面（UI 内） | OK | 每行含封面/标题/艺人—专辑/`trackId`/`storefront`/时长 |
+| IPC 透明性（playTrack 那一跳） | **— 仍未验证** | 面板按设计没有播放按钮，未调用 `amc.playTrack`；模块级播放链另见 `9461ce9` |
+| 既有 provider 链 | 未触碰 | `07-search.js` / provider 注册表 / `provider-fallback` / `server.js` / `apple-music-api.js` 均无改动 |
+
+**长绕路的根因（存档）**：`node_modules\electron\dist\*` 是 OneDrive 按需占位符（`Archive, ReparsePoint`），
+app 模式无法加载运行时，在任何 JS 之前以 `0x80000003 STATUS_BREAKPOINT` 静默死亡；Node 模式仍可运行，
+于是出现"一种情况看到 shim 报错、另一种情况什么都没有"。项目已水合并迁移至 `F:\mineradio-apple-music`。
