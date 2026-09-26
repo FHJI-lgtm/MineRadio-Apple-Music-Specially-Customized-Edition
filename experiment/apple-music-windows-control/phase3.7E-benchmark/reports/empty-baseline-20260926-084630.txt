@@ -1,0 +1,17 @@
+# Phase 3.7E empty-poll baseline (no playback, no state change)
+samples=255
+gapMeanMs=82
+gapMedianMs=80
+gapMaxMs=121
+declaredResolution=poll 50ms + sampling overhead (observed gap median 80ms, max 121ms)
+env.appleMusicVersion=1.1540.23042.0
+env.cursorY=662
+env.windowsBuild=26200
+env.cursorX=2420
+env.originalForegroundProcess=
+env.appleMusicIsOnCurrentDesktop=True
+env.originalForegroundHwnd=328138
+env.appleMusicDesktopId=7a8a789c-3926-4cb9-807f-dc11278c2841
+env.appleMusicHwnd=196682
+env.activeDesktopIdProxy=7a8a789c-3926-4cb9-807f-dc11278c2841
+env.monitorCount=1
