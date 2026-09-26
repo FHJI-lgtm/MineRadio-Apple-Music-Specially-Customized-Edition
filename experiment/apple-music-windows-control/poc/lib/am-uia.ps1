@@ -242,7 +242,7 @@ function Invoke-AmNavigateUrl([string]$Url) {
   if (-not $method) {
     try { Start-Process $Url | Out-Null; $method = 'shell-open' } catch { $method = 'failed' }
   }
-  Start-Sleep -Milliseconds 500
+  Start-Sleep -Milliseconds 0
   return @{ method = $method; ok = ($method -ne 'failed') }
 }
 
