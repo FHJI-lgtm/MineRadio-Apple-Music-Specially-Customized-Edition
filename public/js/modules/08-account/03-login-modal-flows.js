@@ -132,13 +132,42 @@ function loginWorkflowMrTargetPoint(graph) {
   return workflowPointForPort(graph.querySelector('[data-login-mr-target="mr"]'), graph);
 }
 function loginWorkflowSnapPoint(point, graph) {
+  if (!point) return point;
+  var mode = loginWorkflowNearestMode(point, graph, 92);
+  if (mode) {
+    var modePoint = workflowPointForPort(loginWorkflowModeNode(mode), graph);
+    if (modePoint) return modePoint;
+  }
   var mr = loginWorkflowMrTargetPoint(graph);
-  if (point && mr && workflowPointDistance(point, mr) <= 92) return mr;
+  if (mr && workflowPointDistance(point, mr) <= 92) return mr;
   return point;
 }
 function loginWorkflowNearMr(point, graph) {
   var mr = loginWorkflowMrTargetPoint(graph);
   return !!(point && mr && workflowPointDistance(point, mr) <= 108);
+}
+// Mode nodes (官方登录 / 网页登录) as drop targets. Apple-only: its two nodes carry two
+// different flows, so the workflow line may end on whichever one the user picked.
+function loginWorkflowModeNode(mode) {
+  return document.getElementById(mode === 'cookie' ? 'login-mode-cookie' : 'login-mode-official');
+}
+function loginWorkflowNearestMode(point, graph, maxDistance) {
+  if (!point || !graph) return '';
+  var best = '';
+  var bestDistance = maxDistance;
+  ['official', 'cookie'].forEach(function (mode) {
+    var el = loginWorkflowModeNode(mode);
+    if (!el || el.disabled || !graph.contains(el)) return;
+    var distance = workflowPointDistance(point, workflowPointForPort(el, graph));
+    if (distance < bestDistance) { bestDistance = distance; best = mode; }
+  });
+  return best;
+}
+function loginWorkflowAppleModeEndpoint(graph) {
+  if (loginProvider !== 'apple' || !graph) return null;
+  var el = loginWorkflowModeNode(isManualCookieOpenForProvider('apple') ? 'cookie' : 'official');
+  if (!el || !graph.contains(el)) return null;
+  return workflowPointForPort(el, graph);
 }
 function workflowBezierPath(a, b) {
   var gap = Math.abs(b.x - a.x);
@@ -168,13 +197,16 @@ function renderLoginWorkflowEdges(tempPoint) {
   svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
   clearWorkflowSvg(svg);
   var mrIn = graph.querySelector('[data-login-mr-target="mr"]');
+  var mrPoint = workflowPointForPort(mrIn, graph);
+  var appleModePoint = loginWorkflowAppleModeEndpoint(graph);
+  var endPointForProvider = function (provider) { return (provider === 'apple' && appleModePoint) ? appleModePoint : mrPoint; };
   loginWorkflowConnectedProviders().forEach(function (provider) {
     var providerOut = graph.querySelector('[data-login-provider-output="' + provider + '"]');
-    appendWorkflowPath(svg, workflowPointForPort(providerOut, graph), workflowPointForPort(mrIn, graph), 'workflow-link active' + (provider === loginProvider ? ' selected' : ''));
+    appendWorkflowPath(svg, workflowPointForPort(providerOut, graph), endPointForProvider(provider), 'workflow-link active' + (provider === loginProvider ? ' selected' : ''));
   });
   if (loginWorkflowPendingProvider && !providerHasLiveLogin(loginWorkflowPendingProvider)) {
     var pendingOut = graph.querySelector('[data-login-provider-output="' + loginWorkflowPendingProvider + '"]');
-    appendWorkflowPath(svg, workflowPointForPort(pendingOut, graph), workflowPointForPort(mrIn, graph), 'workflow-link pending');
+    appendWorkflowPath(svg, workflowPointForPort(pendingOut, graph), endPointForProvider(loginWorkflowPendingProvider), 'workflow-link pending');
   }
   if (loginWorkflowDrag && tempPoint) {
     appendWorkflowPath(svg, workflowPointForPort(loginWorkflowDrag.port, graph), loginWorkflowSnapPoint(tempPoint, graph), 'workflow-link temp');
@@ -221,10 +253,16 @@ function finishLoginWorkflowDrag(e) {
   var port = target && target.closest ? target.closest('.flow-port.in') : null;
   var mrNode = target && target.closest ? target.closest('[data-login-node="mr"]') : null;
   var eventPoint = workflowPointFromEvent(e, graph);
-  var nearMr = loginWorkflowNearMr(eventPoint, graph);
-  if ((port && graph.contains(port)) || (mrNode && graph.contains(mrNode)) || nearMr) {
+  var droppedMode = '';
+  if (drag.provider === 'apple') {
+    var modeNode = target && target.closest ? target.closest('#login-mode-official, #login-mode-cookie') : null;
+    droppedMode = modeNode ? (modeNode.id === 'login-mode-cookie' ? 'cookie' : 'official') : loginWorkflowNearestMode(eventPoint, graph, 92);
+  }
+  var nearDrop = droppedMode || loginWorkflowNearMr(eventPoint, graph);
+  if ((port && graph.contains(port)) || (mrNode && graph.contains(mrNode)) || nearDrop) {
     var mrTarget = port && port.getAttribute('data-login-mr-target');
-    if (drag.source === 'provider' && (mrTarget || mrNode || nearMr)) {
+    if (drag.source === 'provider' && (mrTarget || mrNode || nearDrop)) {
+      if (droppedMode) setManualCookieOpenForProvider('apple', droppedMode === 'cookie');
       connectLoginProviderToMr(drag.provider);
     }
   }
@@ -422,7 +460,7 @@ function bindLoginWorkflowPointerEvents() {
     }
     if (!loginWorkflowDrag) return;
     var point = workflowPointFromEvent(e, graph);
-    graph.classList.toggle('drop-ready', loginWorkflowNearMr(point, graph));
+    graph.classList.toggle('drop-ready', !!(loginWorkflowNearMr(point, graph) || (loginWorkflowDrag.provider === 'apple' && loginWorkflowNearestMode(point, graph, 92))));
     renderLoginWorkflowEdges(point);
   });
   graph.addEventListener('pointerup', finishLoginProviderPointer);
