@@ -1790,6 +1790,7 @@ module.exports = {
     appleErrorDetails,
     verifyAppleUserToken,
     mapAppleTrack,
+    mapAppleLibraryPlaylist,
     resetAppleRuntimeStateForTests,
   },
 };
