@@ -139,6 +139,7 @@ const {
   handleAppleUserPlaylists,
     handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracks,
+    handleApplePlaylistTracksWeb,
   handleAppleAlbumDetail,
   handleAppleLibraryCheck,
   handleAppleLibrarySet,
@@ -5462,7 +5463,7 @@ const server = http.createServer(async (req, res) => {
       const id = url.searchParams.get('id') || url.searchParams.get('playlistId') || '';
       const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '48', 10) || 48));
       const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
-      sendJSON(res, await handleApplePlaylistTracks(id, { limit, offset }));
+      sendJSON(res, await handleApplePlaylistTracksWeb(id, { limit, offset }));
     } catch (err) {
       console.error('[AppleMusicPlaylistTracks]', err);
       sendJSON(res, { provider: 'apple', error: err.message, tracks: [] }, 500);
