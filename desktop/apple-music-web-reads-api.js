@@ -177,8 +177,63 @@ async function handleApplePlaylistTracksWeb(playlistId, opts) {
     message: '',
   };
 }
+// ---- Apple Music WEB path for catalog album detail (step 3C) -----------------------------------------
+// Scope: CATALOG albums only (the caller supplies a catalog album id). Library albums carry no catalog id
+// (playParams.catalogId === undefined) and are deliberately NOT supported in this step - no id is ever
+// inferred, guessed or synthesised. Same response contract as handleAppleAlbumDetail (Developer path).
+async function handleAppleAlbumDetailWeb(albumId, opts) {
+  opts = opts || {};
+  const id = normalizeText(albumId);
+  const limit = Math.max(1, Math.min(100, parseInt(opts.limit, 10) || 80));
+  const storefront = normalizeText(opts.storefront) || DEFAULT_APPLE_STOREFRONT;
+  if (!id) return { provider: 'apple', error: 'MISSING_ALBUM_ID', album: null, songs: [], total: 0 };
+  const userToken = webApi.getMediaUserToken();
+  let json = null;
+  try {
+    // Catalog reads work with the bearer alone; the user token is sent when present.
+    const page = await webApi.getCatalog(storefront, '/albums/' + encodeURIComponent(id), { include: 'tracks', limit });
+    if (!page.ok) {
+      return { provider: 'apple', album: null, songs: [], total: 0, source: 'web', error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status + (userToken ? '' : '（未配置 media-user-token）') };
+    }
+    json = page.json || {};
+  } catch (err) {
+    const detail = appleErrorDetails(err);
+    return Object.assign({ provider: 'apple', album: null, songs: [], total: 0 }, detail);
+  }
+  const entry = (Array.isArray(json.data) && json.data[0]) ? json.data[0] : null;
+  const attributes = (entry && entry.attributes) || {};
+  const tracksRel = (entry && entry.relationships && entry.relationships.tracks) || {};
+  const items = Array.isArray(tracksRel.data) ? tracksRel.data : [];
+  const artistName = normalizeText(attributes.artistName);
+  const albumInfo = {
+    provider: 'apple',
+    id,
+    albumId: id,
+    name: normalizeText(attributes.name),
+    artist: artistName,
+    artists: artistName ? [{ id: '', name: artistName, uri: '' }] : [],
+    cover: webApi.artworkUrl(attributes.artwork, 600),
+    releaseDate: normalizeText(attributes.releaseDate || attributes.release_date),
+    trackCount: Number(attributes.trackCount) || items.length,
+    upc: normalizeText(attributes.upc),
+    appleUrl: normalizeText(attributes.url),
+    source: 'web',
+  };
+  const songs = items.slice(0, limit).map(function (track, index) {
+    if (track && track.type && track.type !== 'songs') return null;
+    return mapAppleTrack(track, index, 'album:' + id, { storefront, albumId: id, albumName: albumInfo.name });
+  }).filter(Boolean);
+  return {
+    provider: 'apple',
+    album: albumInfo,
+    songs,
+    total: albumInfo.trackCount || songs.length,
+    hasMore: !!tracksRel.next,
+  };
+}
 module.exports = {
   ensureCredentialSource,
   handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracksWeb,
+  handleAppleAlbumDetailWeb,
 };

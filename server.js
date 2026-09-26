@@ -144,7 +144,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5474,7 +5474,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const id = url.searchParams.get('id') || url.searchParams.get('albumId') || '';
       const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '80', 10) || 80));
-      sendJSON(res, await handleAppleAlbumDetail(id, { limit }));
+      sendJSON(res, await handleAppleAlbumDetailWeb(id, { limit }));
     } catch (err) {
       console.error('[AppleMusicAlbumDetail]', err);
       sendJSON(res, { provider: 'apple', error: err.message, album: null, songs: [] }, 500);
