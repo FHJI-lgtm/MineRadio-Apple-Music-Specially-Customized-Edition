@@ -25,7 +25,7 @@ function loginProviderSupportsCookieMode(provider) {
 function loginProviderOfficialModeText(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'spotify') return { title: 'OAuth', sub: '弹出 Spotify 授权窗口' };
-  if (provider === 'apple') return { title: '官方登录', sub: '弹出 Apple Music 登录窗口' };
+  if (provider === 'apple') return { title: '网页登录', sub: '展开登录入口（不自动打开）' };
   if (provider === 'qishui') return { title: '扫码', sub: '使用抖音 App 官方授权' };
   if (provider === 'kugou') return { title: '官网', sub: '弹出酷狗官方窗口' };
   return { title: '扫码', sub: '连接后弹出官方窗口' };
@@ -462,10 +462,13 @@ function updateLoginNodeGraphUi() {
   if (cookie) {
     var cookieTitle = cookie.querySelector('b');
     var cookieSub = cookie.querySelector('small');
-    if (cookieTitle) cookieTitle.textContent = 'Cookie';
-    if (cookieSub) cookieSub.textContent = loginProviderSupportsCookieMode(loginProvider) ? '连接后打开手动导入' : '该平台不支持 Cookie 导入';
-    cookie.disabled = !loginProviderSupportsCookieMode(loginProvider);
-    cookie.classList.toggle('active', isManualCookieOpenForProvider(loginProvider));
+    var appleWebLoginEntry = loginProvider === 'apple';
+    if (cookieTitle) cookieTitle.textContent = appleWebLoginEntry ? '打开 Apple Music 登录页面' : 'Cookie';
+    if (cookieSub) cookieSub.textContent = appleWebLoginEntry
+      ? '登录 Apple Music 网页账号，自动获取登录态；点击后才会打开'
+      : (loginProviderSupportsCookieMode(loginProvider) ? '连接后打开手动导入' : '该平台不支持 Cookie 导入');
+    cookie.disabled = appleWebLoginEntry ? false : !loginProviderSupportsCookieMode(loginProvider);
+    cookie.classList.toggle('active', appleWebLoginEntry ? false : isManualCookieOpenForProvider(loginProvider));
   }
   var copy = graph && graph.querySelector('.login-node-copy');
   if (copy) {
@@ -484,6 +487,10 @@ function connectLoginProvider(provider) {
   selectLoginProviderNode(provider);
 }
 function selectLoginMode(mode) {
+  if (mode === 'cookie' && loginProvider === 'apple') {
+    openAmcAppleWebLogin();
+    return;
+  }
   if (mode === 'cookie' && !loginProviderSupportsCookieMode(loginProvider)) {
     showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : 'Spotify 使用官方 OAuth 登录');
     return;
@@ -504,6 +511,10 @@ function connectLoginMode(mode) {
   setLoginAuthDrawerOpen(true);
   markLoginNodeConnecting();
   if (mode === 'cookie') {
+    if (loginProvider === 'apple') {
+      openAmcAppleWebLogin();
+      return;
+    }
     if (!loginProviderSupportsCookieMode(loginProvider)) {
       showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : (loginProvider === 'apple' ? 'Apple Music 使用官方登录窗口或手动 token' : 'Spotify 使用官方 OAuth 登录'));
       return;
@@ -516,6 +527,8 @@ function connectLoginMode(mode) {
   }
   setManualCookieOpenForProvider(loginProvider, false);
   updateLoginProviderUi();
+  // Apple opens its login page only from the explicit entry below, never on connect.
+  if (loginProvider === 'apple') return;
   setTimeout(openProviderWebLogin, 120);
 }
 
