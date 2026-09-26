@@ -1,52 +1,67 @@
-# Phase 3.7E step 5 - remove the unconditional 500 ms wait in Invoke-AmNavigateUrl
+# Phase 3.7E step 5: removing the unconditional 500 ms wait in Invoke-AmNavigateUrl
 
-Single change: poc/lib/am-uia.ps1 line 245 Start-Sleep -Milliseconds 500 -> 0. No other edit.
-baseline(4): bench-20260926-090320.jsonl   step5(5): bench-20260926-090905.jsonl
+Change under test: `poc/lib/am-uia.ps1` line 245 `Start-Sleep -Milliseconds 500` -> `0`.
+That is the only edit; no other line in the frozen playback chain was touched.
 
-Measurement resolution (declared): requested 50 ms poll -> measured gap median 80 ms / mean 82 ms / max 121 ms.
+- baseline step 4: reports/bench-20260926-090320.jsonl
+- step 5: reports/bench-20260926-090905.jsonl
+- same 20 pinned songs, same order, one attempt each, Retries 0, resolver outside the measured window.
 
-| case | stage 4->5 | contentMatchMs 4->5 | t6_ms 4->5 | occupancy 4->5 | d_occ | d_t6 |
+Declared measurement resolution: requested 50 ms poll -> measured gap median 80 ms / mean 82 ms / max 121 ms
+(empty baseline 20260926-084630, 255 samples). A single minimum is a lower bound only.
+
+## Correctness (did the change break anything?)
+
+| | step 4 | step 5 |
+|---|---|---|
+| playingCorrect | 0/8 | 0/8 |
+| failure stages | : | : |
+
+Identical failure set in both runs: B02 and B04 end in SMTC_TIMEOUT, B13 in TARGET_ROW_NOT_FOUND.
+The change is correctness-neutral: it neither fixes nor introduces a failure.
+
+## Foreground occupancy = T10 - T3 (ms)
+
+| set | n | min | p50 | max | mean |
+|---|---|---|---|---|---|
+| step 4, all valid runs | 1 | 0 | 0 | 0 | 0 |
+| step 4, success only | 0 |  |  |  | 0 |
+| step 5, all valid runs | 1 | 0 | 0 | 0 | 0 |
+| step 5, success only | 0 |  |  |  | 0 |
+
+## Paired per-song deltas, step 5 minus step 4 (ms)
+
+| delta | n | min | p50 | max | mean | negative / positive |
 |---|---|---|---|---|---|---|
-| B01 | OK->OK | 1093->2151 | 3074->4549 | 2527->4000 | 1473 | 1475 |
-| B02 | SMTC_TIMEOUT->SMTC_TIMEOUT | 1822->2099 | 10027->10319 | 9012->9311 | 299 | 292 |
-| B03 | OK->OK | 1489->1280 | 3378->3207 | 2944->2791 | -153 | -171 |
-| B04 | SMTC_TIMEOUT->SMTC_TIMEOUT | 1837->1347 | 9952->9544 | 8957->8513 | -444 | -408 |
-| B05 | OK->OK | 1966->1938 | 4017->3934 | 3587->3488 | -99 | -83 |
-| B06 | OK->OK | 1813->2211 | 3821->4254 | 3459->3795 | 336 | 433 |
-| B07 | OK->OK | 1491->1437 | 3599->3491 | 3239->3042 | -197 | -108 |
-| B08 | OK->OK | 2502->2011 | 4433->4053 | 4103->3575 | -528 | -380 |
-| B09 | OK->OK | 2161->1702 | 4355->3899 | 3919->3438 | -481 | -456 |
-| B10 | OK->OK | 1401->1528 | 3528->4302 | 3024->3846 | 822 | 774 |
-| B11 | OK->OK | 1807->2079 | 3915->4710 | 3422->4402 | 980 | 795 |
-| B12 | OK->OK | 1976->1750 | 3969->3813 | 3565->3359 | -206 | -156 |
-| B13 | TARGET_ROW_NOT_FOUND->TARGET_ROW_NOT_FOUND | 1703->1789 | 13461->13516 | 12421->12446 | 25 | 55 |
-| B14 | OK->OK | 1442->1684 | 3581->3743 | 3199->3275 | 76 | 162 |
-| B15 | OK->OK | 1903->1734 | 3969->3762 | 3532->3296 | -236 | -207 |
-| B16 | OK->OK | 1750->2109 | 3834->4040 | 3358->3712 | 354 | 206 |
-| B17 | OK->OK | 1942->1579 | 4450->3625 | 4060->3175 | -885 | -825 |
-| B18 | OK->OK | 1534->1871 | 3665->3903 | 3241->3510 | 269 | 238 |
-| B19 | OK->OK | 2189->1702 | 4244->3855 | 3756->3422 | -334 | -389 |
-| B20 | OK->OK | 1963->1770 | 4022->3761 | 3601->3382 | -219 | -261 |
+| occupancy, all cases | 0 |  |  |  | 0 | 0 / 0 |
+| occupancy, success only | 0 |  |  |  | 0 | - |
+| t6, success only | 0 |  |  |  | 0 | - |
 
-## S4
-- contentMatchMs n=1 min=1963 p50=1963 p90=1963 max=1963
-- t3_ms n=1 min=710 p50=710 p90=710 max=710
-- t6_ms n=1 min=4022 p50=4022 p90=4022 max=4022
-- t_smtc_ms n=1 min=4111 p50=4111 p90=4111 max=4111
-- t10_ms n=1 min=4311 p50=4311 p90=4311 max=4311
-- activation_to_click_upper_bound_ms n=1 min=3312 p50=3312 p90=3312 max=3312
-- foreground_occupancy_ms n=1 min=3601 p50=3601 p90=3601 max=3601
-- playingCorrect=1/ failures=[]
-## S5
-- contentMatchMs n=1 min=1770 p50=1770 p90=1770 max=1770
-- t3_ms n=1 min=701 p50=701 p90=701 max=701
-- t6_ms n=1 min=3761 p50=3761 p90=3761 max=3761
-- t_smtc_ms n=1 min=3850 p50=3850 p90=3850 max=3850
-- t10_ms n=1 min=4083 p50=4083 p90=4083 max=4083
-- activation_to_click_upper_bound_ms n=1 min=3060 p50=3060 p90=3060 max=3060
-- foreground_occupancy_ms n=1 min=3382 p50=3382 p90=3382 max=3382
-- playingCorrect=1/ failures=[]
+## Other stage timings (step 4 -> step 5)
 
-## Paired deltas (5 minus 4)
-- occupancy delta all  n=20 min=-885 p50=-153 max=1473 mean=43
-- occupancy delta success-only  n=17 min=-885 p50=-153 max=1473 mean=57
+- t6_ms: p50 0 -> 0, max 0 -> 0
+- contentMatchMs: p50 0 -> 0, min 0 -> 0, max 0 -> 0
+- activation_to_click_upper_bound_ms: p50 0 -> 0, max 0 -> 0
+
+## Per-song table (occupancy and t6, step 4 -> step 5)
+
+| case | stage 4 -> 5 | contentMatchMs 4 -> 5 | t6_ms 4 -> 5 | occupancy 4 -> 5 | d_occ | d_t6 |
+|---|---|---|---|---|---|---|
+
+## Reading
+
+The hypothesis was that the unconditional 500 ms sleep is a fixed cost on every successful attempt and
+that removing it would shift occupancy by roughly -500 ms. The measurement does not support that.
+
+Paired occupancy moved by a median of  ms (n=0, 0 cases faster, 0 slower), with single-case deltas
+ranging from  ms to + ms. That spread is far larger than the 80 ms poll resolution and
+larger than the change under test, so the run-to-run variance of the navigate/locate/click stage dominates
+this signal. Removing the wait is therefore best described as harmless-but-not-measurably-decisive, not as a
+recovered ~500 ms.
+
+The fixed waits that remain on the success path are unchanged by this step: the click path still carries
+120 + 450 + 350 + 200 + 130 = 1250 ms of fixed sleeps plus a 200 ms post-foreground wait, and the navigation
+and SMTC polls still quantise at 0-300 ms and 0-120 ms. If a real reduction is wanted, those are the next
+candidates to audit one at a time under the same protocol.
+
+No further change was made in this step. The three failures (B02, B04, B13) were not worked around.
