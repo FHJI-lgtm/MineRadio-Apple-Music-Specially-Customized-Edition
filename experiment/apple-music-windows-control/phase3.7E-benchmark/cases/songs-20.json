@@ -1,0 +1,56 @@
+{
+  "note": "Phase 3.7E benchmark song list. Every entry was checked against this project's own test history (Phase 2 regression A/B/C, the 22-song E2E audit, the 20-case resolver unit regression, the version matrix and the E2E/real-song probes). Songs already used there are NOT here.",
+  "historyConflictsReplaced": [
+    { "removed": "Shape of You / Ed Sheeran", "usedIn": "Phase 2 control C, E02 in the 22-song audit, U03/U04/U15 unit cases, M08/M17" },
+    { "removed": "Blinding Lights / The Weeknd", "usedIn": "E04 in the 22-song audit, U12 unit case, M10" },
+    { "removed": "bad guy / Billie Eilish", "usedIn": "E06 in the 22-song audit, U13 unit case" },
+    { "removed": "Viva La Vida / Coldplay", "usedIn": "E13 in the 22-song audit, M09/M20" },
+    { "removed": "Blinding Lights (second Weeknd slot)", "usedIn": "same as above - the user's list contained The Weeknd twice via Blinding Lights" }
+  ],
+  "kept": [
+    "Birds of a Feather / Billie Eilish",
+    "Espresso / Sabrina Carpenter",
+    "Good Luck, Babe! / Chappell Roan",
+    "Houdini / Dua Lipa",
+    "we can't be friends (wait for your love) / Ariana Grande",
+    "Cruel Summer / Taylor Swift",
+    "vampire / Olivia Rodrigo",
+    "Locked Out of Heaven / Bruno Mars",
+    "Abracadabra / Lady Gaga",
+    "As It Was / Harry Styles",
+    "Believer / Imagine Dragons",
+    "Counting Stars / OneRepublic",
+    "Numb / Linkin Park",
+    "Sugar / Maroon 5",
+    "Circles / Post Malone",
+    "Beautiful Things / Benson Boone"
+  ],
+  "replacements": [
+    "Anti-Hero / Taylor Swift",
+    "Flowers / Miley Cyrus",
+    "Kill Bill / SZA",
+    "A Sky Full of Stars / Coldplay"
+  ],
+  "cases": [
+    { "id": "B01", "title": "Birds of a Feather", "artist": "Billie Eilish", "durationBand": "short", "era": "2024" },
+    { "id": "B02", "title": "Espresso", "artist": "Sabrina Carpenter", "durationBand": "short", "era": "2024" },
+    { "id": "B03", "title": "Good Luck, Babe!", "artist": "Chappell Roan", "durationBand": "medium", "era": "2024" },
+    { "id": "B04", "title": "Houdini", "artist": "Dua Lipa", "durationBand": "medium", "era": "2023" },
+    { "id": "B05", "title": "we can't be friends (wait for your love)", "artist": "Ariana Grande", "durationBand": "medium", "era": "2024", "note": "parenthetical title - good resolver stress" },
+    { "id": "B06", "title": "Cruel Summer", "artist": "Taylor Swift", "durationBand": "medium", "era": "2019" },
+    { "id": "B07", "title": "vampire", "artist": "Olivia Rodrigo", "durationBand": "medium", "era": "2023" },
+    { "id": "B08", "title": "Locked Out of Heaven", "artist": "Bruno Mars", "durationBand": "medium", "era": "2012" },
+    { "id": "B09", "title": "Abracadabra", "artist": "Lady Gaga", "durationBand": "medium", "era": "2025" },
+    { "id": "B10", "title": "As It Was", "artist": "Harry Styles", "durationBand": "short", "era": "2022" },
+    { "id": "B11", "title": "Believer", "artist": "Imagine Dragons", "durationBand": "medium", "era": "2017" },
+    { "id": "B12", "title": "Counting Stars", "artist": "OneRepublic", "durationBand": "medium", "era": "2013" },
+    { "id": "B13", "title": "Numb", "artist": "Linkin Park", "durationBand": "short", "era": "2003" },
+    { "id": "B14", "title": "Sugar", "artist": "Maroon 5", "durationBand": "medium", "era": "2014" },
+    { "id": "B15", "title": "Circles", "artist": "Post Malone", "durationBand": "medium", "era": "2019" },
+    { "id": "B16", "title": "Beautiful Things", "artist": "Benson Boone", "durationBand": "medium", "era": "2024" },
+    { "id": "B17", "title": "Anti-Hero", "artist": "Taylor Swift", "durationBand": "medium", "era": "2022" },
+    { "id": "B18", "title": "Flowers", "artist": "Miley Cyrus", "durationBand": "short", "era": "2023" },
+    { "id": "B19", "title": "Kill Bill", "artist": "SZA", "durationBand": "medium", "era": "2022" },
+    { "id": "B20", "title": "A Sky Full of Stars", "artist": "Coldplay", "durationBand": "medium", "era": "2014" }
+  ]
+}
