@@ -177,7 +177,53 @@ function idAudit(kind, item) {
   plItems.slice(0, 2).forEach((item, i) => console.log(idAudit('playlist[' + i + ']', item)));
   trItems.slice(0, 3).forEach((item, i) => console.log(idAudit('track[' + i + ']', item)));
 
-  console.log('\n[shadow] done. GET-only calls=' + callCount + ' ; no Developer JWT used ; no writes attempted.');
+  // ---- extension: library songs + library albums (read-only, GET only) ----
+  console.log('\n=== EXTENSION: /v1/me/library/songs ===');
+  const songs = await webApi.getLibrary('/songs', { limit: 5 });
+  console.log('  songs GET status=' + songs.status + ' ok=' + songs.ok + ' code=' + (songs.code || '-'));
+  const songItems = (songs.ok && songs.json && Array.isArray(songs.json.data)) ? songs.json.data : [];
+  console.log('  songs returned=' + songItems.length + ' meta.total=' + ((songs.json && songs.json.meta && songs.json.meta.total) || '-'));
+  songItems.forEach((item, i) => {
+    const oldObj = legacy.mapAppleTrack(item, i, 'shadow:library-songs', { storefront: STOREFRONT });
+    console.log('  song[' + i + '] legacyMapper=' + (oldObj ? 'object' : String(oldObj)) + ' keys=' + (oldObj ? keysOf(oldObj).length : 0));
+    if (i === 0 && oldObj) {
+      console.log('     key sample: ' + keysOf(oldObj).slice(0, 14).join(','));
+      console.log('     undefinedKeys: ' + (keysOf(oldObj).filter((k) => oldObj[k] === undefined).join(',') || '(none)'));
+    }
+  });
+  songItems.slice(0, 3).forEach((item, i) => console.log(idAudit('song[' + i + ']', item)));
+
+  console.log('\n=== EXTENSION: /v1/me/library/albums ===');
+  const albums = await webApi.getLibrary('/albums', { limit: 5 });
+  console.log('  albums GET status=' + albums.status + ' ok=' + albums.ok + ' code=' + (albums.code || '-'));
+  const albumItems = (albums.ok && albums.json && Array.isArray(albums.json.data)) ? albums.json.data : [];
+  console.log('  albums returned=' + albumItems.length + ' meta.total=' + ((albums.json && albums.json.meta && albums.json.meta.total) || '-'));
+  if (albumItems.length) {
+    const at0 = albumItems[0].attributes || {};
+    console.log('  album[0] web attribute keys (' + keysOf(at0).length + '): ' + keysOf(at0).slice(0, 24).join(','));
+    console.log('  legacy mapper for library albums: NONE (handleAppleAlbumDetail is catalog-only; no library-album mapper exists)');
+    albumItems.slice(0, 2).forEach((item, i) => console.log(idAudit('album[' + i + ']', item)));
+  }  // ---- P0: library-album mapper (Web capability completion) ----
+  console.log('\n=== P0: mapLibraryAlbum (library-albums -> canonical album) ===');
+  const albumMapped = albumItems.map((item) => webApi.mapLibraryAlbum(item));
+  console.log('  mapped=' + albumMapped.length + '  withCatalogId=' + albumMapped.filter((a) => a.catalogId !== undefined).length);
+  albumMapped.slice(0, 2).forEach((a, i) => {
+    console.log('  album[' + i + '] keys=' + keysOf(a).length + ' : ' + keysOf(a).join(','));
+    console.log('     id=' + String(a.id) + ' libraryId=' + String(a.libraryId) + ' catalogId=' + String(a.catalogId)
+      + ' name=' + JSON.stringify(a.name) + ' artist=' + JSON.stringify(a.artist)
+      + ' cover=' + (a.cover ? 'present' : 'MISSING') + ' trackCount=' + String(a.trackCount)
+      + ' dateAdded=' + JSON.stringify(a.dateAdded) + ' genres=' + JSON.stringify(a.genreNames));
+  });
+  const p0Checks = [
+    ['catalogId never inferred', albumMapped.every((a) => a.catalogId === undefined)],
+    ['name present', albumMapped.every((a) => !!a.name)],
+    ['artist present', albumMapped.every((a) => !!a.artist)],
+    ['cover present', albumMapped.every((a) => !!a.cover)],
+    ['trackCount is a number', albumMapped.every((a) => typeof a.trackCount === 'number')],
+    ['libraryId kept separate from catalogId', albumMapped.every((a) => !!a.libraryId)],
+  ];
+  p0Checks.forEach((c) => console.log('  check ' + (c[1] ? 'PASS' : 'FAIL') + ' : ' + c[0]));
+  if (p0Checks.some((c) => !c[1])) process.exitCode = 5;  console.log('\n[shadow] done. GET-only calls=' + callCount + ' ; no Developer JWT used ; no writes attempted.');
 })().catch((err) => {
   console.error('[shadow] failed: ' + (err && err.message ? err.message : String(err)));
   process.exit(1);

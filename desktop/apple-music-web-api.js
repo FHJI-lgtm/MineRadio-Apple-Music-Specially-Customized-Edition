@@ -145,6 +145,52 @@ function getLibrary(pathname, query, options) {
   return request('/v1/me/library' + p, Object.assign({}, options || {}, { query, withUserToken: true }));
 }
 
+// ------------------------------------------------------------
+// P0 - Web capability completion: library album mapper.
+//
+// This is NOT a Developer-retirement step: it only consumes the /v1/me/library/albums payload and
+// has no relationship to Developer credentials or the developer JWT.
+//
+// canonical shape mirrors the album object built by the legacy handleAppleAlbumDetail
+// (provider/id/name/artist/artists/cover/releaseDate/trackCount/upc/appleUrl), plus the
+// library-only facts (libraryId, dateAdded, genreNames, playParams).
+//
+// HARD CONSTRAINT: library ID != catalog ID. catalogId is copied verbatim from
+// attributes.playParams.catalogId and is NEVER inferred; when the payload has none it stays
+// undefined. `id`/`albumId` are the LIBRARY id, so both identities remain distinguishable.
+// ------------------------------------------------------------
+function artworkUrl(artwork, size) {
+  if (!artwork || typeof artwork !== 'object') return '';
+  const url = String(artwork.url || '').trim();
+  if (!url) return '';
+  const px = String(Math.max(1, parseInt(size, 10) || 600));
+  return url.replace(/\{w\}/g, px).replace(/\{h\}/g, px);
+}
+
+function mapLibraryAlbum(item) {
+  const attributes = (item && item.attributes) || {};
+  const playParams = (attributes.playParams && typeof attributes.playParams === 'object') ? attributes.playParams : {};
+  const libraryId = String((item && item.id) || '').trim();
+  const artist = String(attributes.artistName == null ? '' : attributes.artistName).trim();
+  return {
+    provider: 'apple',
+    id: libraryId,
+    libraryId,
+    catalogId: playParams.catalogId,
+    albumId: libraryId,
+    name: String(attributes.name == null ? '' : attributes.name).trim(),
+    artist,
+    artists: artist ? [{ id: '', name: artist, uri: '' }] : [],
+    cover: artworkUrl(attributes.artwork, 600),
+    releaseDate: String(attributes.releaseDate == null ? '' : attributes.releaseDate).trim(),
+    trackCount: Number(attributes.trackCount) || 0,
+    dateAdded: String(attributes.dateAdded == null ? '' : attributes.dateAdded).trim(),
+    genreNames: Array.isArray(attributes.genreNames) ? attributes.genreNames.slice() : [],
+    playParams,
+    upc: '',
+    appleUrl: '',
+  };
+}
 module.exports = {
   AMP_API,
   ERRORS,
@@ -155,4 +201,6 @@ module.exports = {
   request,
   getCatalog,
   getLibrary,
+  mapLibraryAlbum,
+  artworkUrl,
 };
