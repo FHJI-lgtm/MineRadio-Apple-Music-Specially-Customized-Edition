@@ -244,3 +244,27 @@ app 模式无法加载运行时，在任何 JS 之前以 `0x80000003 STATUS_BREA
 冻结链：`am-uia.ps1` / `am-smtc.ps1` / `am-common.ps1` 仍与 `0170bca` byte-identical；`am-play.ps1` 为**经授权例外**（materialize 滚动 + 点击后最小化），当前 SHA256 `5222963476E757089E3E2F32889461F74EF4B0C7A035603F57EBDCB6DF4A62DE`。
 
 已知上限：materialize 最多 8 步、间隔 1000ms，超长歌单可能仍需更多（两个常量即可调整）。
+
+## 19. Web 轴迁移：阶段状态（checkpoint 5014d4c，2026-09-26）
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| Step 0 Web auth playlist probe | ✓ | 只读 GET：`/v1/me/library/playlists` + bearer + media-user-token → 200（4 条）；仅 bearer → 403；仅 media-user-token → 401 |
+| Step 1 webAppleApi | ✓ | `desktop/apple-music-web-api.js`（复用 `getWebPlayerBearer`，不重造抓取器；`setCredentialSource` 注入；401/403 语义分离；模块内 `setReadOnly`） |
+| Step 2 mapper compatibility shadow | ✓ | `scripts/apple-music-web-mapper-compat.js` + `REPORT-WEB-MAPPER-COMPAT.md`：Web JSON 直喂旧 mapper 产出完整 canonical 对象（playlist 13 键 / track 30 键），valueMismatch=0 |
+| Developer retirement | **NOT STARTED** | 仅新增 1 行 testability 导出（`mapAppleLibraryPlaylist` 进 `_test`） |
+| UI auth-axis migration | **NOT STARTED** | `appleLoginStatus.loggedIn` 等判据一行未动 |
+| Write-operation probe | **NOT STARTED** | 未做任何 POST/PUT/DELETE；shadow 脚本强制 GET |
+
+### 本轮钉死的两个事实
+
+1. **ID 语义**：library track id = `a.<catalogId>`，且 `playParams.catalogId` 单独可用；library playlist id 是 `p.*`、其 `playParams.catalogId` 为 `undefined`。catalog 与 library 命名空间可区分，但**未经批准不得据此提前改播放层**（`amc.playTrack(trackId+storefront)` 的接入属后续阶段）。
+2. **两个待追踪字段**：`isrc` 在 Web library payload 中**缺失**（canonical 的 isrc 由旧 mapper 派生/兜底）→ 应作为「Web API 数据缺失项」处理，**不为迁移人为补来源**；`trackCount` 同为 mapper 派生，属可后查、**非阻塞**项。
+
+### 已冻结（本阶段未做，需单独批准）
+
+Developer 退役 / UI 认证轴切换 / 写操作探测（`POST|DELETE /v1/me/library`）/ 旧 `/api/apple/*` 改动 / SMTC / AMC / `poc/lib/*`。
+
+### 下一阶段候选（需批准后才动）
+
+只读扩大 shadow：`GET /v1/me/library/albums` 与 `GET /v1/me/library/songs`（判断收藏/资料库读取能否迁到 Web 轴），**仍不碰写操作**。
