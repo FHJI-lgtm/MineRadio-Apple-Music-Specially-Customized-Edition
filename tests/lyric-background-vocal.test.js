@@ -383,7 +383,7 @@ test('bg 译文: 3D 渲染层在同一 bg 行内绘制原文 + 译文 (不动槽
 // 边界: 禁止区域未被触碰
 // ------------------------------------------------------------
 test('管道: bg 契约必须穿过 handleAppleLyric 响应 (否则真实应用拿不到 bg)', () => {
-  const api = fs.readFileSync(path.join(appRoot, 'apple-music-api.js'), 'utf8');
+  const api = fs.readFileSync(path.join(appRoot, 'desktop', 'apple-music-lyrics-api.js'), 'utf8');
   assert.match(api, /bg:\s*Array\.isArray\(web\.bg\)/, 'handleAppleLyric 必须透传 web.bg');
   assert.match(api, /web\.bg\.length \? web\.bg : undefined/, '无 bg 时必须省略字段 (兼容旧行为)');
 });
