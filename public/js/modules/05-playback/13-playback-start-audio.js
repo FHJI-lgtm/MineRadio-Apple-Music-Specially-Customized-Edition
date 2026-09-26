@@ -966,6 +966,8 @@ async function playQueueAt(idx, opts) {
     homeForcedOpen = false;
     if (!opts.preserveHomeState) homeSuppressed = false;
     currentIdx = idx;
+  // E-A: internal playback takes the UI context back from any external (AM) single-play context.
+  if (typeof clearCurrentPlaybackContext === 'function') clearCurrentPlaybackContext('internal-play');
     trackSwitchToken++;
     markPlayPhase('cancel-previous-track');
     cancelBeatAnalysisTimer();

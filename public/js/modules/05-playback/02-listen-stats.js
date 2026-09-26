@@ -214,7 +214,7 @@ function tickListenSessionSnapshot(session, force) {
 }
 function updateListenStatsTick(force) {
   if (!audio || !audio.duration || audio.paused) return;
-  var song = currentCoverSong();
+  var song = currentQueueSong();
   if (!song) return;
   var key = queueItemKey(song);
   if (!listenSession || listenSession.key !== key) beginListenSession(song, activeRadioContext);

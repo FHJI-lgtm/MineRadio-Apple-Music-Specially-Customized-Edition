@@ -40,7 +40,7 @@ function readLastPlaybackSnapshot() {
 function saveLastPlaybackSnapshot(force, reason) {
   var now = Date.now();
   if (!force && now - lastPlaybackSnapshotSavedAt < 2500) return;
-  var song = currentCoverSong();
+  var song = currentQueueSong();
   if (!song) return;
   if (!audio && restoredLastPlaybackSnapshot && restoredLastPlaybackSnapshot.current && queueItemKey(song) === queueItemKey(restoredLastPlaybackSnapshot.current)) return;
   var durationSec = getPlaybackDurationSeconds();
