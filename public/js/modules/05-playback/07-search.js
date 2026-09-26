@@ -1469,6 +1469,9 @@ async function playAmcTrackFromSong(song) {
     album: String(song.albumName || song.album || ''),
     trackId: Number(song.catalogId),
     artworkUrl: String(song.cover || '') || null,
+    // canonicalUrl() needs trackId AND storefront (apple-music-control.js:108-109, else NO_URL_INPUT);
+    // storefront is an explicit field of the mapped Web track - never invented here.
+    storefront: String(song.storefront || 'us'),
     durationMs: Number(song.durationMs) || 0,
   };
   var res = await window.mineradio.amc.playTrack({ result: amModel });
