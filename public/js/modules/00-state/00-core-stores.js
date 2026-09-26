@@ -20,6 +20,20 @@ var lastStrongDrop = 0;           // 用于 burst 预设的强 drop 时刻
 
 var lyricsLines = [], lyricsTranslationLines = [], lyricsVisible = false, lyricsHasNativeKaraoke = false, lyricsTimingSource = 'none', lyricsTranslationSource = 'none';
 var playlist = [], playQueue = [], currentIdx = -1, playing = false, playToggleBusy = false;
+// E-A: the ONE external single-play context fact (Apple Music started from MineRadio).
+// It changes the current UI context ONLY. It never touches playQueue / currentIdx / playing, and it is
+// never written anywhere except the two functions below. null = internal playback owns the UI.
+// Shape: { provider, identitySource, identityConfidence, catalogId, name, artist, album, artworkUrl,
+//          durationMs, external, evidence? }
+var currentPlaybackContext = null;
+function setCurrentPlaybackContext(ctx, reason) {
+  currentPlaybackContext = (ctx && typeof ctx === 'object') ? ctx : null;
+  if (reason) { try { console.log('[playback-context] ' + reason); } catch (_) { } }
+  return currentPlaybackContext;
+}
+function clearCurrentPlaybackContext(reason) {
+  return setCurrentPlaybackContext(null, reason);
+}
 var searchMode = 'song', podcastResults = [], podcastPrograms = [], podcastCurrentRadio = null;
 var loginStatus = { loggedIn: false, vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, vipLabel: '无VIP' };
 var qqLoginStatus = { provider: 'qq', loggedIn: false, preview: false, nickname: 'QQ 音乐', userId: '', avatar: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false };

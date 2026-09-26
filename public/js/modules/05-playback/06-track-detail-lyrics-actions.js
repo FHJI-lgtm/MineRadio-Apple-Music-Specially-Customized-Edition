@@ -1,6 +1,13 @@
-function currentCoverSong() {
+// Queue-only accessor: statistics, like-sync and the last-playback snapshot MUST keep using this one,
+// so an external (AM) context can never leak into them.
+function currentQueueSong() {
   if (currentIdx >= 0 && playQueue[currentIdx]) return playQueue[currentIdx];
   return currentLocalSong || null;
+}
+// THE unified current-track accessor (E-A): an external single-play context wins over the internal queue,
+// and a null context reproduces the exact previous behaviour.
+function currentCoverSong() {
+  return currentPlaybackContext || currentQueueSong();
 }
 function songDurationLabel(song) {
   var sec = playbackDurationFromSong(song);
@@ -774,9 +781,9 @@ function saveCustomLyricPrefs() {
 function songCustomLyricKey(song) {
   return songCustomCoverKey(song);
 }
+// Same unified fact as currentCoverSong() - kept as a named delegate for its existing consumers.
 function currentLyricSong() {
-  if (currentIdx >= 0 && playQueue[currentIdx]) return playQueue[currentIdx];
-  return currentLocalSong || null;
+  return currentCoverSong();
 }
 function getCustomLyricEntry(song) {
   var key = songCustomLyricKey(song);
