@@ -1070,7 +1070,12 @@ async function handleApplePlaylistTracksWeb(playlistId, opts) {
   const storefront = DEFAULT_APPLE_STOREFRONT;
   let json = null;
   try {
-    const page = await webApi.getLibrary('/playlists/' + encodeURIComponent(id) + '/tracks', { limit, offset: startOffset });
+    // The virtual "Apple Music 资料库" card (APPLE_LIKED_PLAYLIST_ID) has no library playlist id:
+    // its content is the library SONGS collection, whose ids are the i.* namespace. Real playlists
+    // keep reading /v1/me/library/playlists/<id>/tracks (a.* namespace) - the two are never merged.
+    const page = (id === APPLE_LIKED_PLAYLIST_ID)
+      ? await webApi.getLibrary('/songs', { limit, offset: startOffset })
+      : await webApi.getLibrary('/playlists/' + encodeURIComponent(id) + '/tracks', { limit, offset: startOffset });
     if (!page.ok) {
       return { provider: 'apple', playlistId: id, tracks: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, source: 'web', error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status };
     }

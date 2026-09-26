@@ -377,6 +377,12 @@ async function loadMorePlaylistPanelDetailTracks(reason) {
     var added = appendPlaylistPanelDetailTracks(st.tracks, mapped);
     var responseTotal = Number(r && (r.total || (r.playlist && r.playlist.trackCount))) || 0;
     st.total = Math.max(st.total || 0, responseTotal, st.tracks.length);
+  // Step 3B fix: the Web playlist payload carries no trackCount, so the row showed a fake 0.
+  // Once the detail is loaded we KNOW the real total - write it back and refresh the row.
+  if (st.playlist && (st.total || 0) > (Number(st.playlist.trackCount) || 0)) {
+    st.playlist.trackCount = st.total;
+    if (typeof renderUserPlaylistsList === 'function') { try { renderUserPlaylistsList({ preserveScroll: true }); } catch (_) { } }
+  }
     st.nextOffset = Math.max(offset + rawTracks.length, Number(r && r.nextOffset) || 0);
     st.hasMore = !!(r && r.hasMore);
     if (!rawTracks.length || (!added && st.nextOffset <= offset)) st.hasMore = false;
