@@ -1459,19 +1459,17 @@ function publishAmcPlaybackContext(res, model) {
 async function playAmcTrackFromSong(song) {
   if (!(song && song.provider === 'apple' && song.catalogId)) return false;
   if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) return false;
-  // The chain consumes the ITUNES result shape (desktop/apple-music-control.js#normalizeItunesTrack):
-  // trackId as a NUMBER, artworkUrl100, trackTimeMillis. Built ONLY from explicit fields - no id decoding.
+  // playTrack() requires the NORMALISED track shape (see desktop/apple-music-control.js:353-357 - it rejects
+  // anything without `title`, stage BAD_INPUT), i.e. the output of normalizeItunesTrack, NOT a raw iTunes row.
+  // Built ONLY from explicit fields - no id decoding, no inference.
   var amModel = {
-    wrapperType: 'track',
-    kind: 'song',
+    source: 'itunes',
+    title: String(song.name || ''),
+    artist: String(song.artist || ''),
+    album: String(song.albumName || song.album || ''),
     trackId: Number(song.catalogId),
-    collectionId: song.collectionId != null ? Number(song.collectionId) : undefined,
-    trackName: String(song.name || ''),
-    artistName: String(song.artist || ''),
-    collectionName: String(song.albumName || song.album || ''),
-    artworkUrl100: String(song.cover || ''),
-    trackTimeMillis: Number(song.durationMs) || undefined,
-    country: 'US',
+    artworkUrl: String(song.cover || '') || null,
+    durationMs: Number(song.durationMs) || 0,
   };
   var res = await window.mineradio.amc.playTrack({ result: amModel });
   console.log('[amc] playlist track playTrack result', res);
