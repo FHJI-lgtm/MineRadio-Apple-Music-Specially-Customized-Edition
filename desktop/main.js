@@ -4917,6 +4917,21 @@ ipcMain.handle('amc:play', async (_event, payload = {}) => {
   return await appleMusicControl.playTrack(result || {}, opts);
 });
 
+// ------------------------------------------------------------
+// Apple Music App section: dedicated login entry.
+// Single purpose: establish the Apple Music Web account session / media-user-token only.
+//   - routes to openAppleMusicLoginWindow(owner, 'lyrics-token') -> lyricsTokenMode,
+//     so it does NOT require Apple Developer credentials;
+//   - deliberately does NOT go through the cross-provider login easter-egg gate: that gate
+//     belongs to the legacy account-login system, not to media-user-token capture;
+//   - explicit main-window sender check (the legacy apple-music-open-login has none);
+//   - returns status fields only, never the token.
+// ------------------------------------------------------------
+ipcMain.handle('amc:open-login', async (event) => {
+  if (!isTrustedMainWindowIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  return openAppleMusicLoginWindow(getSenderWindow(event), 'lyrics-token');
+});
+
 // ============================================================
 // Windows SMTC bridge (external media lyrics mode)
 //

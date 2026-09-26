@@ -1450,7 +1450,11 @@ var amcLoginState = { ready: false, loggedIn: false, busy: false, lastError: '' 
 function amcDesktopWindowApi() {
   return (window.desktopWindow && typeof window.desktopWindow.getAppleLyricsCredentialStatus === 'function') ? window.desktopWindow : null;
 }
-function bindAmcLoginButton() {
+function amcLoginBridge() {
+  return (window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.openLogin === 'function')
+    ? window.mineradio.amc
+    : null;
+}function bindAmcLoginButton() {
   var el = document.getElementById('search-amc-login');
   if (!el) return;
   var btn = el.querySelector('button');
@@ -1501,9 +1505,9 @@ async function refreshAmcLoginStatus() {
 }
 async function amcLoginClick() {
   if (amcLoginState.busy) return;
-  var api = amcDesktopWindowApi();
-  if (!api || typeof api.openAppleMusicLogin !== 'function') {
-    amcLoginState.lastError = 'desktopWindow 桥不可用';
+  var api = amcLoginBridge();
+  if (!api || typeof api.openLogin !== 'function') {
+    amcLoginState.lastError = 'mineradio.amc.openLogin 桥不可用';
     renderAmcLoginIndicator();
     return;
   }
@@ -1514,7 +1518,7 @@ async function amcLoginClick() {
   try {
     // No fixed delay: the main process captures media-user-token via cookies.on('changed') plus a
     // pull, and this promise resolves when the login window closes - re-reading right here suffices.
-    var res = await api.openAppleMusicLogin();
+    var res = await api.openLogin();
     if (res && res.ok === false) {
       console.warn('amc login window reported:', res.error || '', res.message || '');
       amcLoginState.lastError = String(res.message || res.error || '登录未完成');
