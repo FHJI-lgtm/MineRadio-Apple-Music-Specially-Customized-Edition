@@ -131,3 +131,30 @@ identity 规则的来源（只读复用，未改冻结链）：`poc/lib/am-commo
 
 记录措辞（订正）：SMTC 实际播放与目标歌曲一致；艺人字段存在已知的 `The Weeknd ↔ Abel Tesfaye` 署名差异，
 当前验证器因此产生假阴性 —— 而不是 "SMTC = Out of Time / The Weeknd"。
+
+## 11. E2E 复跑（identity 落地后）：模块级链路闭环
+
+命令规格：`Out of Time` / `The Weeknd` / `Retries 0` / 一首 / 走已验证的 `-Url` 路径 / 未动 IPC 与搜索 UI。
+
+| 字段 | 实测 |
+|---|---|
+| navigated / mode | true / deeplink |
+| candidateCount / ambiguous | 1 / false |
+| matchedRow | `音轨 7 Out of Time 3 分钟，34 秒钟` |
+| actualTitle / actualArtist | `Out of Time` / **`Abel Tesfaye — Dawn FM`** (raw SMTC) |
+| **verified / artistLayer** | **true / alias** |
+| artistObserved / artistObservedAlbum | `Abel Tesfaye` / `Dawn FM` |
+| mismatch / titleOk / artistOk | [] / true / true |
+| chainStage / chainOk | `SMTC_WRONG_TRACK` / false |
+| **disagreement** | **true** |
+
+**预期订正**：`stage` **不是** success。冻结链自己的艺人匹配器（`Test-AmSmtcArtistMatch`）没有别名层，
+且我们不改冻结链，所以它仍报 `SMTC_WRONG_TRACK`；模块基于观测到的 SMTC 独立判定为 `verified=true`。
+两者**并列报告**（`chainStage`/`chainOk` 与 `verified`/`artistLayer`），并用 `disagreement` 标出分歧。
+
+**措辞（不得含糊）**：SMTC 返回的是 `Out of Time` / **`Abel Tesfaye — Dawn FM`**，不是 The Weeknd；
+identity 层只是确认它与目标 `The Weeknd` 属于同一已知艺人别名对，
+**不得**记成 "SMTC 返回了 The Weeknd"。
+
+**结论**：`iTunes -> -Url -> Apple Music Windows -> 真实播放 -> SMTC -> verified` 模块级链路**闭环**。
+仍未做：`amc:search`/`amc:play` IPC、搜索 UI。

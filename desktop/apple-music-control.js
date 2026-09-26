@@ -360,17 +360,32 @@ async function playTrack(result, opts = {}) {
   // rule 1: result.trackId is used only to build the navigation URL; it is never a playback id.
   const run = await runChain(result, opts);
   const base = { route: route, url: url };
-  if (!run.ok || !run.raw) {
+  if (!run.raw) {
     return Object.assign(base, {
       ok: false, verified: false, stage: run.stage || 'FAILED', mismatch: ['playback'],
       expected: { title: result.title, artist: result.artist || '' },
       actual: { title: '', artist: '' },
       error: run.detail || 'chain reported failure',
-    }, diagnosticsFrom(run.raw));
+    });
   }
+  // Two facts, reported side by side - neither silently overrides the other:
+  //   chainOk / chainStage = what the frozen chain concluded (its artist matcher has NO alias layer,
+  //                          so it reports SMTC_WRONG_TRACK for a known-alias credit such as
+  //                          "Abel Tesfaye - Dawn FM" when the target is "The Weeknd")
+  //   verified / artistLayer = what the module concludes from the OBSERVED SMTC state, which is the
+  //                          source of truth. disagreement flags the two disagreeing.
   const raw = run.raw;
   const verdict = verifyAgainstSmtc(result, raw.smtc || {});
-  return Object.assign(base, { ok: !!raw.ok, stage: raw.stage || '' }, diagnosticsFrom(raw), verdict);
+  const chainOk = !!raw.ok;
+  const stage = raw.stage || run.stage || '';
+  return Object.assign(base, {
+    ok: chainOk,
+    chainOk: chainOk,
+    chainStage: stage,
+    stage: stage,
+    disagreement: (chainOk !== verdict.verified),
+    error: chainOk ? '' : (run.detail || ''),
+  }, diagnosticsFrom(raw), verdict);
 }
 
 module.exports = {
