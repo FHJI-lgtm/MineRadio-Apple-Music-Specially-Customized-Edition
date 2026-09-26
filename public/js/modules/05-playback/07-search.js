@@ -1379,7 +1379,9 @@ async function doSearch(q, opts) {
     return;
   }
   if (searchMode === 'am') {
-    doAmcOnlySearch(q, requestSeq);
+    var amRequestSeq = ++searchRequestSeq;
+    disconnectSearchLoadMoreObserver();
+    doAmcOnlySearch(q, amRequestSeq);
     return;
   }
   var requestSeq = ++searchRequestSeq;
