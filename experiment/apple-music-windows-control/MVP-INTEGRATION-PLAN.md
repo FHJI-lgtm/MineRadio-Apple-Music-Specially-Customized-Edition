@@ -300,3 +300,28 @@ Web 只读轴已验证覆盖：歌词 ✓、用户歌单 ✓、歌单曲目 ✓�
 **真实 App 验收（用户，2026-09-26 15:11）**：Apple Music 歌词仍正常显示 → 说明新模块已实际接管原歌词逻辑、Web Lyrics 单例链路未断、`setLocalSongIdResolver` 副作用正常、SMTC → 歌词流程与 `/api/apple/lyric` 未被抽取破坏。此验收优于隔离 Node 进程的模块级 smoke（后者无凭据、无本地缓存，只能证明入口可用、不抛、返回结构正确）。
 
 **边界遵守**：未碰 Developer API/JWT、`/api/apple/*`、UI auth axis、SMTC 源顺序、歌词优先级、webLyrics 内部实现、amc、`poc/lib/*`、dead code、`package.json`（新文件命名 `apple-music-lyrics-api.js` 命中 `build.files` 的 `*-api.js` glob）。
+
+## 21. 第 3 步进度（checkpoint）
+
+| 步骤 | 状态 | commit / 证据 |
+|---|---|---|
+| 3A User Playlists（`/api/apple/user/playlists` + UI 门） | ✅ | `c817d53`（Web handler + 路由 + main 注入 + provider 门）、`7f7326e`（启动首刷）、`70d1067`（总登出短路纳入 web 轴） |
+| 3B Playlist Tracks | ⏸ 未开始 | |
+| 3C Album Detail（catalog-only） | ⏸ 未开始 | |
+
+### 3A 验收证据（用户，2026-09-26 15:51，两张截图）
+
+- 歌单面板出现：`Apple Music 资料库`（虚拟卡）+ `音乐回忆 2025` + `喜爱歌曲` + `My Playlist` ×2，均带封面与 AM 标记。
+- 本机 **Developer 凭据未配置**，故这批数据只能经 Web 轴（`AMPWeb bearer + media-user-token`）取得 → 「Web 登录本身足以让用户看到自己的歌单」成立。
+- 机制 A 生效证据：`desktop/main.js`（`:5654` 旁）注入的 credential source 与 server 内 handler 是**同一单例**；`Music-User-Token`（web 层）与 `media-user-token`（歌词）共用同一 `readTokenForMainProcess()` 来源 → 该 UNKNOWN 收敛为「同一 token、不同 header 名」。
+- 契约：返回对象逐字段对齐原 Developer handler（`provider/loggedIn/userId/playlists/total/offset/limit/nextOffset/hasMore/partial/error/message`），另加 `source:'web'`；`userId` 为 `''`（web 凭证不含身份，已注明）。
+
+### 3A 期间的三处实现遗漏（均已修复，记录以备复盘）
+
+1. `c817d53` 只改了 provider 级门（`playlistCatalogProviderLoggedIn`），**漏了聚合登出短路**（`refreshUserPlaylists()` 六个 Developer 轴标志全 false 即渲染空态）→ 表现为「已登录却显示 *登录后显示个人歌单*」；
+2. web 轴状态原先只在 45s tick 刷新，**启动后存在最多 45s 的 `ready=false` 窗口** → `7f7326e` 补启动首刷；
+3. 首轮 main.js 注入锚点误落在 exports 映射行（`:48`）导致语法错误 → 从 HEAD 还原后改按真实调用行（`:5654`）注入。
+
+### 3B 已暴露的缺口（下一步目标）
+
+点开歌单后曲目区显示 *「Apple Music 未连接：请先粘贴 Team ID、Key ID 与 P8 私钥保存配置。」* —— 这正是 `playlist/tracks` 仍走 Developer 端点的表现，且**文案具有误导性**（用户用的是 Web 登录）。3B 应同时解决「曲目能取到」与「不再让 Web 用户看到 Developer 凭据提示」。
