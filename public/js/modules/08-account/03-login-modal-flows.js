@@ -135,7 +135,7 @@ function loginWorkflowSnapPoint(point, graph) {
   if (!point) return point;
   var mode = loginWorkflowNearestMode(point, graph, 92);
   if (mode) {
-    var modePoint = workflowPointForPort(loginWorkflowModeNode(mode), graph);
+    var modePoint = workflowPointForModeNode(mode, graph);
     if (modePoint) return modePoint;
   }
   var mr = loginWorkflowMrTargetPoint(graph);
@@ -163,11 +163,12 @@ function loginWorkflowNearestMode(point, graph, maxDistance) {
   });
   return best;
 }
-function loginWorkflowAppleModeEndpoint(graph) {
-  if (loginProvider !== 'apple' || !graph) return null;
-  var el = loginWorkflowModeNode(isManualCookieOpenForProvider('apple') ? 'cookie' : 'official');
-  if (!el || !graph.contains(el)) return null;
-  return workflowPointForPort(el, graph);
+function workflowPointForModeNode(mode, graph) {
+  var el = loginWorkflowModeNode(mode);
+  if (!el || !graph) return null;
+  var rect = el.getBoundingClientRect();
+  var root = graph.getBoundingClientRect();
+  return { x: rect.left - root.left, y: rect.top + rect.height / 2 - root.top };
 }
 function workflowBezierPath(a, b) {
   var gap = Math.abs(b.x - a.x);
@@ -198,15 +199,13 @@ function renderLoginWorkflowEdges(tempPoint) {
   clearWorkflowSvg(svg);
   var mrIn = graph.querySelector('[data-login-mr-target="mr"]');
   var mrPoint = workflowPointForPort(mrIn, graph);
-  var appleModePoint = loginWorkflowAppleModeEndpoint(graph);
-  var endPointForProvider = function (provider) { return (provider === 'apple' && appleModePoint) ? appleModePoint : mrPoint; };
   loginWorkflowConnectedProviders().forEach(function (provider) {
     var providerOut = graph.querySelector('[data-login-provider-output="' + provider + '"]');
-    appendWorkflowPath(svg, workflowPointForPort(providerOut, graph), endPointForProvider(provider), 'workflow-link active' + (provider === loginProvider ? ' selected' : ''));
+    appendWorkflowPath(svg, workflowPointForPort(providerOut, graph), mrPoint, 'workflow-link active' + (provider === loginProvider ? ' selected' : ''));
   });
   if (loginWorkflowPendingProvider && !providerHasLiveLogin(loginWorkflowPendingProvider)) {
     var pendingOut = graph.querySelector('[data-login-provider-output="' + loginWorkflowPendingProvider + '"]');
-    appendWorkflowPath(svg, workflowPointForPort(pendingOut, graph), endPointForProvider(loginWorkflowPendingProvider), 'workflow-link pending');
+    appendWorkflowPath(svg, workflowPointForPort(pendingOut, graph), mrPoint, 'workflow-link pending');
   }
   if (loginWorkflowDrag && tempPoint) {
     appendWorkflowPath(svg, workflowPointForPort(loginWorkflowDrag.port, graph), loginWorkflowSnapPoint(tempPoint, graph), 'workflow-link temp');
