@@ -1330,16 +1330,27 @@ function ensureAmcSearchSectionStyle() {
     + '.search-amc-meta{min-width:0}'
     + '.search-amc-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
     + '.search-amc-sub{opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
-    + '.search-amc-ids{opacity:.5;font-size:11px}';
+    + '.search-amc-ids{opacity:.5;font-size:11px}'
+    + '.search-amc-item{cursor:pointer;border-radius:8px}'
+    + '.search-amc-item:hover{background:rgba(255,255,255,.06)}'
+    + '.search-amc-cover-wrap{position:relative;flex:0 0 auto;width:44px;height:44px}'
+    + '.search-amc-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:15px;opacity:0;transition:opacity .15s}'
+    + '.search-amc-item:hover .search-amc-play,.search-amc-item:focus .search-amc-play{opacity:1}'
+    + '.search-amc-status{margin-top:3px;font-size:11px;opacity:.85}'
+    + '.search-amc-status.ok{color:#7CFFB2;opacity:1}'
+    + '.search-amc-status.err{color:#FF9E9E;opacity:1}'
+    + '.search-amc-status.busy{color:#FFD37C;opacity:1}';
   document.head.appendChild(st);
 }
-function amcResultRowHtml(r) {
+function amcResultRowHtml(r, index) {
   var cover = r.artworkUrl
     ? '<img class="search-amc-cover" src="' + escHtml(r.artworkUrl) + '" alt="" loading="lazy">'
     : '<span class="search-amc-cover"></span>';
   var dur = '';
   if (r.durationMs) { var s = Math.round(r.durationMs / 1000); dur = '  ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
-  return '<div class="search-amc-item">' + cover + '<div class="search-amc-meta">'
+  return '<div class="search-amc-item" data-amc-index="' + index + '" role="button" tabindex="0">'
+    + '<span class="search-amc-cover-wrap">' + cover + '<span class="search-amc-play" aria-hidden="true">▶</span></span>'
+    + '<div class="search-amc-meta">'
     + '<div class="search-amc-title">' + escHtml(r.title || '') + '</div>'
     + '<div class="search-amc-sub">' + escHtml(r.artist || '') + (r.album ? ' - ' + escHtml(r.album) : '') + '</div>'
     + '<div class="search-amc-ids">trackId=' + (r.trackId == null ? '?' : escHtml(String(r.trackId)))
@@ -1349,14 +1360,76 @@ function amcResultRowHtml(r) {
 function renderAmcSearchSection(results) {
   if (!results || !results.length || !$results) return false;
   ensureAmcSearchSectionStyle();
+  amcCurrentResults = results;
+  ensureAmcResultClickHandler();
   var html = '<div class="search-amc-section"><div class="search-amc-head">Apple Music App<i>iTunes Search API</i></div>';
-  for (var i = 0; i < results.length; i++) html += amcResultRowHtml(results[i]);
+  for (var i = 0; i < results.length; i++) html += amcResultRowHtml(results[i], i);
   html += '</div>';
   $results.insertAdjacentHTML('beforeend', html);
   if (window.gsap) animateListItems($results, '.search-amc-item', { x: 0, y: 6, stagger: 0.012, duration: 0.18, limit: 12 });
   return true;
 }
-async function appendAmcSearchSection(q, requestSeq) {
+// ---- playback bridge: an AM row is NOT a song, so it never enters the queue / fallback path.
+// The verdict always comes from the chain + SMTC (verifyAgainstSmtc), never from the trackId.
+var amcCurrentResults = [];
+var amcPlayBusy = false;
+function ensureAmcResultClickHandler() {
+  if (window.__amcRowClickBound || !$results) return;
+  window.__amcRowClickBound = true;
+  function pick(ev) {
+    var row = ev.target && ev.target.closest ? ev.target.closest('.search-amc-item') : null;
+    if (!row || !$results.contains(row)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    var idx = parseInt(row.getAttribute('data-amc-index') || '-1', 10);
+    var model = idx >= 0 ? amcCurrentResults[idx] : null;
+    if (model) amcPlayRow(row, model);
+  }
+  $results.addEventListener('click', pick, true);
+  $results.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') pick(ev);
+  }, true);
+}
+function setAmcRowStatus(rowEl, text, kind) {
+  var meta = rowEl.querySelector('.search-amc-meta');
+  if (!meta) return;
+  var el = meta.querySelector('.search-amc-status');
+  if (!el) { el = document.createElement('div'); meta.appendChild(el); }
+  el.className = 'search-amc-status' + (kind ? ' ' + kind : '');
+  el.textContent = text;
+}
+function amcVerdictText(res) {
+  var v = res || {};
+  var verified = v.verified === true;
+  var bits = [verified ? 'SMTC 已验证' : 'SMTC 未验证'];
+  if (verified) {
+    if (v.artistLayer && v.artistLayer !== 'exact') bits.push('艺人匹配层：' + v.artistLayer);
+  } else {
+    bits.push('阶段：' + String(v.stage || v.chainStage || '未知'));
+  }
+  if (v.disagreement === true) bits.push('链与模块判定不一致');
+  if (v.artistObserved) bits.push('SMTC 实际艺人：' + v.artistObserved + (v.artistObservedAlbum ? ' — ' + v.artistObservedAlbum : ''));
+  return bits.join(' · ');
+}
+async function amcPlayRow(rowEl, model) {
+  if (!(window.mineradio && window.mineradio.amc && typeof window.mineradio.amc.playTrack === 'function')) {
+    setAmcRowStatus(rowEl, '播放通道不可用（window.mineradio.amc.playTrack 不存在）', 'err');
+    return;
+  }
+  if (amcPlayBusy) return;
+  amcPlayBusy = true;
+  setAmcRowStatus(rowEl, '正在播放并等待 SMTC 判定…', 'busy');
+  try {
+    var res = await window.mineradio.amc.playTrack({ result: model });
+    console.log('[amc] playTrack result', res);
+    setAmcRowStatus(rowEl, amcVerdictText(res), res && res.verified === true ? 'ok' : 'err');
+  } catch (err) {
+    console.warn('amc playTrack failed:', err);
+    setAmcRowStatus(rowEl, '播放调用失败：' + (err && err.message ? err.message : String(err)), 'err');
+  } finally {
+    amcPlayBusy = false;
+  }
+}async function appendAmcSearchSection(q, requestSeq) {
   if (!q || !amcSearchAvailable()) return;
   try {
     var res = await window.mineradio.amc.searchTracks({ query: q, country: 'us', limit: 12 });
