@@ -275,3 +275,28 @@ Web 只读轴已验证覆盖：歌词 ✓、用户歌单 ✓、歌单曲目 ✓�
 `5014d4c` + 本次 songs/albums 探测共同构成「Web API capability baseline」，作为以后删 Developer 时可回看的证据。
 硬约束（写入迁移设计）：**library ID ≠ catalog ID**；`a.<catalogId>`（歌单曲目）与 `i.<librarySongId>`（资料库歌曲）是不同命名空间，禁止归并；需要 catalog id 时一律取 `playParams.catalogId`；`l.<libraryAlbumId>` 的 `playParams.catalogId` 为 undefined。
 结论：Developer API 已无 MineRadio 必需的只读能力缺口；写操作（收藏/资料库写入）已移出退役范围。
+
+## 20. Developer 退役进度（checkpoint）
+
+| 步骤 | 状态 | commit / 证据 |
+|---|---|---|
+| P0 Library Album Mapper（Web capability completion） | ✅ | `a3d392b`：`mapLibraryAlbum` 16 键、`catalogId` 从不推断（`withCatalogId=0`）、6/6 检查 PASS；`apple-music-api.js` 相对 `5014d4c` 零 diff |
+| 1 Lyrics Decoupling | ✅ | `41f62ad`：`desktop/apple-music-lyrics-api.js` 新增（自 `apple-music-api.js` 迁出 337 行，区间 1421–1757）；薄委托 + 注入 `normalizeText`；resolver 注册副作用随区迁移；1 个测试文件身份更新 |
+| 2 UI Auth Axis → Web | ⏸ 未开始 | 第二步属另一类边界：Developer `loggedIn` ≠ Web `media-user-token configured`，不得只改变量名 |
+| 3 /api/apple/* migration | ⏸ 未开始 | |
+| 4 Developer Core Removal | ⏸ 未开始 | |
+| 5 Dead Code | ⏸ 未开始 | 候选：`handleAppleSearch`、`APPLE_AMP_API_BASE`、`opts.originAmp` |
+| 6 Old Developer Login UI/IPC | ⏸ 未开始 | |
+| 7 Credential Residue | ⏸ 未开始 | |
+
+### 第 1 步验收证据
+
+**静态/结构**：新模块**代码行** Developer 符号 = 0（8 处命中仅存在于新模块自身的文档注释）；两文件 `node --check` = 0；`appleTtmlToLines` 旧 0/新 1；`setLocalSongIdResolver(` 旧 0/新 1；旧文件保留 `resetAppleRuntimeStateForTests`（1）。
+
+**契约未变**：web-lyrics schema 3 = SMTC schema 3；SMTC 歌词源顺序原样（1 处）；`capabilities.lyric = false`（2 处）；`bg:` 契约随区迁到新模块（新 1 / 旧 0）；`apple-web` / `apple-ttml-local` 词表在位。
+
+**测试**：`lyric-background-vocal.test.js` exit 1 → **exit 0**（该测试原以 regex 锁定旧文件身份，已最小改动指向 `desktop/apple-music-lyrics-api.js`）；`lyric-bg-highlight-display-ui.test.js`、`lyric-intro-waiting-state.test.js` 保持 exit 0。
+
+**真实 App 验收（用户，2026-09-26 15:11）**：Apple Music 歌词仍正常显示 → 说明新模块已实际接管原歌词逻辑、Web Lyrics 单例链路未断、`setLocalSongIdResolver` 副作用正常、SMTC → 歌词流程与 `/api/apple/lyric` 未被抽取破坏。此验收优于隔离 Node 进程的模块级 smoke（后者无凭据、无本地缓存，只能证明入口可用、不抛、返回结构正确）。
+
+**边界遵守**：未碰 Developer API/JWT、`/api/apple/*`、UI auth axis、SMTC 源顺序、歌词优先级、webLyrics 内部实现、amc、`poc/lib/*`、dead code、`package.json`（新文件命名 `apple-music-lyrics-api.js` 命中 `build.files` 的 `*-api.js` glob）。
