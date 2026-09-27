@@ -5838,21 +5838,9 @@ body.home-controls-locked #bottom-bar {
   cursor: pointer
 }
 
-/* 早期妥协产物的整块浮动 UI（右上角 hover 展开面板 + 可拖拽的 64×64 封面部件 + 内嵌歌词源面板）
-   全部下线：三块设置在「词 → 同步设置」里，上一首/播放/下一首由底栏承载（底栏已接 SMTC），
-   歌词源入口在「词」里。容器里没有别的东西 —— 状态胶囊 #smtc-chip 是 body 级且默认已隐藏，
-   主可视化封面走 applyCoverCanvas，与容器无关。
-   DOM 仍保留为**隐藏宿主**：三个设置节点（#smtc-session-row / #smtc-builtin-timer-block /
-   #smtc-hover-delay-slot）由既有 SMTC 模块按 id 创建在这里，同步设置打开时把它们整体搬进自己的
-   容器 —— 移出 display:none 子树后即正常显示，所以只隐藏不删除，也不会出现重复实例。 */
-#smtc-hover-container {
-  display: none !important
-}
-
-/* 容器若将来恢复显示，旧面板本身也不该回来（它的内容都已迁走）。 */
-#smtc-hover-panel {
-  display: none !important
-}
+/* 原右上角浮动簇（hover 面板 + 可拖拽封面部件 + 内嵌词源面板）的代码已删除，元素不再存在；
+   留下的只有隐藏宿主 #smtc-settings-host（display:none inline），它承载三个设置节点，
+   由「词 → 同步设置」在打开时搬出到面板里。 */
 
 .sync-settings-popover .sync-settings-close {
   width: 20px;

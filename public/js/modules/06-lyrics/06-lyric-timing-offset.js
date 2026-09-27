@@ -288,9 +288,9 @@ function syncSettingsAdoptExistingBlocks() {
   var sessionSlot = document.getElementById('sync-settings-session');
   var body = document.getElementById('sync-settings-body');
   if (!panel || !sessionSlot || !body) return false;
-  // 先把 SMTC 悬浮容器（含延迟槽）构建出来，否则搬无可搬
-  if (typeof smtcEnsureHoverContainer === 'function') {
-    try { smtcEnsureHoverContainer(); } catch (e) { }
+  // 先把隐藏宿主构建出来（三个设置节点在其中创建），否则搬无可搬
+  if (typeof smtcEnsureSettingsHost === 'function') {
+    try { smtcEnsureSettingsHost(); } catch (e) { }
   }
   var row = document.getElementById('smtc-session-row');
   if (row && row.parentNode !== sessionSlot) sessionSlot.appendChild(row);

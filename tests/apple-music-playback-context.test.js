@@ -237,8 +237,8 @@ test('13. publishAmcPlaybackContext RUNS and reaches the bar painter (a Referenc
 test('14. the bar mirrors the LIVE SMTC identity while an external session owns it', () => {
   const uiSrc = read('public/js/modules/12-smtc/03-smtc-ui.js');
   const start = uiSrc.indexOf('var smtcBarMirrorKey');
-  const end = uiSrc.indexOf('function smtcUpdateControls() {');
-  assert.ok(start >= 0 && end > start, 'the mirror must sit above smtcUpdateControls');
+  const end = uiSrc.indexOf('function smtcSyncBarPlayIcon() {');
+  assert.ok(start >= 0 && end > start, 'the mirror must sit above smtcSyncBarPlayIcon');
   const src = uiSrc.slice(start, end);
   const box = {
     smtcStore: { active: true, title: 'Out of Time', artist: 'Abel Tesfaye', album: 'Dawn FM' },
@@ -330,12 +330,14 @@ test('30. openSyncSettingsPanel really opens, and no rule hides the panel it jus
     'the 词 popover must be hidden BY ID - the sync panel shares the .lyric-timing-popover class');
   assert.ok(!/\.lyric-timing-control\.sync-open \.lyric-timing-popover/.test(css),
     'a class-scoped hide would also hide #sync-settings-panel: it would open invisible and unclickable');
-  // the retired floating cluster: the whole container (hover panel + draggable cover widget + inline
-  // source panel) is hidden, but kept as the host those settings nodes are created in and then moved out of
-  assert.match(css, /#smtc-hover-container \{\s*display: none !important\s*\}/,
-    'the whole legacy floating container must be retired');
-  assert.match(css, /#smtc-hover-panel \{\s*display: none !important\s*\}/,
-    'and the panel stays retired even if the container is ever shown again');
+  // the retired floating cluster is DELETED, not merely hidden: no element is created for it any more, and
+  // only the hidden settings host remains (the three node ids are what 05/06 and the sync panel look up)
+  const smtcUiSrc = read('public/js/modules/12-smtc/03-smtc-ui.js');
+  assert.ok(smtcUiSrc.indexOf('function smtcEnsureSettingsHost()') > 0, 'the hidden settings host must exist');
+  ['smtc-hover-container', 'smtc-hover-panel', 'smtc-cover', 'smtc-controls', 'smtc-hover-title'].forEach((id) => {
+    assert.ok(smtcUiSrc.indexOf("'" + id + "'") < 0, 'the legacy element ' + id + ' must not be created any more');
+  });
+  assert.ok(!/#smtc-hover-container|#smtc-hover-panel/.test(css), 'and its CSS must be gone too');
   // nothing that must stay visible may live in that container
   const smtcUi = read('public/js/modules/12-smtc/03-smtc-ui.js');
   assert.ok(smtcUi.indexOf("chip.style.visibility = 'hidden'") > 0,
