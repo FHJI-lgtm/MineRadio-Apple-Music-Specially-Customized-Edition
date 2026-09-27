@@ -1,0 +1,39 @@
+﻿{
+    "stamp":  "20260927-102259",
+    "mode":  "APPLY alpha=1",
+    "requestedAlpha":  1,
+    "acceptance":  {
+                       "hwndPresent":  true,
+                       "uiaRootOk":  true,
+                       "uiaQueryOk":  true,
+                       "uiaActionOk":  true,
+                       "playbackOk":  true,
+                       "smtcOk":  true,
+                       "alphaHeld":  true,
+                       "visuallyHidden":  true,
+                       "restoredOriginalState":  true,
+                       "minimizedAgain":  true
+                   },
+    "evidence":  {
+                     "alphaSamples":  [
+                                          "HELD@2026-09-27 10:23:03.713",
+                                          "HELD@2026-09-27 10:23:04.727",
+                                          "HELD@2026-09-27 10:23:06.730",
+                                          "HELD@2026-09-27 10:23:08.743",
+                                          "HELD@2026-09-27 10:23:13.752"
+                                      ],
+                     "observedAlphaFirst":  1,
+                     "screenAlphaVsBaselineDiffPct":  93.4010745446504,
+                     "screenAlphaVsRenderAlphaDiffPct":  94.965873909372363,
+                     "renderMeanLumaBaseline":  187.14730568064547,
+                     "renderMeanLumaAlpha":  187.14316431117902,
+                     "positionAdvancedMs":  1000,
+                     "uiaDescendants":  197,
+                     "uiaDescendantsBaseline":  197,
+                     "treeSignatureBaseline":  "71|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                     "treeSignatureAlpha":  "71|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                     "exStyleOriginal":  "0x00000100",
+                     "exStyleAfterRestore":  "0x00000100",
+                     "restoreMinimized":  false
+                 }
+}

@@ -1,0 +1,44 @@
+﻿{
+    "stamp":  "20260927-102905",
+    "mode":  "APPLY alpha=1",
+    "requestedAlpha":  1,
+    "acceptance":  {
+                       "hwndPresent":  true,
+                       "uiaRootOk":  true,
+                       "uiaQueryOk":  true,
+                       "uiaActionOk":  true,
+                       "playbackOk":  true,
+                       "smtcOk":  true,
+                       "alphaHeld":  true,
+                       "visuallyHidden":  true,
+                       "restoredOriginalState":  true,
+                       "minimizedAgain":  true,
+                       "alphaHeldThroughUia":  true
+                   },
+    "evidence":  {
+                     "alphaSamples":  [
+                                          "HELD@2026-09-27 10:29:09.280",
+                                          "HELD@2026-09-27 10:29:10.285",
+                                          "HELD@2026-09-27 10:29:12.294",
+                                          "HELD@2026-09-27 10:29:14.299",
+                                          "HELD@2026-09-27 10:29:19.299"
+                                      ],
+                     "observedAlphaFirst":  1,
+                     "screenAlphaVsBaselineDiffPct":  93.652421494913753,
+                     "screenAlphaVsRenderAlphaDiffPct":  95.137584938281535,
+                     "renderMeanLumaBaseline":  187.5134487287738,
+                     "renderMeanLumaAlpha":  187.50917794151152,
+                     "positionAdvancedMs":  1000,
+                     "uiaDescendants":  197,
+                     "uiaDescendantsBaseline":  197,
+                     "treeSignatureBaseline":  "71|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                     "treeSignatureAlpha":  "71|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                     "stressRan":  true,
+                     "stressForced255":  false,
+                     "stressSamples":  16,
+                     "stressFirstForcedAt":  "",
+                     "exStyleOriginal":  "0x00000100",
+                     "exStyleAfterRestore":  "0x00000100",
+                     "restoreMinimized":  false
+                 }
+}

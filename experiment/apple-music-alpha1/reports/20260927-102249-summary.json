@@ -1,0 +1,9 @@
+﻿{
+    "stamp":  "20260927-102249",
+    "mode":  "OBSERVE_ONLY",
+    "requestedAlpha":  1,
+    "acceptance":  {
+                       "observeOnly":  true,
+                       "hwndPresent":  true
+                   }
+}

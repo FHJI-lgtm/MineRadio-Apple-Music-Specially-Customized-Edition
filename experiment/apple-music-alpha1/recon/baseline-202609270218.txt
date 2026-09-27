@@ -1,0 +1,20 @@
+=== Apple Music window probe (READ-ONLY) ===
+at            : 2026-09-27 10:18:49.104
+process       : running=True pids=14392
+process hwnd  : 68306
+candidates    : 6
+  - hwnd=0x4A0B16 pid=14392 class=WinUIDesktopWin32WindowClass title=[WinUI Desktop]
+    style=0x04CF0000 exStyle=0x00000300 layered=False alpha= visible=False iconic=False hung=False rect=123,129 1216x608
+  - hwnd=0x10AE2 pid=14392 class=GDI+ Hook Window Class title=[GDI+ Window (AppleMusic.exe)]
+    style=0x84000000 exStyle=0x00000000 layered=False alpha= visible=False iconic=False hung=False rect=0,0 1x1
+  - hwnd=0x10AD2 pid=14392 class=WinUIDesktopWin32WindowClass title=[Apple Music]
+    style=0x34CF0000 exStyle=0x00000100 layered=False alpha= visible=True iconic=True hung=False rect=-18286,-18286 158x26
+  - hwnd=0x20B24 pid=14392 class=MSCTFIME UI title=[MSCTFIME UI]
+    style=0x8C000000 exStyle=0x00000000 layered=False alpha= visible=False iconic=False hung=False rect=0,0 0x0
+  - hwnd=0x10ADA pid=14392 class=IME title=[Default IME]
+    style=0x8C000000 exStyle=0x00000000 layered=False alpha= visible=False iconic=False hung=False rect=0,0 0x0
+  - hwnd=0x10AE4 pid=14392 class=IME title=[Default IME]
+    style=0x8C000000 exStyle=0x00000000 layered=False alpha= visible=False iconic=False hung=False rect=0,0 0x0
+selected      : hwnd=68306 classMatches=True layered=False alpha= visible=True
+UIA           : {"rootOk":true,"rootName":"Apple Music","rootClass":"WinUIDesktopWin32WindowClass","rootControlType":"ControlType.Window","descendantCount":673,"editCount":1,"buttonCount":112,"sampleNames":["返回","边栏操作","更多","新建","随机播放","向后跳"],"stage":"OK"}
+SMTC          : {"ok":true,"title":"Ordinary Life","artist":"Abel Tesfaye — Starboy","status":"Playing","pos":"00:03:16","dur":"00:03:48"}

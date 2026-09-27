@@ -1,0 +1,23 @@
+﻿{
+    "stamp":  "20260927-104049",
+    "kind":  "click-through-sweep",
+    "requestedAlpha":  1,
+    "grid":  240,
+    "pass":  true,
+    "result":  {
+                   "allPointsSkipAppleMusic":  true,
+                   "allPointsHitReceiver":  false,
+                   "realMouseEventDelivered":  true,
+                   "deliveredPoints":  9,
+                   "wheelDeliveredToReceiver":  true,
+                   "uiaOkWithTransparent":  true,
+                   "selectionPatternOkWithTransparent":  true,
+                   "alphaHeldWithTransparent":  true,
+                   "playbackOkWithTransparent":  true,
+                   "removalRestoresBlocking":  true,
+                   "restoredOriginalExStyle":  true,
+                   "uiaRecoveredAfterRestore":  true,
+                   "B_PLUS_PASS":  true
+               },
+    "recipePath":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\reports\\20260927-104049.restore.json"
+}

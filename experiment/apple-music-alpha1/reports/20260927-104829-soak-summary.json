@@ -1,0 +1,46 @@
+﻿{
+    "stamp":  "20260927-104829",
+    "kind":  "stealth-soak",
+    "minutes":  2,
+    "intervalSec":  5,
+    "navEverySec":  30,
+    "resizeCount":  0,
+    "sampleCount":  24,
+    "verdict":  "NO_VIOLATION",
+    "violations":  0,
+    "firstViolation":  null,
+    "alphaMin":  1,
+    "alphaMax":  1,
+    "lostLayered":  0,
+    "lostTransparent":  0,
+    "uiaFailureSamples":  0,
+    "hungSamples":  0,
+    "amHitSamples":  0,
+    "statusChanges":  [
+                          "-\u003ePlaying@1.9"
+                      ],
+    "perturbations":  [
+                          "nav#1-\u003e新发现@30",
+                          "nav#2-\u003e主页@60",
+                          "nav#3-\u003e新发现@90"
+                      ],
+    "restore":  {
+                    "ok":  true,
+                    "alphaSetTo255":  true,
+                    "layeredRemoved":  true,
+                    "exStyleBefore":  "0x00080120",
+                    "exStyleAfter":  "0x00000100",
+                    "exStyleExpected":  "0x00000100",
+                    "matchesOriginal":  true,
+                    "minimized":  false,
+                    "error":  ""
+                },
+    "postRestore":  {
+                        "uiaOk":  true,
+                        "alpha":  -1,
+                        "layered":  false,
+                        "transparent":  false,
+                        "smtc":  "Playing"
+                    },
+    "recipePath":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\reports\\20260927-104829.restore.json"
+}

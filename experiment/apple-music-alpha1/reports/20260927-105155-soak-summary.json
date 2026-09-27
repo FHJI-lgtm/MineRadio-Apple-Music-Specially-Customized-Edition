@@ -1,0 +1,56 @@
+﻿{
+    "stamp":  "20260927-105155",
+    "kind":  "stealth-soak",
+    "minutes":  30,
+    "intervalSec":  10,
+    "navEverySec":  180,
+    "resizesDone":  4,
+    "sampleCount":  180,
+    "verdict":  "NO_VIOLATION",
+    "violations":  0,
+    "firstViolation":  null,
+    "alphaMin":  1,
+    "alphaMax":  1,
+    "lostLayered":  0,
+    "lostTransparent":  0,
+    "uiaFailureSamples":  0,
+    "hungSamples":  0,
+    "amHitSamples":  0,
+    "statusChanges":  [
+                          "-\u003ePlaying@1.8"
+                      ],
+    "perturbations":  [
+                          "nav#1-\u003e主页@180",
+                          "resize#1@360.1",
+                          "nav#2-\u003e新发现@360.1",
+                          "nav#3-\u003e主页@540",
+                          "resize#2@720",
+                          "nav#4-\u003e新发现@720",
+                          "nav#5-\u003e主页@900",
+                          "resize#3@1080",
+                          "nav#6-\u003e新发现@1080",
+                          "nav#7-\u003e主页@1260",
+                          "resize#4@1440",
+                          "nav#8-\u003e新发现@1440",
+                          "nav#9-\u003e主页@1621"
+                      ],
+    "restore":  {
+                    "ok":  true,
+                    "alphaSetTo255":  true,
+                    "layeredRemoved":  true,
+                    "exStyleBefore":  "0x00080120",
+                    "exStyleAfter":  "0x00000100",
+                    "exStyleExpected":  "0x00000100",
+                    "matchesOriginal":  true,
+                    "minimized":  false,
+                    "error":  ""
+                },
+    "postRestore":  {
+                        "uiaOk":  true,
+                        "alpha":  -1,
+                        "layered":  false,
+                        "transparent":  false,
+                        "smtc":  "Playing"
+                    },
+    "recipePath":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\reports\\20260927-105155.restore.json"
+}
