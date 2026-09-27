@@ -22,7 +22,13 @@ function updateUserModalUi() {
     chip.innerHTML = '<span class="account-source-dot ' + meta.dot + '"></span><span>' + meta.label + '</span>';
   }
   if (avatar) avatar.src = providerAvatarSrc(activeAccountProvider, st);
-  if (name) name.textContent = (st && st.nickname) || meta.label;
+  if (name) {
+    // Apple Music 用 MineRadio 显示资料里的自定义名称, 没有就用 Apple 返回值。
+    var appleCustomName = activeAccountProvider === 'apple' && typeof appleDisplayProfileName === 'function'
+      ? appleDisplayProfileName()
+      : '';
+    name.textContent = appleCustomName || (st && st.nickname) || meta.label;
+  }
   if (vipEl) {
     if (activeAccountProvider === 'netease') {
       var neVipLevel = providerVipLevel('netease', st);

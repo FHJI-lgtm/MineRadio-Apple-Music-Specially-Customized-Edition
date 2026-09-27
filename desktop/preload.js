@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   getCacheSettings: () => ipcRenderer.invoke('mineradio-cache-get-settings'),
   // Apple Music 歌词凭证状态 (只读, 不含 token): 用于判断旧本地歌词缓存是否需要刷新
   getAppleLyricsCredentialStatus: () => ipcRenderer.invoke('mineradio-apple-lyrics-credential-status'),
+  // Apple Music 账户设置: 手动写入 media-user-token。复用歌词窗口那条既有通道与同一个
+  // web credential store (safeStorage), 只回 { ok, configured, updatedAt } 或 { ok: false, error }。
+  saveAppleWebToken: (token) => ipcRenderer.invoke('mineradio-apple-lyrics-credential-set', {
+    mediaUserToken: String(token == null ? '' : token),
+  }),
   chooseCacheDirectory: () => ipcRenderer.invoke('mineradio-cache-choose-directory'),
   setCacheSettings: (payload) => ipcRenderer.invoke('mineradio-cache-set-settings', payload || {}),
   listWallpaperEngineProjects: (payload) => ipcRenderer.invoke('mineradio-wallpaper-engine-list', payload || {}),

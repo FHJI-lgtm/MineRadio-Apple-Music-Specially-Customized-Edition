@@ -1448,6 +1448,8 @@
     <input type="file" id="background-image-input"
       accept=".jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
       style="display:none">
+    <input type="file" id="apple-settings-avatar-input" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+      style="display:none" onchange="handleAppleAvatarInputChange()">
     <div id="drop-overlay">
       <div class="drop-text">拖放音乐或封面</div>
     </div>
@@ -1629,6 +1631,53 @@
         <div class="btn-row">
           <button class="modal-btn" onclick="closeUserModal()">关闭</button>
           <button id="account-logout-btn" class="modal-btn primary" onclick="logoutActiveAccount()">退出当前平台</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apple Music 账户设置 (MineRadio 显示资料 + Web 账户) -->
+    <div id="apple-account-settings-modal" class="modal-mask">
+      <div class="modal apple-account-settings-modal">
+        <h2>Apple Music 账户设置</h2>
+        <div class="apple-settings-section">
+          <div class="apple-settings-section-title">MineRadio 显示资料</div>
+          <div class="apple-settings-avatar-row">
+            <img id="apple-settings-avatar" class="apple-settings-avatar" src="" alt="">
+            <div>
+              <div class="apple-settings-avatar-label">显示头像</div>
+              <div class="apple-settings-hint">显示名称与头像只是 MineRadio 界面上的本地资料，不会上传，也不会写进 Apple 账户或任何凭证。</div>
+            </div>
+          </div>
+          <div class="apple-settings-field">
+            <label for="apple-settings-name-input">显示名称</label>
+            <input id="apple-settings-name-input" class="apple-settings-input" type="text" maxlength="40"
+              autocomplete="off" spellcheck="false" placeholder="留空则使用 Apple Music 默认名称"
+              onchange="saveAppleDisplayNameFromField()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();saveAppleDisplayNameFromField();}">
+          </div>
+          <div class="apple-settings-actions">
+            <button class="modal-btn" type="button" onclick="triggerAppleAvatarUpload()">更换头像</button>
+            <button class="modal-btn" type="button" onclick="resetAppleDisplayAvatar()">恢复默认头像</button>
+          </div>
+        </div>
+        <div class="apple-settings-section">
+          <div class="apple-settings-section-title">Web 账户</div>
+          <div id="apple-settings-status" class="apple-settings-status"><span class="dot"></span><span
+              id="apple-settings-status-text">检查中…</span></div>
+          <div class="apple-settings-field">
+            <label for="apple-web-token-input">网页 Token</label>
+            <input id="apple-web-token-input" class="apple-settings-input" type="password" autocomplete="off"
+              spellcheck="false" placeholder="粘贴 media-user-token">
+            <div class="apple-settings-hint">用于访问 Apple Music 网页资料库、歌单等 Web 数据；与网页登录窗口写的是同一套本地存储。</div>
+          </div>
+          <div class="apple-settings-actions">
+            <button id="apple-web-token-save-btn" class="modal-btn primary" type="button"
+              onclick="submitAppleWebToken()">手动写入 Token</button>
+          </div>
+        </div>
+        <div id="apple-settings-feedback" class="apple-settings-feedback" aria-live="polite"></div>
+        <div class="btn-row">
+          <button class="modal-btn" type="button" onclick="closeAppleAccountSettings()">关闭</button>
         </div>
       </div>
     </div>

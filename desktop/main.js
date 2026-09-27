@@ -5823,8 +5823,13 @@ function isTrustedLyricsSourceIpc(event) {
 }
 
 // 状态是"只读且不含 token"的信息: 主窗口需要它来判断"是否该刷新旧本地歌词缓存";
-// set / clear 仍然只允许设置窗口调用 (最小权限)。
+// 写入 (set) 现在也接受主窗口: Apple Music 账户设置里的「手动写入 Token」就长在主窗口 UI 上,
+// 与歌词窗口写的是同一个 store —— 只有一条写通道, 不新增第二种 token 存储。
+// clear 仍只允许设置窗口调用 (最小权限; 主窗口的退出登录走既有 clearAppleMusicLogin IPC)。
 function isTrustedAppleLyricsCredentialStatusReader(event) {
+  return isTrustedLyricsSourceIpc(event) || isTrustedMainWindowIpc(event);
+}
+function isTrustedAppleLyricsCredentialWriter(event) {
   return isTrustedLyricsSourceIpc(event) || isTrustedMainWindowIpc(event);
 }
 
@@ -5834,7 +5839,7 @@ ipcMain.handle('mineradio-apple-lyrics-credential-status', (event) => {
 });
 
 ipcMain.handle('mineradio-apple-lyrics-credential-set', (event, payload = {}) => {
-  if (!isTrustedLyricsSourceIpc(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
+  if (!isTrustedAppleLyricsCredentialWriter(event)) return { ok: false, error: 'UNTRUSTED_SENDER' };
   const token = payload && typeof payload === 'object' ? payload.mediaUserToken : payload;
   return appleMusicLyricsCredentialStore.set(token);
 });

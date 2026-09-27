@@ -1019,16 +1019,12 @@ function updateLoginProviderUi() {
       '<div class="spotify-guide-steps">' +
         '<span>1. 点“打开 Apple Music 登录页面”，在官方窗口登录 Apple ID</span>' +
         '<span>2. 登录成功后自动保存网页登录态，可同步用户歌单与资料库</span>' +
-        '<span>3. 播放仍由 Apple Music 应用承担（SMTC 跟随），不需要开发者凭据</span>' +
+        '<span>3. 显示名称 / 头像与手动写入 Token 都在「Apple Music 账户设置」里</span>' +
       '</div>' +
       '<div class="spotify-guide-actions">' +
+        '<button type="button" class="spotify-guide-link" onclick="openAppleAccountSettings()">Apple Music 账户设置</button>' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleSetupGuide()">官方接入文档</button>' +
         '<span>歌单 / 专辑 / 歌词都走 Web 读取</span>' +
-      '</div>' +
-      '<div class="apple-manual-token-row">' +
-        '<small>备用：粘贴 music user token（浏览器登录 music.apple.com 后取 Cookie 中的 media-user-token）</small>' +
-        '<input id="apple-manual-token-input" type="password" autocomplete="off" placeholder="粘贴 media-user-token 后点击保存登录态" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:inherit;font-size:12px;margin-top:8px">' +
-        '<button type="button" class="spotify-guide-link" onclick="submitAppleManualToken()" style="margin-top:8px">保存手动 token</button>' +
       '</div>';
     if (qqCookieSaveBtn) {
       qqCookieSaveBtn.disabled = appleBusy || !canOpenAppleLogin;
@@ -1495,42 +1491,6 @@ async function openAppleWebLogin() {
     appleOAuthBusy = false;
     updateLoginProviderUi();
     if (failText && statusEl) { statusEl.textContent = failText; statusEl.className = 'fail'; }
-  }
-}
-async function submitAppleManualToken() {
-  var input = document.getElementById('apple-manual-token-input');
-  var statusEl = document.getElementById('qr-status');
-  var token = input ? String(input.value || '').trim() : '';
-  if (!token) {
-    if (statusEl) { statusEl.textContent = '先粘贴 music user token（media-user-token）'; statusEl.className = 'fail'; }
-    return;
-  }
-  appleConfigBusy = true;
-  if (statusEl) { statusEl.textContent = '正在校验并保存 Apple Music 登录态…'; statusEl.className = 'preview'; }
-  updateLoginProviderUi();
-  try {
-    var info = await apiJson('/api/apple/login/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ musicUserToken: token })
-    });
-    if (!info || info.error || info.ok === false) throw new Error((info && (info.message || info.error)) || 'Apple Music 登录态保存失败');
-    appleLoginStatus = normalizeAppleLoginStatus(info);
-    if (input) input.value = '';
-    if (statusEl) { statusEl.textContent = 'Apple Music 已连接'; statusEl.className = 'scan'; }
-    activeAccountProvider = 'apple';
-    renderUserBtn();
-    await refreshUserPlaylists(true);
-    loadHomeDiscover(true);
-    setTimeout(function () {
-      closeLoginModal();
-      showToast('Apple Music 已连接: ' + (info.nickname || info.userId || ''));
-    }, 420);
-  } catch (e) {
-    if (statusEl) { statusEl.textContent = e && e.message ? e.message : 'Apple Music 登录态保存失败'; statusEl.className = 'fail'; }
-  } finally {
-    appleConfigBusy = false;
-    updateLoginProviderUi();
   }
 }
 async function openNeteaseWebLogin() {

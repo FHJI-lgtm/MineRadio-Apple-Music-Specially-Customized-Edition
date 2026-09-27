@@ -18,12 +18,12 @@
 
 ## 二、仍然存在的 Developer 面（不清除就不能称「退休」）
 
-> 更新（2026-09-27，Slice D 之后）：原 1、2 已解决，剩余面收敛为下面 5 条。
+> 更新（2026-09-27，Apple Music 账户设置之后）：原 1、2、3、4 已解决，剩余面见下面 5、6 两条。
 
 1. ~~账户状态/资料链~~ **已解决**：`/api/apple/status` 自 `e06d3c0` 起由 `handleAppleAccountStatusWeb()` 服务；`/api/apple/config` POST 路由、`getAppleConfig`/`saveAppleConfig` import 与登录弹窗的凭据表单已在 Slice D 删除（§六）。
 2. ~~登录 IPC 读凭据~~ **已解决**：`27881fb` 之后 `openAppleMusicLoginWindow` 不再 import/读取 Developer 凭据，改写 `saveAppleLyricsTokenCandidate()`（web 凭证 store）。
-3. **`/api/apple/login/token` 仍走 Developer 面**：`server.js:5306` 的 `saveAppleUserToken(body)` + `handleAppleStatus()` → `getAppleProfile()` → `appleApiHeaders()` → `getAppleDeveloperToken()`（JWT）。渲染层入口是登录弹窗的「备用：粘贴 media-user-token」（`08-account/03-login-modal-flows.js` 的 `submitAppleManualToken`）。**这是验收项 #2 现在唯一实际触发点。**
-4. **两条 token store 不是同一个**：账号轴读 `.apple-music-lyrics-credential.json`（`desktop/apple-music-web-reads-api.js:9-12`；`apple-music-web-api.js:39-52` 的 token 由主进程注入），而 3 写 `.apple-music-token.json` → 手动粘贴 token 后 `/api/apple/status` 仍报未连接，弹窗状态行会自相矛盾（`Apple Music 未登录 · Apple Music：已连接`）。
+3. ~~`/api/apple/login/token` 仍走 Developer 面~~ **实际触发已解除**（§七）：渲染层的「备用：粘贴 media-user-token」已并入 Apple Music 账户设置，写的是 web credential store，不再调用该路由。路由本体（`server.js` 的 `saveAppleUserToken(body)` + `handleAppleStatus()` → `getAppleProfile()` → `getAppleDeveloperToken()`）**仍在**，只是已无调用方 —— 删除它属于下一步（§三.6）。
+4. ~~两条 token store 不是同一个~~ **已解决**（§七）：手动 token 与网页登录窗口现在写同一个 store（`.apple-music-lyrics-credential.json`，主进程 safeStorage），`/api/apple/status`、状态行与账户设置里的状态不再自相矛盾。Developer 的 `.apple-music-token.json` 已没有渲染层写入方（只剩上面那条无调用方的路由与退出登录时的一次 `clearAppleToken()`）。
 5. **死代码/死字段**：`apple-music-api.js` 的 `saveAppleConfig`（:194）与它的导出（:1395）已无调用方（唯一调用者 `/api/apple/config` 已删）；渲染层 `appleLoginStatus.privateKeyConfigured` 只剩写/默认值（`00-core-stores.js:48`、`02-login-status.js:514,521`、`04-user-modal-logout.js:154,245`、`desktop/apple-music-web-reads-api.js:225`），无任何读取处。
 6. **Apple 写入**：能力已关闭（`public/js/modules/05-playback/06-track-detail-lyrics-actions.js:1449-1451` `like:false / collect:false`；:1611 的守卫早于 `likeCheckUrl` 使用即返回）→ `/api/apple/song/like|album/like|like/check` 三条路由**当前不可达**，但路由与 Developer handler 仍在。
 
@@ -33,8 +33,8 @@
 2. ~~`handleAppleStatus` 停止服务账号状态~~ **已完成**（`e06d3c0`：`/api/apple/status` → `handleAppleAccountStatusWeb`）。
 3. ~~`desktop/main.js` 登录流程只读 web token store~~ **已完成**（`27881fb`）。
 4. ~~登录弹窗的 Developer 凭据表单 + `/api/apple/config`~~ **已完成**（Slice D，§六）。
-5. **待做**：把手动 token 路径并入 web 轴（`/api/apple/login/token` 改写入 `.apple-music-lyrics-credential.json`，或改为 main-process IPC），同步改 `submitAppleManualToken` 与文案 → 完成后 §二.3、§二.4 消除。
-6. **待做**：删 `saveAppleConfig` 与 `appleLoginStatus.privateKeyConfigured` 死字段（纯删）。
+5. ~~把手动 token 路径并入 web 轴~~ **已完成**（§七：`saveAppleWebToken` → 既有 `mineradio-apple-lyrics-credential-set` → `createAppleMusicLyricsCredentialStore`；`submitAppleManualToken` 与散落的 token 输入框已删除）。
+6. **待做**：删 `saveAppleConfig`、无调用方的 `/api/apple/login/token`（连同 `handleAppleStatus` 的最后一条调用链）与 `appleLoginStatus.privateKeyConfigured`、`appleConfigBusy` 死字段（纯删）。
 7. 可选：删 `/api/apple/song/like|album/like|like/check` 路由 + `handleAppleLibraryCheck/Set`。
 
 完成 5-6 后验收项 #2 才能翻为 ✅；**在那之前不应打 `developer-api-retired`**。
@@ -60,3 +60,14 @@ Developer 账号轴收尾的 UI / 路由切除。改动：
 验证：`node --check` 全过；全仓 grep `parseAppleConfigInput|openAppleDeveloperCertificates|APPLE_DEVELOPER_CERTIFICATES_URL|submitAppleConfigLogin` 在源码树 0 残留；`node --test tests/*.test.js` 见提交信息。
 
 **本切片未做**（见 §二）：`/api/apple/login/token` 与手动 token 行、`saveAppleConfig` 与 `privateKeyConfigured` 死代码。
+
+## 七、Apple Music 账户设置（2026-09-27）
+
+统一入口：登录弹窗 Apple 面板 →「Apple Music 账户设置」，实现全在 `public/js/modules/08-account/06-apple-account-settings.js`。
+
+- **MineRadio 显示资料**（显示名称 / 显示头像）：纯本地 UI 资料，落在 `localStorage` 的 `mineradio-apple-display-profile-v1`（头像压成 160×160 内联图，≤512KB，不支持外链）。只作用在 Apple 的账号 UI 上 —— `providerAvatarSrc` / `providerAccountIdentity` / `updateUserModalUi` 各自只对 `provider === 'apple'` 让路，其他平台的展示链一字未改。它不改任何凭证、不出本机、不上传。
+- **Web 账户**（当前状态 / 手动写入 Token）：`desktop/preload.js` 新增 `saveAppleWebToken` → 既有 IPC 通道 `mineradio-apple-lyrics-credential-set` → 既有 `createAppleMusicLyricsCredentialStore`（safeStorage）。主进程只把该通道的信任范围从「歌词窗口」放宽到「歌词窗口 + 主窗口」（`isTrustedAppleLyricsCredentialWriter`），没有第二条写通道、没有第二套存储；`clear` 仍只允许歌词窗口。写入成功后立刻刷新 web 登录状态（`refreshAppleWebLoginStatus` + `refreshAppleLoginStatus`）。
+- **隔离**：退出登录 `clearAppleMusicLoginSession()` 只清登录窗口分区（`APPLE_LOGIN_PARTITION`）+ credential store，不碰主窗口 localStorage → 显示资料不会被退出登录删除；改显示资料也不触碰 token / 登录态 / SMTC / 播放链。
+- **不复活 Developer**：新增代码对 `getAppleCredentials` / `getAppleDeveloperToken` / `signAppleDeveloperJwt` / `/v1/me/profile` / Team ID / Key ID / P8 零引用（"运行时引用" 按去掉注释后的代码判定），也不写 Developer 凭证文件。
+
+测试：`tests/apple-account-settings.test.js`（15 项：显示资料 store 归一化与读写、局部更新、退出登录隔离、显示资料只作用于 Apple、web token 通道唯一性、Developer 符号零新引用、UI 入口与密码输入、vm + 假 DOM 的面板行为）。全量 `node --test tests/*.test.js` → **236 项，235 pass / 1 fail**（仍是既有的 `update-external-only` 版本断言）。

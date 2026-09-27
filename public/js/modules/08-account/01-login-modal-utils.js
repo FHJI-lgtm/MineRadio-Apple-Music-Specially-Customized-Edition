@@ -294,6 +294,11 @@ function firstLoggedProvider() {
 }
 function providerAvatarSrc(provider, status) {
   status = status || platformStatus(provider) || {};
+  // Apple Music 的显示资料是 MineRadio 本地资料 (08-account/06): 有自定义头像就先用它。
+  if (provider === 'apple' && typeof appleDisplayProfileAvatar === 'function') {
+    var customAvatar = appleDisplayProfileAvatar();
+    if (customAvatar) return customAvatar;
+  }
   if (status.avatar) return avatarSrc(status.avatar);
   var meta = platformMeta(provider);
   var fill = provider === 'qq' ? '#bfd66b' : (provider === 'kugou' ? '#56e0ff' : (provider === 'qishui' ? '#45d68f' : (provider === 'spotify' ? '#1ed760' : '#d95b67')));
@@ -318,6 +323,11 @@ function providerVipBadge(provider, status, idAttr, includeNormal) {
 }
 function providerAccountIdentity(provider, status) {
   status = status || platformStatus(provider) || {};
+  // 同上: 自定义显示名称优先于 Apple 返回值 (它不是 Apple 的 profile 字段)。
+  if (provider === 'apple' && typeof appleDisplayProfileName === 'function') {
+    var customName = appleDisplayProfileName();
+    if (customName) return customName;
+  }
   var meta = platformMeta(provider) || {};
   var accountIds = [status.userId, status.uid, status.uin, status.openId, status.open_id, status.id]
     .map(function (value) { return String(value == null ? '' : value).trim(); })

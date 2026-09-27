@@ -9459,6 +9459,140 @@ body.login-guide-active #login-guide-canvas {
   color: rgba(255, 255, 255, .38)
 }
 
+/* Apple Music 账户设置 (08-account/06): MineRadio 显示资料 + Web 账户 */
+#apple-account-settings-modal {
+  z-index: 56
+}
+
+.apple-account-settings-modal {
+  width: min(430px, calc(100vw - 40px));
+  max-width: min(430px, calc(100vw - 40px));
+  text-align: left
+}
+
+.apple-settings-section {
+  margin-top: 12px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .035)
+}
+
+.apple-settings-section-title {
+  margin-bottom: 10px;
+  color: rgba(217, 91, 103, .86);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px
+}
+
+.apple-settings-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px
+}
+
+.apple-settings-avatar {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .12)
+}
+
+.apple-settings-avatar-label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: .4px;
+  color: rgba(255, 255, 255, .5)
+}
+
+.apple-settings-hint {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .36)
+}
+
+.apple-settings-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px
+}
+
+.apple-settings-field label {
+  font-size: 11px;
+  letter-spacing: .4px;
+  color: rgba(255, 255, 255, .5)
+}
+
+.apple-settings-input {
+  width: 100%;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .22);
+  color: rgba(255, 255, 255, .86);
+  padding: 0 11px;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none
+}
+
+.apple-settings-input:focus {
+  border-color: rgba(217, 91, 103, .42);
+  box-shadow: 0 0 0 1px rgba(217, 91, 103, .10)
+}
+
+.apple-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px
+}
+
+.apple-settings-actions .modal-btn {
+  padding: 6px 12px;
+  font-size: 11.5px
+}
+
+.apple-settings-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .72)
+}
+
+.apple-settings-status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .3)
+}
+
+.apple-settings-status.online .dot {
+  background: #45d68f;
+  box-shadow: 0 0 8px rgba(69, 214, 143, .5)
+}
+
+.apple-settings-feedback {
+  min-height: 15px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .5)
+}
+
+.apple-settings-feedback.ok {
+  color: rgba(69, 214, 143, .86)
+}
+
+.apple-settings-feedback.fail {
+  color: rgba(255, 120, 130, .9)
+}
+
 .modal .btn-row {
   display: flex;
   gap: 10px;
