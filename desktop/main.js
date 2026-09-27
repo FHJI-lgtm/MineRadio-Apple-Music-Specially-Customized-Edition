@@ -30,12 +30,8 @@ const {
   exchangeSpotifyOAuthCode,
   clearSpotifyToken,
 } = require('../spotify-api');
-const {
-  getAppleConfig,
-  getAppleCredentials,
-  saveAppleUserToken,
-  clearAppleToken,
-} = require('../apple-music-api');
+// The Developer account axis (its config, credential and user-token helpers) is no longer imported: the
+// Apple account IS the web account (media-user-token), written by the lyrics credential store below.
 // Apple Music 歌词凭证 (media-user-token) 的独立存储, 与上面的 Apple Developer
 // 凭证体系 (apple-music-api.js) 完全分离, 互不读写对方的数据结构。
 const {
@@ -3231,16 +3227,8 @@ async function readAppleMediaUserToken(cookieSession) {
 // 其余调用 (账号登录) 的行为与改动前完全一致。
 async function openAppleMusicLoginWindow(owner, purpose) {
   const lyricsTokenMode = purpose === 'lyrics-token';
-  const credentials = getAppleCredentials();
-  if (!lyricsTokenMode && !credentials.configured) {
-    return {
-      ok: false,
-      provider: 'apple',
-      error: 'APPLE_MUSIC_CREDENTIALS_REQUIRED',
-      missing: credentials.missing,
-      message: 'Apple Music 登录需要先配置 Apple 开发者 Team ID、Key ID 与 P8 私钥。',
-    };
-  }
+  // The Developer account axis is retired: an Apple account IS the web account (media-user-token), so there
+  // is no Team ID / Key ID / P8 precondition any more - opening the official window is always allowed.
   const cookieSession = session.fromPartition(APPLE_LOGIN_PARTITION);
   const initialToken = await readAppleMediaUserToken(cookieSession);
   if (initialToken) {
@@ -3250,7 +3238,8 @@ async function openAppleMusicLoginWindow(owner, purpose) {
       }
     } else {
       try {
-        await saveAppleUserToken({ musicUserToken: initialToken, storefront: credentials.storefront });
+        // The account IS the web credential now: same writer the lyrics/web path uses.
+        if (!saveAppleLyricsTokenCandidate(initialToken)) throw new Error('APPLE_WEB_TOKEN_INVALID');
         return { ok: true, provider: 'apple', reused: true, message: 'Apple Music 已连接（复用上次会话）。' };
       } catch (err) {
         console.warn('[AppleMusicLogin] reused token rejected, opening sign-in window:', err.message);
@@ -3302,10 +3291,12 @@ async function openAppleMusicLoginWindow(owner, purpose) {
         return true;
       }
       try {
-        const saved = await saveAppleUserToken({ musicUserToken: token, storefront: credentials.storefront });
-        await finish(Object.assign({ ok: true, provider: 'apple', opened: true }, saved, {
-          message: 'Apple Music 登录成功，可同步用户歌单与资料库；播放仍会自动换源。',
-        }));
+        // Same writer the lyrics/web path already uses: one credential store, one source of truth.
+        if (!saveAppleLyricsTokenCandidate(token)) throw new Error('APPLE_WEB_TOKEN_INVALID');
+        await finish({
+          ok: true, provider: 'apple', opened: true, accountAxis: 'web',
+          message: 'Apple Music 登录成功（Web 账户）：可同步用户歌单与资料库；播放走 Windows 应用。',
+        });
         return true;
       } catch (err) {
         console.warn('[AppleMusicLogin] token rejected:', err.message);
@@ -3391,7 +3382,9 @@ async function openAppleMusicLoginWindow(owner, purpose) {
       }, APPLE_LYRICS_TOKEN_LOGIN_TIMEOUT_MS);
     }
     pollTimer = setInterval(checkToken, 2500);
-    loginWindow.loadURL(appleMusicLoginUrl(credentials.storefront)).catch((e) => {
+    // Storefront for the sign-in page only: the Developer credential that used to carry it is retired, and the
+  // account is the web account (US storefront, matching every measured catalog/playback behaviour).
+  loginWindow.loadURL(appleMusicLoginUrl('us')).catch((e) => {
       if (pollTimeoutTimer) clearTimeout(pollTimeoutTimer);
       finish({
         ok: false,

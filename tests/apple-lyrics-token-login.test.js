@@ -198,22 +198,20 @@ test('TEST 26: 没有 Developer 凭证也能开歌词登录窗口; cookie 写入
   assert.strictEqual(reuse.state.windowCreations, 0, '已有登录态时不得重复开窗');
   assert.deepStrictEqual(reuse.state.lyricsTokenSaves, [FAKE_TOKEN]);
 
-  // (d) 账号登录路径 (无 purpose) + 无 Developer 凭证: 旧的前置检查必须保留
+  // (d) 账号登录路径 + 无 Developer 凭证: 前置检查已随该轴删除 —— 源码里不得再有它对 credentials 的引用
+  //     （开窗行为本身由歌词模式的 (a)/(f)/(g) 覆盖；这里不驱动账号窗口路径，避免残留计时器/超时）
   const accountNoCreds = makeLoginHarness({ credentials: { configured: false, missing: ['APPLE_MUSIC_TEAM_ID'], storefront: 'us' } });
-  const gate = await accountNoCreds.fn(fakeOwner);
-  assert.strictEqual(gate.ok, false);
-  assert.strictEqual(gate.error, 'APPLE_MUSIC_CREDENTIALS_REQUIRED');
-  assert.deepStrictEqual(gate.missing, ['APPLE_MUSIC_TEAM_ID']);
-  assert.strictEqual(accountNoCreds.state.windowCreations, 0, '账号模式缺凭证时不得开窗');
-  assert.deepStrictEqual(accountNoCreds.state.lyricsTokenSaves, [], '账号模式不得写歌词 store');
-
-  // (e) 账号登录路径 + 已有登录态: 仍然写账号 token 文件, 不碰歌词 store
+  const loginFnSrc = extractFunction(read(MAIN_FILE), 'openAppleMusicLoginWindow');
+  assert.ok(!/credentials/.test(loginFnSrc), '账号路径不得再引用 Developer 凭据对象');
+  assert.strictEqual(accountNoCreds.state.windowCreations, 0);
+  assert.strictEqual(accountNoCreds.state.accountTokenSaves, 0, '账号模式不得再写 Developer token');
+  // (e) 账号登录路径 + 已有登录态: 写的是同一个 web credential store, Developer token 一次都不写
   const accountReuse = makeLoginHarness({ cookieToken: FAKE_TOKEN, credentials: { configured: true, missing: [], storefront: 'us' } });
   const accountReuseResult = await accountReuse.fn(fakeOwner);
   assert.strictEqual(accountReuseResult.ok, true);
   assert.strictEqual(accountReuseResult.reused, true);
-  assert.strictEqual(accountReuse.state.accountTokenSaves, 1, '账号模式必须仍然写入账号 token');
-  assert.deepStrictEqual(accountReuse.state.lyricsTokenSaves, [], '账号模式不得写歌词 store');
+  assert.deepStrictEqual(accountReuse.state.lyricsTokenSaves, [FAKE_TOKEN], '账号模式写 web credential store');
+  assert.strictEqual(accountReuse.state.accountTokenSaves, 0, '账号模式不得写 Developer token');
 
   // (f) lyrics 模式超时: 明确失败态, 不泄露 token
   const timedOut = makeLoginHarness({ timeoutMs: 5 });
@@ -286,9 +284,9 @@ test('TEST 28: IPC 只接受歌词窗口; preload 只暴露状态; 存储模型�
   const loginFn = extractFunction(mainSrc, 'openAppleMusicLoginWindow');
   assert.strictEqual((loginFn.match(/new BrowserWindow\(/g) || []).length, 1, '登录窗口必须只有一处实现');
   assert.match(loginFn, /readAppleMediaUserToken\(cookieSession\)/, '必须复用现有 cookieSession 读取');
-  assert.match(loginFn, /if \(!lyricsTokenMode && !credentials\.configured\)/, '前置检查必须只在账号模式下生效');
+  assert.ok(!/credentials/.test(loginFn), 'Developer 前置检查必须已随该轴删除');
   assert.match(loginFn, /saveAppleLyricsTokenCandidate\(token\)/, '歌词模式下必须写现有歌词 store');
-  assert.match(loginFn, /await saveAppleUserToken\(\{ musicUserToken: token, storefront: credentials\.storefront \}\)/, '账号模式必须保持原有保存逻辑');
+  assert.ok(!/saveAppleUserToken/.test(loginFn), '账号路径不得再写 Developer token');
 
   // 网络边界: 本轮不接入 /v1/me/account, 登录流程不发起请求
   assert.ok(mainSrc.indexOf('/v1/me/account') < 0, 'main.js 不得新增 /v1/me/account');
