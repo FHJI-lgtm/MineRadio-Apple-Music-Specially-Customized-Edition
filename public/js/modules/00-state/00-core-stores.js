@@ -45,7 +45,7 @@ var kugouLoginAutoRefreshTimer = null;
 var qishuiLoginAutoRefreshTimer = null;
 var spotifyLoginStatus = { provider: 'spotify', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Spotify', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match' };
 var spotifyLoginAutoRefreshTimer = null;
-var appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+var appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
 // Web axis (media-user-token via safeStorage) - a DIFFERENT fact from appleLoginStatus above.
 // Single source of truth for renderer-side web login state; never merge the two objects.
 var appleWebLoginStatus = { ready: false, refreshing: false, configured: false, busy: false, lastError: '', revoked: false };
@@ -64,7 +64,6 @@ var qishuiTokenBusy = false;
 var qishuiOAuthBusy = false;
 var spotifyConfigBusy = false;
 var spotifyOAuthBusy = false;
-var appleConfigBusy = false;
 var appleOAuthBusy = false;
 var neteaseWebLoginBusy = false;
 var qqWebLoginBusy = false;

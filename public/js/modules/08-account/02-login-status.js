@@ -511,14 +511,13 @@ function startSpotifyLoginStatusAutoRefresh() {
 }
 
 function normalizeAppleLoginStatus(info) {
-  var fallback = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', membershipKnown: false, vipType: 1, vipLevel: 'vip', isVip: true, isSvip: false, stale: false, reauthRequired: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false, searchReady: false };
+  var fallback = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', membershipKnown: false, vipType: 1, vipLevel: 'vip', isVip: true, isSvip: false, stale: false, reauthRequired: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false, searchReady: false };
   var loggedIn = !!(info && info.loggedIn);
   var capabilities = info && info.capabilities || {};
   return Object.assign({}, fallback, info || {}, {
     provider: 'apple',
     loggedIn: loggedIn,
     configured: !!(info && (info.configured || loggedIn)),
-    privateKeyConfigured: !!(info && info.privateKeyConfigured),
     nickname: info && (info.nickname || info.displayName || info.display_name) || fallback.nickname,
     userId: info && (info.userId || info.id) || '',
     avatar: info && info.avatar || '',

@@ -157,7 +157,7 @@ function resetAllProviderRendererLoginState() {
   kugouLoginStatus = { provider: 'kugou', loggedIn: false, preview: false, nickname: '酷狗音乐', userId: '', avatar: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false };
   qishuiLoginStatus = { provider: 'qishui', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: '汽水音乐', userId: '', avatar: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match' };
   spotifyLoginStatus = { provider: 'spotify', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Spotify', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
-  appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+  appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
   loginStatusChecked = true;
   loginStatusCheckFailed = false;
   neteasePlaylists = [];
@@ -248,7 +248,7 @@ async function logoutActiveAccount() {
         await window.desktopWindow.clearAppleMusicLogin();
       }
     } catch (e) { }
-    appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', privateKeyConfigured: false, tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
+    appleLoginStatus = { provider: 'apple', loggedIn: false, configured: false, oauthConfigured: false, oauthMissing: [], preview: false, nickname: 'Apple Music', userId: '', avatar: '', product: '', vipType: 0, vipLevel: 'none', isVip: false, isSvip: false, playbackKeyReady: false, playbackMode: 'recommend-match', tokenConfigured: false, tokenFileExists: false, credentialsFileExists: false, localConfigMissing: false };
     applePlaylists = [];
   if (typeof revokeAppleWebLoginStatus === 'function') revokeAppleWebLoginStatus();
     userPlaylists = userPlaylists.filter(function (pl) { return pl.provider !== 'apple'; });

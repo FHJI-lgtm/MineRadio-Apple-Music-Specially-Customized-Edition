@@ -222,7 +222,6 @@ async function handleAppleAccountStatusWeb() {
     authorizedAt: snap.authorizedAt,
     stale: false,
     reauthRequired: false,
-    privateKeyConfigured: false,
     capabilities: {
       search: false,
       playlists: loggedIn,

@@ -129,13 +129,7 @@ const {
   handleSpotifyLyric,
 } = require('./spotify-api');
 const {
-  saveAppleUserToken,
   clearAppleToken,
-  getAppleDeveloperToken,
-  handleAppleStatus,
-  handleAppleUserPlaylists,
-  handleApplePlaylistTracks,
-  handleAppleAlbumDetail,
   handleAppleLibraryCheck,
   handleAppleLibrarySet,
   handleAppleSongUrl,
@@ -5302,32 +5296,9 @@ const server = http.createServer(async (req, res) => {
 // /api/apple/oauth/dev-token removed with the Developer account axis: it minted a Developer JWT
 // (Team ID / Key ID / P8) and no renderer ever called it.
 
-  if (pn === '/api/apple/login/token') {
-    try {
-      if (req.method !== 'POST') {
-        sendJSON(res, { provider: 'apple', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405);
-        return;
-      }
-      const body = await readRequestBody(req);
-      const saved = await saveAppleUserToken(body);
-      const status = await handleAppleStatus();
-      sendJSON(res, Object.assign({}, status, saved, {
-        ok: true,
-        loggedIn: true,
-        message: 'Apple Music 登录成功，可同步用户歌单与资料库；播放仍会自动换源。'
-      }));
-    } catch (err) {
-      console.error('[AppleMusicLoginToken]', err);
-      sendJSON(res, {
-        provider: 'apple',
-        ok: false,
-        loggedIn: false,
-        error: err.code || err.message,
-        message: err.message,
-      }, err && (err.code === 'APPLE_MUSIC_USER_TOKEN_INVALID' || err.code === 'APPLE_MUSIC_USER_TOKEN_REQUIRED') ? 400 : 502);
-    }
-    return;
-  }
+  // /api/apple/login/token removed with the Developer account axis: it wrote the Developer user-token
+  // file and returned the Developer status (JWT + /v1/me/profile). The Apple account IS the web account
+  // now, and the web credential is written by the login window / Apple Music 账户设置 (main-process IPC).
 
   if (pn === '/api/apple/logout') {
     try {

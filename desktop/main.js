@@ -3425,7 +3425,9 @@ async function clearAppleMusicLoginSession() {
   await cookieSession.clearStorageData({
     storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage'],
   });
-  clearAppleToken();
+  // 这里原本还有一句 Developer 的 clearAppleToken(): 27881fb 删掉 Developer 账号轴时把它的 import
+  // 一起去掉了, 只剩调用 -> 每次退出 Apple Music 都在这一行抛 ReferenceError, 下面清 web 凭证的
+  // 代码永远跑不到 (退出后 token 仍在, 重启又变回已登录)。账号即 web 账号, 清它就是完整的退出。
   // Also clear the Apple Music WEB credential (media-user-token), so a web logout survives a restart.
   try { if (typeof appleMusicLyricsCredentialStore !== 'undefined' && appleMusicLyricsCredentialStore) appleMusicLyricsCredentialStore.clear(); } catch (_) { }
   return { ok: true, provider: 'apple' };

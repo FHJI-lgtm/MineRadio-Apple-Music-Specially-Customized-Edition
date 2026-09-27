@@ -40,15 +40,11 @@ const DEFAULT_APPLE_REDIRECT_URI = 'http://127.0.0.1:3000/apple-music-callback.h
 // Apple recommends short-lived developer tokens (5 minutes is a safe window).
 const APPLE_DEV_TOKEN_TTL_MS = 4.5 * 60 * 1000;
 const APPLE_SEARCH_LIMIT_MAX = 25;
-const APPLE_PLAYLIST_PAGE_LIMIT = 100;
-const APPLE_LIBRARY_PAGE_LIMIT = 100;
 const APPLE_USER_AGENT = 'Mineradio/2.1.0 (Apple Music API bridge)';
 const APPLE_LIKED_PLAYLIST_ID = 'apple-liked';
-const APPLE_PROFILE_CACHE_TTL_MS = 60 * 1000;
 const APPLE_TRANSIENT_RETRY_DELAYS_MS = [320, 900];
 
 let appleDevTokenCache = { token: '', expiresAt: 0 };
-let appleProfileCache = { value: null, at: 0, promise: null };
 const appleSearchCache = new Map();
 const appleSearchInflight = new Map();
 
@@ -91,10 +87,6 @@ function appleConfigFileCandidates() {
   add(DEFAULT_APPLE_CONFIG_FILE);
   add(path.join(__dirname, 'apple-music-credentials.json'));
   return candidates;
-}
-
-function getAppleConfigFile() {
-  return process.env.APPLE_MUSIC_CONFIG_FILE || process.env.MINERADIO_APPLE_CONFIG_FILE || DEFAULT_APPLE_CONFIG_FILE;
 }
 
 function normalizeApplePrivateKey(value) {
@@ -181,59 +173,12 @@ function getAppleCredentials() {
     teamId,
     keyId,
     privateKey,
-    privateKeyConfigured: !!privateKey,
     musicId,
     storefront,
     redirectUri,
     credentialsFile: fileConfig.file,
     configSource: envTeamId || envKeyId || envPrivateKey || envMusicId || envStorefront ? 'env' : (fileConfig.source || ''),
     missing,
-  };
-}
-
-function saveAppleConfig(input) {
-  input = input && typeof input === 'object' ? input : {};
-  const teamId = normalizeText(input.teamId || input.team_id || input.iss || '');
-  const keyId = normalizeText(input.keyId || input.key_id || input.kid || '');
-  const privateKey = normalizeApplePrivateKey(input.privateKey || input.private_key || input.p8 || input.key || '');
-  const missing = [];
-  if (!teamId) missing.push('APPLE_MUSIC_TEAM_ID');
-  if (!keyId) missing.push('APPLE_MUSIC_KEY_ID');
-  if (!privateKey) missing.push('APPLE_MUSIC_PRIVATE_KEY');
-  if (missing.length) {
-    const err = new Error('APPLE_MUSIC_CREDENTIALS_REQUIRED');
-    err.code = 'APPLE_MUSIC_CREDENTIALS_REQUIRED';
-    err.missing = missing;
-    throw err;
-  }
-  const musicId = normalizeText(input.musicId || input.music_id || input.clientId || input.client_id || '');
-  const storefront = (normalizeText(input.storefront || input.country || input.market || DEFAULT_APPLE_STOREFRONT) || DEFAULT_APPLE_STOREFRONT).toLowerCase();
-  const redirectUri = normalizeText(input.redirectUri || input.redirect_uri || input.callbackUrl || '') || DEFAULT_APPLE_REDIRECT_URI;
-  const file = getAppleConfigFile();
-  writeJsonFile(file, {
-    apple: {
-      teamId,
-      keyId,
-      privateKey,
-      musicId,
-      storefront,
-      redirectUri,
-    },
-  });
-  appleDevTokenCache = { token: '', expiresAt: 0 };
-  return {
-    provider: 'apple',
-    ok: true,
-    saved: true,
-    credentialsFile: file,
-    credentialsFileExists: true,
-    teamId,
-    keyId,
-    keyIdLast4: String(keyId).slice(-4),
-    privateKeyConfigured: true,
-    musicId,
-    storefront,
-    redirectUri,
   };
 }
 
@@ -263,75 +208,6 @@ function readStoredAppleToken() {
   }
 }
 
-function writeJsonFile(file, payload) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
-}
-
-async function verifyAppleUserToken(musicUserToken, opts) {
-  opts = opts || {};
-  const json = await appleGet('/v1/me/profile', null, {
-    timeoutMs: opts.timeoutMs || 9000,
-    userToken: musicUserToken,
-  });
-  const entry = json && Array.isArray(json.data) && json.data[0] ? json.data[0] : null;
-  const attributes = entry && entry.attributes || {};
-  const playlists = attributes.playlists && typeof attributes.playlists === 'object' ? attributes.playlists : {};
-  return {
-    ok: true,
-    userId: normalizeText(entry && entry.id) || normalizeText(attributes.id) || '',
-    nickname: normalizeText(attributes.name) || normalizeText(attributes.url && attributes.url.split('/').pop()) || 'Apple Music',
-    playlistsCount: Number(playlists.total) || 0,
-    canFollow: !!attributes.canFollow,
-    url: normalizeText(attributes.url),
-    storefront: normalizeText(opts.storefront || ''),
-  };
-}
-
-async function saveAppleUserToken(input) {
-  input = input && typeof input === 'object' ? input : {};
-  const musicUserToken = normalizeText(input.musicUserToken || input.music_user_token || input.mediaUserToken || input.media_user_token || input.token || input.userToken || input.user_token);
-  if (!musicUserToken) {
-    const err = new Error('APPLE_MUSIC_USER_TOKEN_REQUIRED');
-    err.code = 'APPLE_MUSIC_USER_TOKEN_REQUIRED';
-    throw err;
-  }
-  const storefront = (normalizeText(input.storefront || input.country) || readStoredAppleToken().storefront || getAppleCredentials().storefront || DEFAULT_APPLE_STOREFRONT).toLowerCase();
-  // Verify the token against the user profile before persisting it, so a
-  // stale or invalid token never gets written to disk.
-  let verified = null;
-  try {
-    verified = await verifyAppleUserToken(musicUserToken, { storefront, timeoutMs: 12000 });
-  } catch (err) {
-    const detail = appleErrorDetails(err);
-    const invalid = Object.assign(new Error('APPLE_MUSIC_USER_TOKEN_INVALID'), {
-      code: 'APPLE_MUSIC_USER_TOKEN_INVALID',
-      statusCode: detail.statusCode,
-      message: 'Apple Music 用户 Token 校验失败：' + (detail.message || err.message || '请重新登录。'),
-    });
-    throw invalid;
-  }
-  const now = Date.now();
-  writeJsonFile(getAppleTokenFile(), {
-    musicUserToken,
-    storefront: storefront || verified.storefront || '',
-    nickname: normalizeText(verified.nickname),
-    userId: normalizeText(verified.userId),
-    authorizedAt: now,
-  });
-  appleProfileCache = { value: null, at: 0, promise: null };
-  return {
-    provider: 'apple',
-    loggedIn: true,
-    tokenConfigured: true,
-    authorizedAt: now,
-    nickname: normalizeText(verified.nickname),
-    userId: normalizeText(verified.userId),
-    storefront: storefront || verified.storefront || '',
-    message: 'Apple Music 登录成功，可同步用户歌单与资料库。',
-  };
-}
-
 function clearAppleToken() {
   try {
     const file = getAppleTokenFile();
@@ -339,7 +215,6 @@ function clearAppleToken() {
   } catch (err) {
     console.warn('[AppleMusicToken] clear skipped:', err.message);
   }
-  appleProfileCache = { value: null, at: 0, promise: null };
   return { ok: true, provider: 'apple', loggedIn: false };
 }
 
@@ -562,23 +437,6 @@ async function appleSend(method, pathname, params, payload, opts) {
   }
 }
 
-function appleCacheWrap(map, key, ttlMs, loader) {
-  const now = Date.now();
-  const cached = map.get(key);
-  if (cached && now - cached.at < ttlMs) return Promise.resolve(cached.value);
-  if (appleSearchInflight.has(key)) return appleSearchInflight.get(key);
-  const promise = Promise.resolve(loader()).then((value) => {
-    map.set(key, { at: Date.now(), value });
-    if (map.size > 80) {
-      const oldest = [...map.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-      if (oldest) map.delete(oldest[0]);
-    }
-    return value;
-  }).finally(() => appleSearchInflight.delete(key));
-  appleSearchInflight.set(key, promise);
-  return promise;
-}
-
 function requireAppleUserToken() {
   const token = readStoredAppleToken();
   if (!token.musicUserToken) {
@@ -665,166 +523,9 @@ function mapAppleTrack(data, index, query, context) {
   };
 }
 
-function dedupeAppleTracks(songs) {
-  const out = [];
-  const seen = new Set();
-  (songs || []).forEach((song) => {
-    const key = (song.id || '') + '|' + normalizeText(song.name).toLowerCase() + '|' + normalizeText(song.artist).toLowerCase();
-    if (!song || !song.name || seen.has(key)) return;
-    seen.add(key);
-    out.push(song);
-  });
-  return out;
-}
-
-function normalizeAppleProfile(profile) {
-  profile = profile || {};
-  const playlists = profile.playlists && typeof profile.playlists === 'object' ? profile.playlists : {};
-  return {
-    userId: normalizeText(profile.userId) || normalizeText(profile.id),
-    nickname: normalizeText(profile.nickname || profile.name || 'Apple Music'),
-    avatar: '',
-    storefront: normalizeText(profile.storefront),
-    playlistsCount: Number(profile.playlistsCount || playlists.total || 0) || 0,
-    vipType: 1,
-    vipLevel: 'vip',
-    vipLabel: 'Apple Music',
-    membershipKnown: true,
-    isVip: true,
-    isSvip: false,
-  };
-}
-
-function getAppleConfig() {
-  const credentials = getAppleCredentials();
-  const token = readStoredAppleToken();
-  const tokenFileExists = !!(token.file && fs.existsSync(token.file));
-  const credentialsFileExists = !!(credentials.credentialsFile && fs.existsSync(credentials.credentialsFile));
-  const localConfigMissing = !tokenConfigured() && !credentials.configured && !credentialsFileExists;
-  const message = tokenConfigured()
-    ? 'Apple Music 已连接；播放仍会按匹配源自动换源。'
-    : (credentials.configured
-      ? 'Apple Music 开发者凭据已保存，可打开官方登录窗口连接 Apple ID。'
-      : (localConfigMissing
-        ? 'Apple Music 未连接：请先登录 Apple Music 网页账号（推荐），或粘贴 Team ID、Key ID 与 P8 私钥配置开发者凭据。'
-        : 'Apple Music 凭据不完整：请登录 Apple Music 网页账号，或补全 Team ID、Key ID 与 P8 私钥。'));
-  return {
-    provider: 'apple',
-    configured: !!(credentials.configured || tokenConfigured()),
-    loggedIn: false,
-    teamId: credentials.teamId,
-    keyId: credentials.keyId,
-    keyIdLast4: String(credentials.keyId).slice(-4),
-    privateKeyConfigured: credentials.privateKeyConfigured,
-    musicId: credentials.musicId,
-    storefront: (token.storefront || credentials.storefront || DEFAULT_APPLE_STOREFRONT).toLowerCase(),
-    redirectUri: credentials.redirectUri,
-    credentialsFile: credentials.credentialsFile,
-    credentialsFileExists,
-    localConfigMissing,
-    configSource: credentials.configSource,
-    missing: credentials.missing,
-    tokenConfigured: tokenConfigured(),
-    tokenFileExists,
-    tokenReady: tokenConfigured(),
-    authorizedAt: token.authorizedAt || 0,
-    playbackMode: 'recommend-match',
-    capabilities: {
-      search: credentials.configured,
-      metadata: credentials.configured,
-      lyric: false,
-      playableUrl: false,
-      userPlaylists: tokenConfigured(),
-      likedTracks: tokenConfigured(),
-      likeWrite: tokenConfigured(),
-      albumCollect: tokenConfigured(),
-      playlistWrite: false,
-    },
-    message,
-  };
-}
-
-function tokenConfigured() {
-  return !!readStoredAppleToken().musicUserToken;
-}
-
 // ------------------------------------------------------------
 // Handlers (mirror the Spotify provider contract)
 // ------------------------------------------------------------
-async function handleAppleStatus() {
-  const config = getAppleConfig();
-  const token = readStoredAppleToken();
-  let profile = null;
-  let profileError = '';
-  let profileErrorDetail = null;
-  let loggedIn = false;
-  if (token.musicUserToken) {
-    try {
-      profile = await getAppleProfile({ timeoutMs: 12000 });
-      loggedIn = true;
-    } catch (err) {
-      profileError = err.message || 'APPLE_PROFILE_FAILED';
-      profileErrorDetail = appleErrorDetails(err);
-    }
-  }
-  const normalized = normalizeAppleProfile(profile);
-  return Object.assign({}, config, normalized, {
-    loggedIn,
-    configured: !!(config.configured || loggedIn),
-    profileReady: loggedIn,
-    tokenConfigured: tokenConfigured(),
-    tokenReady: tokenConfigured(),
-    authorizedAt: token.authorizedAt || 0,
-    stale: !!(!loggedIn && tokenConfigured()),
-    reauthRequired: !!(profileErrorDetail && profileErrorDetail.reauthRequired),
-    error: profileErrorDetail && profileErrorDetail.error || profileError || '',
-    errorMessage: profileErrorDetail && profileErrorDetail.message || '',
-    capabilities: Object.assign({}, config.capabilities, {
-      search: !!config.capabilities.search,
-      metadata: !!config.capabilities.metadata,
-      userPlaylists: loggedIn,
-      likedTracks: loggedIn,
-      likeWrite: loggedIn,
-      albumCollect: loggedIn,
-      lyric: false,
-      playableUrl: false,
-    }),
-    message: loggedIn
-      ? 'Apple Music 登录态已保存，可同步用户歌单与资料库；播放仍会自动换源。'
-      : config.message,
-  });
-}
-
-async function getAppleProfile(options) {
-  options = options || {};
-  const now = Date.now();
-  if (!options.force && appleProfileCache.value && now - appleProfileCache.at < APPLE_PROFILE_CACHE_TTL_MS) {
-    return appleProfileCache.value;
-  }
-  if (appleProfileCache.promise) return appleProfileCache.promise;
-  appleProfileCache.promise = (async () => {
-    const token = requireAppleUserToken();
-    const json = await appleGet('/v1/me/profile', null, {
-      timeoutMs: options.timeoutMs || 9000,
-      userToken: token.musicUserToken,
-    });
-    const entry = json && Array.isArray(json.data) && json.data[0] ? json.data[0] : null;
-    const attributes = entry && entry.attributes || {};
-    const playlists = attributes.playlists && typeof attributes.playlists === 'object' ? attributes.playlists : {};
-    const value = {
-      userId: normalizeText(entry && entry.id) || normalizeText(attributes.id),
-      nickname: normalizeText(attributes.name) || 'Apple Music',
-      url: normalizeText(attributes.url),
-      playlistsCount: Number(playlists.total) || 0,
-      canFollow: !!attributes.canFollow,
-      storefront: token.storefront || '',
-    };
-    appleProfileCache.value = value;
-    appleProfileCache.at = Date.now();
-    return value;
-  })().finally(() => { appleProfileCache.promise = null; });
-  return appleProfileCache.promise;
-}
 
 function mapAppleLibraryPlaylist(item) {
   item = item || {};
@@ -846,273 +547,6 @@ function mapAppleLibraryPlaylist(item) {
     public: attributes.isPublic === true,
     appleUrl: normalizeText(attributes.url),
     applePlayParamsId: normalizeText(playParams.id),
-  };
-}
-
-async function handleAppleUserPlaylists(options) {
-  options = options || {};
-  const status = await handleAppleStatus();
-  if (!status.loggedIn) {
-    return { provider: 'apple', loggedIn: false, playlists: [], message: status.message, error: status.error || '' };
-  }
-  const token = requireAppleUserToken();
-  const maxTotal = Math.max(1, Math.min(500, Number(options.limit) || 300));
-  const playlists = [];
-  const startOffset = Math.max(0, Number(options.offset) || 0);
-  let offset = startOffset;
-  let playlistError = null;
-  let lastPage = null;
-  try {
-    while (playlists.length < maxTotal) {
-      const pageLimit = Math.min(APPLE_LIBRARY_PAGE_LIMIT, maxTotal - playlists.length);
-      const json = await appleGet('/v1/me/library/playlists', {
-        limit: pageLimit,
-        offset,
-      }, { timeoutMs: 12000, userToken: token.musicUserToken });
-      lastPage = json;
-      const items = Array.isArray(json && json.data) ? json.data : [];
-      items.forEach((item) => {
-        const mapped = mapAppleLibraryPlaylist(item);
-        if (mapped) playlists.push(mapped);
-      });
-      if (!items.length || !(json && json.next)) break;
-      offset += items.length;
-    }
-  } catch (err) {
-    playlistError = appleErrorDetails(err);
-  }
-  const likedCard = {
-    provider: 'apple',
-    source: 'apple',
-    id: APPLE_LIKED_PLAYLIST_ID,
-    virtual: true,
-    name: 'Apple Music 资料库',
-    cover: '',
-    creator: 'Apple Music',
-    trackCount: 0,
-    playCount: 0,
-    subscribed: false,
-    shelfPane: 'fav',
-  };
-  const total = Math.max(playlists.length + startOffset, Number(lastPage && (lastPage.meta && lastPage.meta.total) || lastPage && lastPage.total) || 0) + 1;
-  const nextOffset = startOffset + playlists.length;
-  return {
-    provider: 'apple',
-    loggedIn: true,
-    userId: normalizeText(status.userId),
-    playlists: (startOffset === 0 ? [likedCard] : []).concat(playlists),
-    total,
-    offset: startOffset,
-    limit: maxTotal,
-    nextOffset,
-    hasMore: !!(lastPage && lastPage.next) && nextOffset < total,
-    partial: true,
-    error: playlistError && playlistError.error || '',
-    message: playlistError && playlistError.message || '',
-  };
-}
-
-async function handleAppleLibrarySongs(limit, offset, userToken) {
-  const json = await appleGet('/v1/me/library/songs', {
-    limit: Math.max(1, Math.min(APPLE_LIBRARY_PAGE_LIMIT, Number(limit) || 48)),
-    offset: Math.max(0, Number(offset) || 0),
-  }, { timeoutMs: 12000, userToken });
-  const items = Array.isArray(json && json.data) ? json.data : [];
-  const storefront = readStoredAppleToken().storefront || getAppleCredentials().storefront || DEFAULT_APPLE_STOREFRONT;
-  const tracks = items.map((item, index) => {
-    const attributes = item.attributes || {};
-    // Library songs reuse the catalog shape; synthesize a catalog-like entry.
-    return mapAppleTrack({
-      id: normalizeText(item.id),
-      attributes: Object.assign({}, attributes, {
-        albumName: attributes.albumName || attributes.album_name || '',
-        durationInMillis: attributes.durationInMillis || attributes.duration_in_millis || 0,
-        isrc: attributes.isrc || '',
-      }),
-    }, Number(offset) + index, 'liked', { storefront });
-  }).filter(Boolean);
-  return {
-    tracks,
-    total: Number(json && json.meta && json.meta.total) || tracks.length,
-    next: normalizeText(json && json.next),
-    data: items,
-  };
-}
-
-async function handleApplePlaylistTracks(playlistId, opts) {
-  opts = opts || {};
-  playlistId = normalizeText(playlistId);
-  const status = await handleAppleStatus();
-  const limit = Math.max(1, Math.min(APPLE_PLAYLIST_PAGE_LIMIT, Number(opts.limit) || 48));
-  const offset = Math.max(0, Number(opts.offset) || 0);
-  const storefront = readStoredAppleToken().storefront || getAppleCredentials().storefront || DEFAULT_APPLE_STOREFRONT;
-  const playlistMeta = (name) => ({
-    provider: 'apple',
-    id: playlistId,
-    name: name || '',
-    trackCount: 0,
-  });
-
-  if (!status.loggedIn || !playlistId || playlistId === APPLE_LIKED_PLAYLIST_ID || playlistId === 'liked') {
-    if (!status.loggedIn) {
-      return { provider: 'apple', loggedIn: false, playlist: playlistMeta(''), tracks: [], message: status.message, error: status.error || '' };
-    }
-    // Apple Music 资料库 (liked songs)
-    try {
-      const token = requireAppleUserToken();
-      const page = await handleAppleLibrarySongs(limit, offset, token.musicUserToken);
-      return {
-        provider: 'apple',
-        loggedIn: true,
-        playlist: {
-          provider: 'apple',
-          id: APPLE_LIKED_PLAYLIST_ID,
-          name: 'Apple Music 资料库',
-          trackCount: page.total,
-        },
-        tracks: page.tracks,
-        total: page.total,
-        offset,
-        limit,
-        nextOffset: offset + page.tracks.length,
-        hasMore: !!page.next,
-        partial: true,
-      };
-    } catch (err) {
-      const detail = appleErrorDetails(err);
-      return Object.assign({
-        provider: 'apple',
-        loggedIn: true,
-        playlist: playlistMeta('Apple Music 资料库'),
-        tracks: [],
-        total: 0,
-        offset,
-        limit,
-        nextOffset: offset,
-        hasMore: false,
-        partial: true,
-      }, detail);
-    }
-  }
-
-  let json = null;
-  let playlistName = '';
-  try {
-    // Library playlists live under /v1/me/library/playlists/{id}/tracks when the
-    // playlist comes from the user's own library; catalog playlists use the
-    // storefront-scoped endpoint. Detect which namespace the id belongs to by
-    // trying the library namespace first (it also covers playlists added from
-    // the catalog), then falling back to the catalog.
-    const token = requireAppleUserToken();
-    try {
-      json = await appleGet('/v1/me/library/playlists/' + encodeURIComponent(playlistId) + '/tracks', {
-        limit,
-        offset,
-      }, { timeoutMs: 12000, userToken: token.musicUserToken, noRetry: true });
-    } catch (libraryErr) {
-      const libStatus = Number(libraryErr && libraryErr.statusCode || 0);
-      if (libStatus === 404 || libStatus === 400 || libStatus === 403) {
-        json = await appleGet('/v1/catalog/' + encodeURIComponent(storefront) + '/playlists/' + encodeURIComponent(playlistId) + '/tracks', {
-          limit,
-          offset,
-        }, { timeoutMs: 12000 });
-      } else {
-        throw libraryErr;
-      }
-    }
-  } catch (err) {
-    const detail = appleErrorDetails(err);
-    return Object.assign({
-      provider: 'apple',
-      loggedIn: true,
-      playlist: playlistMeta(''),
-      tracks: [],
-      total: 0,
-      offset,
-      limit,
-      nextOffset: offset,
-      hasMore: false,
-      partial: true,
-    }, detail);
-  }
-  const items = Array.isArray(json && json.data) ? json.data : [];
-  const tracks = items.map((entry, index) => {
-    if (entry && entry.type && entry.type !== 'songs' && entry.type !== 'library-songs') return null;
-    return mapAppleTrack(entry, offset + index, playlistId, { storefront });
-  }).filter(Boolean);
-  playlistName = normalizeText(json && json.playlistName) || normalizeText(json && json.data && json.data[0] && json.data[0].attributes && json.data[0].attributes.name) || '';
-  return {
-    provider: 'apple',
-    loggedIn: true,
-    playlist: {
-      provider: 'apple',
-      id: playlistId,
-      name: playlistName,
-      trackCount: tracks.length + offset,
-    },
-    tracks,
-    total: Number(json && json.meta && json.meta.total) || tracks.length + offset,
-    offset,
-    limit,
-    nextOffset: offset + items.length,
-    hasMore: !!(json && json.next),
-    partial: true,
-  };
-}
-
-async function handleAppleAlbumDetail(albumId, opts) {
-  opts = opts || {};
-  const id = normalizeText(albumId);
-  const limit = Math.max(1, Math.min(100, parseInt(opts.limit || '80', 10) || 80));
-  const storefront = readStoredAppleToken().storefront || getAppleCredentials().storefront || DEFAULT_APPLE_STOREFRONT;
-  if (!id) return { provider: 'apple', error: 'MISSING_ALBUM_ID', album: null, songs: [] };
-  let json = null;
-  try {
-    json = await appleGet('/v1/catalog/' + encodeURIComponent(storefront) + '/albums/' + encodeURIComponent(id), {
-      include: 'tracks',
-      limit: Math.min(APPLE_PLAYLIST_PAGE_LIMIT, limit),
-    }, { timeoutMs: 12000 });
-  } catch (err) {
-    const detail = appleErrorDetails(err);
-    return Object.assign({
-      provider: 'apple',
-      album: null,
-      songs: [],
-      total: 0,
-    }, detail);
-  }
-  const entry = json && Array.isArray(json.data) && json.data[0] ? json.data[0] : null;
-  const attributes = entry && entry.attributes || {};
-  const relationships = entry && entry.relationships || {};
-  const tracksRel = relationships.tracks || {};
-  const items = Array.isArray(tracksRel.data) ? tracksRel.data : [];
-  const albumInfo = {
-    provider: 'apple',
-    id,
-    albumId: id,
-    name: normalizeText(attributes.name),
-    artist: normalizeText(attributes.artistName),
-    artists: appleArtistList(attributes).map(name => ({ id: '', name, uri: '' })),
-    cover: appleArtworkUrl(attributes.artwork, 600),
-    releaseDate: normalizeText(attributes.releaseDate || attributes.release_date),
-    trackCount: Number(attributes.trackCount) || items.length,
-    upc: normalizeText(attributes.upc),
-    appleUrl: normalizeText(attributes.url),
-  };
-  const songs = items.slice(0, limit).map((track, index) => {
-    if (track && track.type && track.type !== 'songs') return null;
-    return mapAppleTrack(track, index, 'album:' + id, {
-      storefront,
-      albumId: id,
-      albumName: albumInfo.name,
-    });
-  }).filter(Boolean);
-  return {
-    provider: 'apple',
-    album: albumInfo,
-    songs,
-    total: albumInfo.trackCount || songs.length,
-    hasMore: !!(tracksRel.next),
   };
 }
 
@@ -1383,22 +817,14 @@ async function handleAppleLyric(id, opts) {
 
 function resetAppleRuntimeStateForTests() {
   appleDevTokenCache = { token: '', expiresAt: 0 };
-  appleProfileCache = { value: null, at: 0, promise: null };
   appleSearchCache.clear();
   appleSearchInflight.clear();
 }
 
 module.exports = {
-  getAppleConfig,
   getAppleCredentials,
   getAppleDeveloperToken,
-  saveAppleConfig,
-  saveAppleUserToken,
   clearAppleToken,
-  handleAppleStatus,
-  handleAppleUserPlaylists,
-  handleApplePlaylistTracks,
-  handleAppleAlbumDetail,
   handleAppleLibraryCheck,
   handleAppleLibrarySet,
   handleAppleSongUrl,
@@ -1411,7 +837,6 @@ module.exports = {
     signAppleDeveloperJwt,
     readStoredAppleToken,
     appleErrorDetails,
-    verifyAppleUserToken,
     mapAppleTrack,
     mapAppleLibraryPlaylist,
     resetAppleRuntimeStateForTests,

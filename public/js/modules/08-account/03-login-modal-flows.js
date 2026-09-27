@@ -991,7 +991,7 @@ function updateLoginProviderUi() {
   var canOpenAppleLogin = !!appleWebLoginBridge();
   // Apple has a single account axis now (the web account); appleWebMode only picks which entry opens it.
   var appleWebMode = isManualCookieOpenForProvider('apple');
-  var appleBusy = !!(appleConfigBusy || appleOAuthBusy);
+  var appleBusy = !!appleOAuthBusy;
   if (isApple) {
     if (neteaseBtn) neteaseBtn.classList.toggle('active', false);
     if (qqBtn) qqBtn.classList.toggle('active', false);

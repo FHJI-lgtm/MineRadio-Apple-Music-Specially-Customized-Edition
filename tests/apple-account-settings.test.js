@@ -32,29 +32,18 @@ const utilsSrc = read('public/js/modules/08-account/01-login-modal-utils.js');
 const userModalSrc = read('public/js/modules/08-account/04-user-modal-logout.js');
 
 // "运行时引用" 只看代码: 注释里说明某个符号已被删除/不再使用, 不算引用。
-function stripComments(source) {
-  let out = '';
-  let quote = '';
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (quote) {
-      out += ch;
-      if (ch === '\\') { out += next || ''; i += 1; continue; }
-      if (ch === quote) quote = '';
-      continue;
-    }
-    if (ch === '/' && next === '/') { while (i < source.length && source[i] !== '\n') i += 1; out += '\n'; continue; }
-    if (ch === '/' && next === '*') { i += 2; while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1; i += 1; continue; }
-    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
-    out += ch;
-  }
-  return out;
+// 只删块注释与整行注释 (保守): 尾随注释若被误判成引用, 是误报而不是漏报。
+function stripCommentLines(source) {
+  return String(source)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join('\n');
 }
-const moduleCode = stripComments(moduleSrc);
-const panelCode = stripComments(panelSrc);
-const preloadCode = stripComments(preloadSrc);
-const mainCode = stripComments(mainSrc);
+const moduleCode = stripCommentLines(moduleSrc);
+const panelCode = stripCommentLines(panelSrc);
+const preloadCode = stripCommentLines(preloadSrc);
+const mainCode = stripCommentLines(mainSrc);
 
 function makeStorage() {
   const map = new Map();
@@ -192,7 +181,7 @@ test('10. Developer API 没有产生新的运行时引用', () => {
   const touched = [MODULE_REL, PANEL_REL, 'public/js/modules/08-account/01-login-modal-utils.js',
     'public/js/modules/08-account/04-user-modal-logout.js', 'public/js/index-loader.js', 'desktop/preload.js'];
   for (const rel of touched) {
-    const code = stripComments(read(rel));
+    const code = stripCommentLines(read(rel));
     for (const symbol of ['getAppleDeveloperToken', 'signAppleDeveloperJwt', 'getAppleCredentials', '/v1/me/profile', 'Team ID', 'Key ID']) {
       assert.ok(code.indexOf(symbol) < 0, rel + ' 的代码不得引用 ' + symbol);
     }
@@ -326,6 +315,82 @@ test('15. 面板行为: 显示名称保存只写显示资料, 头像入口只接
   assert.equal(await panel.context.applyAppleAvatarFile({ name: 'b.png', type: 'image/png', size: 13 * 1024 * 1024 }), false);
   assert.match(panel.elements.get('apple-settings-feedback').textContent, /太大/);
   assert.equal(JSON.parse(panel.storage.getItem(settings.APPLE_DISPLAY_PROFILE_STORE_KEY)).avatarDataUrl, '', '被拒绝的图片不得写盘');
+});
+
+// 按大括号配对取出 main.js 里的真实函数体 (和其它 Apple 测试同一套做法)
+function extractFunction(source, name) {
+  const asyncStart = source.indexOf('async function ' + name + '(');
+  const start = asyncStart >= 0 ? asyncStart : source.indexOf('function ' + name + '(');
+  assert.ok(start >= 0, '缺少函数 ' + name);
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error('函数体括号不平衡: ' + name);
+}
+
+test('16. 退出 Apple Music 真的清掉 web credential store (回归: 旧代码在这行抛 ReferenceError)', async () => {
+  const body = extractFunction(mainSrc, 'clearAppleMusicLoginSession');
+  assert.ok(stripCommentLines(body).indexOf('clearAppleToken(') < 0, 'main.js 不得再调用未导入的 Developer clearAppleToken');
+
+  const calls = [];
+  const context = {
+    console, Promise,
+    APPLE_LOGIN_PARTITION: 'persist:apple-login',
+    session: {
+      fromPartition: (name) => ({
+        clearStorageData: async (opts) => { calls.push({ kind: 'partition', name, opts }); },
+      }),
+    },
+    appleMusicLyricsCredentialStore: {
+      clear: () => { calls.push({ kind: 'web-credential' }); return { ok: true, configured: false }; },
+    },
+  };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(body, context);
+  const result = await context.clearAppleMusicLoginSession();
+  assert.equal(result.ok, true);
+  assert.equal(result.provider, 'apple');
+  assert.equal(calls.length, 2, '既要清登录窗口分区, 也要清 web credential store');
+  assert.equal(calls[0].kind, 'partition');
+  assert.equal(calls[0].name, 'persist:apple-login');
+  assert.equal(calls[0].opts.storages.join(','), 'cookies,localstorage,indexdb,cachestorage');
+  assert.equal(calls[1].kind, 'web-credential', '清 web 凭证这一步必须真的被执行到');
+});
+
+test('17. main.js 不再调用任何已删除的 Developer 助手', () => {
+  const code = stripCommentLines(mainSrc);
+  for (const symbol of ['clearAppleToken', 'getAppleConfig', 'getAppleCredentials', 'saveAppleUserToken', 'getAppleDeveloperToken', 'signAppleDeveloperJwt', 'handleAppleStatus', 'getAppleProfile']) {
+    assert.ok(code.indexOf(symbol) < 0, 'main.js 的代码不得出现 ' + symbol);
+  }
+});
+
+test('18. Developer 读取/写入链已从 apple-music-api.js 与 server.js 下线', () => {
+  const apiCode = stripCommentLines(read('apple-music-api.js'));
+  for (const symbol of [
+    'handleAppleStatus', 'getAppleProfile', 'normalizeAppleProfile', 'appleProfileCache',
+    'getAppleConfig', 'saveAppleConfig', 'saveAppleUserToken', 'verifyAppleUserToken', 'getAppleConfigFile',
+    'writeJsonFile', 'handleAppleUserPlaylists', 'handleApplePlaylistTracks', 'handleAppleAlbumDetail',
+    'handleAppleLibrarySongs', 'APPLE_PROFILE_CACHE_TTL_MS',
+  ]) {
+    assert.ok(apiCode.indexOf(symbol) < 0, 'apple-music-api.js 不得再有 ' + symbol);
+  }
+  const serverCode = stripCommentLines(read('server.js'));
+  for (const symbol of [
+    'handleAppleStatus', 'getAppleProfile', 'saveAppleUserToken', 'getAppleConfig', 'getAppleDeveloperToken',
+    'api/apple/login/token', 'api/apple/config',
+  ]) {
+    assert.ok(serverCode.indexOf(symbol) < 0, 'server.js 不得再有 ' + symbol);
+  }
+  // 账号轴那两条路由必须只剩 web 实现
+  assert.match(serverCode, /handleAppleAccountStatusWeb\(\)/);
+  assert.match(serverCode, /handleAppleUserPlaylistsWeb\(/);
 });
 
 console.log('[OK] Apple Music 账户设置: 显示资料存储 / 与登录态分离 / 手动 Web Token 复用既有 store / 无 Developer 新引用');

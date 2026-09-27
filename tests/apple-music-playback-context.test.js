@@ -342,6 +342,9 @@ test('32. no source file references an identifier that was deleted with the lega
     'smtcRenderLyricSourcePanel', 'handleAppleSearch', 'APPLE_AMP_API_BASE', 'originAmp',
     // the Developer credential form retired with the Apple account axis (the login modal is web-only now)
     'parseAppleConfigInput', 'openAppleDeveloperCertificates', 'APPLE_DEVELOPER_CERTIFICATES_URL', 'submitAppleConfigLogin',
+    // the Developer status/profile/write read chain retired with it (account IS the web account)
+    'normalizeAppleProfile', 'getAppleConfigFile', 'verifyAppleUserToken', 'APPLE_PROFILE_CACHE_TTL_MS',
+    'handleAppleLibrarySongs', 'dedupeAppleTracks', 'appleCacheWrap', 'writeJsonFile',
   ];
   const roots = ['public', 'desktop', 'scripts', 'tests'];
   const files = [];
@@ -354,11 +357,14 @@ test('32. no source file references an identifier that was deleted with the lega
   };
   roots.forEach((r) => walk(path.join(ROOT, r)));
   ['server.js', 'apple-music-api.js'].forEach((f) => files.push(path.join(ROOT, f)));
-  // the test itself names the retired identifiers on purpose
-  const skip = path.join(ROOT, 'tests', 'apple-music-playback-context.test.js');
+  // these tests name the retired identifiers on purpose (they assert their absence themselves)
+  const skip = new Set([
+    path.join(ROOT, 'tests', 'apple-music-playback-context.test.js'),
+    path.join(ROOT, 'tests', 'apple-account-settings.test.js'),
+  ]);
   const offenders = [];
   for (const file of files) {
-    if (file === skip) continue;
+    if (skip.has(file)) continue;
     const src = fs.readFileSync(file, 'utf8');
     for (const name of retired) if (src.indexOf(name) >= 0) offenders.push(path.relative(ROOT, file) + ' :: ' + name);
   }
