@@ -1,0 +1,35 @@
+{
+  "startedAt": "2026-09-27T03:37:06.914Z",
+  "term": "Levitating",
+  "steps": {
+    "search": {
+      "count": 5,
+      "first": {
+        "title": "Levitating",
+        "artist": "Dua Lipa",
+        "trackId": 1538003843,
+        "storefront": "us"
+      }
+    },
+    "play": {
+      "ok": false,
+      "chainOk": false,
+      "verified": false,
+      "stage": "NO_JSON",
+      "url": "https://music.apple.com/us/song/levitating/1538003843",
+      "mismatch": [
+        "playback"
+      ],
+      "expected": {
+        "title": "Levitating",
+        "artist": "Dua Lipa"
+      },
+      "actual": {
+        "title": "",
+        "artist": ""
+      },
+      "error": "-File ��ʽ������ʵ�ʲ�����F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\integration\\no-such-chain.ps1�������ڡ����ṩ���С�.ps1���ļ���·������Ϊ -File ��ʽ������һ��ʵ�ʲ�����"
+    }
+  },
+  "finishedAt": "2026-09-27T03:37:07.153Z"
+}

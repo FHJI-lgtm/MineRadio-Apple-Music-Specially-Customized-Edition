@@ -1,0 +1,347 @@
+﻿{
+    "at":  "2026-09-27 11:37:10.774",
+    "alpha":  1,
+    "target":  "Blinding Lights",
+    "recipePath":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\reports\\20260927-113654.restore.json",
+    "checklist":  {
+                      "searchOk":  true,
+                      "trackSwitched":  true,
+                      "verified":  true,
+                      "smtcTargetCorrect":  true,
+                      "alphaHeldEverywhere":  false,
+                      "reopenedAfterPlay":  true,
+                      "reopenedAfterFailure":  true,
+                      "clickThroughWhileIdle":  true,
+                      "clickThroughRestored":  true,
+                      "amHitInvisibleWhileIdle":  true,
+                      "amHitVisibleWhileOpen":  true,
+                      "restoredOriginalExStyle":  true,
+                      "minimizedAtEnd":  true
+                  },
+    "steps":  [
+                  {
+                      "step":  "setup",
+                      "at":  "2026-09-27 11:36:54.574",
+                      "hwnd":  68306,
+                      "preIconic":  true,
+                      "frozenRestore":  {
+                                            "before":  {
+                                                           "foreground":  false,
+                                                           "visible":  true,
+                                                           "rect":  "-32000,-32000 276x45",
+                                                           "zoomed":  false,
+                                                           "iconic":  true
+                                                       },
+                                            "reason":  "minimized",
+                                            "restored":  true,
+                                            "after":  {
+                                                          "foreground":  true,
+                                                          "visible":  true,
+                                                          "rect":  "-12,-12 2584x1540",
+                                                          "zoomed":  true,
+                                                          "iconic":  false
+                                                      }
+                                        },
+                      "recipePath":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\reports\\20260927-113654.restore.json"
+                  },
+                  {
+                      "step":  "idle",
+                      "at":  "2026-09-27 11:36:54.700",
+                      "apply":  {
+                                    "hwnd":  68306,
+                                    "requestedAlpha":  1,
+                                    "exStyleBefore":  "0x00000100",
+                                    "layeredBefore":  false,
+                                    "addedLayered":  true,
+                                    "setStyleOk":  true,
+                                    "setStyleError":  0,
+                                    "setAttrOk":  true,
+                                    "setAttrError":  0,
+                                    "observedAlpha":  1,
+                                    "layeredAfter":  true,
+                                    "error":  ""
+                                },
+                      "transparent":  {
+                                          "ok":  true,
+                                          "exStyleBefore":  "0x00080100",
+                                          "exStyleAfter":  "0x00080120",
+                                          "isTransparent":  true,
+                                          "alphaReadable":  1
+                                      },
+                      "state":  {
+                                    "name":  "idle",
+                                    "alpha":  1,
+                                    "exStyle":  "0x00080120",
+                                    "layered":  true,
+                                    "transparent":  true,
+                                    "iconic":  false,
+                                    "hung":  false,
+                                    "pointsTotal":  9,
+                                    "pointsStillAppleMusic":  0
+                                }
+                  },
+                  {
+                      "step":  "receiver",
+                      "at":  "2026-09-27 11:36:56.250",
+                      "blank":  {
+                                    "ok":  true,
+                                    "x":  100,
+                                    "y":  1408,
+                                    "reason":  "blank-inside-rect",
+                                    "scanned":  61,
+                                    "rejected":  60,
+                                    "interactiveElements":  67,
+                                    "virtualScreen":  "0,0 2560x1600",
+                                    "scanBounds":  "60,60 2440x1468"
+                                },
+                      "receiverHwnd":  2428826,
+                      "belowAppleMusic":  {
+                                              "ok":  true,
+                                              "win32Error":  203
+                                          }
+                  },
+                  {
+                      "step":  "idle-click",
+                      "at":  "2026-09-27 11:36:57.430",
+                      "probe":  {
+                                    "at":  "2026-09-27 11:36:57.426",
+                                    "point":  "100,1408",
+                                    "cursorAfterSet":  "100,1408",
+                                    "receiverLeftDelta":  2,
+                                    "uiaTreeBefore":  "83|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "uiaTreeAfter":  "83|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "amStateUnchanged":  true
+                                },
+                      "expect":  "receiver gets it (click-through)"
+                  },
+                  {
+                      "step":  "play-result",
+                      "at":  "2026-09-27 11:37:05.933",
+                      "gate":  {
+                                   "phase":  "play",
+                                   "term":  "Blinding Lights",
+                                   "chainScriptOverride":  "",
+                                   "openedAt":  "2026-09-27 11:36:57.441",
+                                   "closedAt":  "2026-09-27 11:37:02.884",
+                                   "error":  "",
+                                   "openState":  {
+                                                     "name":  "play-open",
+                                                     "alpha":  1,
+                                                     "exStyle":  "0x00080100",
+                                                     "layered":  true,
+                                                     "transparent":  false,
+                                                     "iconic":  false,
+                                                     "hung":  false,
+                                                     "pointsTotal":  9,
+                                                     "pointsStillAppleMusic":  7
+                                                 },
+                                   "closeState":  {
+                                                      "name":  "play-closed",
+                                                      "alpha":  1,
+                                                      "exStyle":  "0x00080120",
+                                                      "layered":  true,
+                                                      "transparent":  true,
+                                                      "iconic":  true,
+                                                      "hung":  false,
+                                                      "pointsTotal":  0,
+                                                      "pointsStillAppleMusic":  0
+                                                  },
+                                   "reopened":  true,
+                                   "play":  {
+                                                "ok":  true,
+                                                "chainOk":  true,
+                                                "verified":  true,
+                                                "stage":  "OK",
+                                                "url":  "https://music.apple.com/us/song/blinding-lights/1513133940",
+                                                "mismatch":  [
+
+                                                             ],
+                                                "expected":  {
+                                                                 "title":  "Blinding Lights",
+                                                                 "artist":  "Teddy Swims"
+                                                             },
+                                                "actual":  {
+                                                               "title":  "Blinding Lights",
+                                                               "artist":  "Teddy Swims 鈥?Blinding Lights - Single"
+                                                           },
+                                                "artistLayer":  "exact",
+                                                "error":  ""
+                                            },
+                                   "chainStdout":  "{\"search\":4,\"play\":{\"ok\":true,\"verified\":true,\"stage\":\"OK\",\"actual\":{\"title\":\"Blinding Lights\",\"artist\":\"Teddy Swims — Blinding Lights - Single\"}}}"
+                               },
+                      "smtcAfter":  {
+                                        "ok":  true,
+                                        "title":  "Blinding Lights",
+                                        "artist":  "Teddy Swims — Blinding Lights - Single",
+                                        "status":  "Playing"
+                                    }
+                  },
+                  {
+                      "step":  "restored-click",
+                      "at":  "2026-09-27 11:37:06.855",
+                      "probe":  {
+                                    "at":  "2026-09-27 11:37:06.854",
+                                    "point":  "100,1408",
+                                    "cursorAfterSet":  "100,1408",
+                                    "receiverLeftDelta":  2,
+                                    "uiaTreeBefore":  "29|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "uiaTreeAfter":  "29|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "amStateUnchanged":  true
+                                },
+                      "state":  {
+                                    "name":  "restored",
+                                    "alpha":  1,
+                                    "exStyle":  "0x00080120",
+                                    "layered":  true,
+                                    "transparent":  true,
+                                    "iconic":  true,
+                                    "hung":  false,
+                                    "pointsTotal":  0,
+                                    "pointsStillAppleMusic":  0
+                                },
+                      "expect":  "receiver gets it again (stealth restored)"
+                  },
+                  {
+                      "step":  "fail-injection-result",
+                      "at":  "2026-09-27 11:37:10.126",
+                      "gate":  {
+                                   "phase":  "fail-injection",
+                                   "term":  "Levitating",
+                                   "chainScriptOverride":  "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\integration\\no-such-chain.ps1",
+                                   "openedAt":  "2026-09-27 11:37:06.864",
+                                   "closedAt":  "2026-09-27 11:37:07.179",
+                                   "error":  "",
+                                   "openState":  {
+                                                     "name":  "fail-injection-open",
+                                                     "alpha":  1,
+                                                     "exStyle":  "0x00080100",
+                                                     "layered":  true,
+                                                     "transparent":  false,
+                                                     "iconic":  true,
+                                                     "hung":  false,
+                                                     "pointsTotal":  0,
+                                                     "pointsStillAppleMusic":  0
+                                                 },
+                                   "closeState":  {
+                                                      "name":  "fail-injection-closed",
+                                                      "alpha":  1,
+                                                      "exStyle":  "0x00080120",
+                                                      "layered":  true,
+                                                      "transparent":  true,
+                                                      "iconic":  true,
+                                                      "hung":  false,
+                                                      "pointsTotal":  0,
+                                                      "pointsStillAppleMusic":  0
+                                                  },
+                                   "reopened":  true,
+                                   "play":  {
+                                                "ok":  false,
+                                                "chainOk":  false,
+                                                "verified":  false,
+                                                "stage":  "NO_JSON",
+                                                "url":  "https://music.apple.com/us/song/levitating/1538003843",
+                                                "mismatch":  [
+                                                                 "playback"
+                                                             ],
+                                                "expected":  {
+                                                                 "title":  "Levitating",
+                                                                 "artist":  "Dua Lipa"
+                                                             },
+                                                "actual":  {
+                                                               "title":  "",
+                                                               "artist":  ""
+                                                           },
+                                                "error":  "-File 锟斤拷式锟斤拷锟斤拷锟斤拷实锟绞诧拷锟斤拷锟斤拷F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\integration\\no-such-chain.ps1锟斤拷锟斤拷锟斤拷锟节★拷锟斤拷锟结供锟斤拷锟叫★拷.ps1锟斤拷锟侥硷拷锟斤拷路锟斤拷锟斤拷锟斤拷为 -File 锟斤拷式锟斤拷锟斤拷锟斤拷一锟斤拷实锟绞诧拷锟斤拷锟斤拷"
+                                            },
+                                   "chainStdout":  "{\"search\":5,\"play\":{\"ok\":false,\"verified\":false,\"stage\":\"NO_JSON\",\"actual\":{\"title\":\"\",\"artist\":\"\"}}}"
+                               },
+                      "afterState":  {
+                                         "name":  "after-fail-injection",
+                                         "alpha":  1,
+                                         "exStyle":  "0x00080120",
+                                         "layered":  true,
+                                         "transparent":  true,
+                                         "iconic":  true,
+                                         "hung":  false,
+                                         "pointsTotal":  0,
+                                         "pointsStillAppleMusic":  0
+                                     },
+                      "probe":  {
+                                    "at":  "2026-09-27 11:37:10.126",
+                                    "point":  "100,1408",
+                                    "cursorAfterSet":  "100,1408",
+                                    "receiverLeftDelta":  2,
+                                    "uiaTreeBefore":  "29|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "uiaTreeAfter":  "29|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                                    "amStateUnchanged":  true
+                                }
+                  },
+                  {
+                      "step":  "restore",
+                      "at":  "2026-09-27 11:37:10.171",
+                      "restore":  {
+                                      "ok":  true,
+                                      "alphaSetTo255":  true,
+                                      "layeredRemoved":  true,
+                                      "exStyleBefore":  "0x00080120",
+                                      "exStyleAfter":  "0x00000100",
+                                      "exStyleExpected":  "0x00000100",
+                                      "matchesOriginal":  true,
+                                      "minimized":  false,
+                                      "error":  ""
+                                  },
+                      "finalState":  {
+                                         "name":  "final",
+                                         "alpha":  -1,
+                                         "exStyle":  "0x00000100",
+                                         "layered":  false,
+                                         "transparent":  false,
+                                         "iconic":  true,
+                                         "hung":  false,
+                                         "pointsTotal":  0,
+                                         "pointsStillAppleMusic":  0
+                                     },
+                      "smtc":  {
+                                   "title":  "Blinding Lights",
+                                   "status":  "Playing"
+                               }
+                  },
+                  {
+                      "step":  "minimize",
+                      "at":  "2026-09-27 11:37:10.678",
+                      "before":  {
+                                     "at":  "2026-09-27 11:37:10.173",
+                                     "hwnd":  68306,
+                                     "layered":  false,
+                                     "transparent":  false,
+                                     "exStyle":  "0x00000100",
+                                     "requestedAlpha":  255,
+                                     "observedAlpha":  -1,
+                                     "classification":  "LAYERED_MISSING",
+                                     "flags":  "none",
+                                     "visible":  true,
+                                     "iconic":  true,
+                                     "hung":  false,
+                                     "isWindow":  true,
+                                     "rect":  "-32000,-32000 276x45"
+                                 },
+                      "minimized":  true,
+                      "after":  {
+                                    "at":  "2026-09-27 11:37:10.677",
+                                    "hwnd":  68306,
+                                    "layered":  false,
+                                    "transparent":  false,
+                                    "exStyle":  "0x00000100",
+                                    "requestedAlpha":  255,
+                                    "observedAlpha":  -1,
+                                    "classification":  "LAYERED_MISSING",
+                                    "flags":  "none",
+                                    "visible":  true,
+                                    "iconic":  true,
+                                    "hung":  false,
+                                    "isWindow":  true,
+                                    "rect":  "-32000,-32000 276x45"
+                                }
+                  }
+              ]
+}

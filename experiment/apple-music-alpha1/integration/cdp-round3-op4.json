@@ -1,0 +1,883 @@
+{
+  "at": "2026-09-27T03:45:32.488Z",
+  "port": 9222,
+  "mode": "snapshot",
+  "pages": [
+    {
+      "url": "http://127.0.0.1:3000/?startupAttempt=1&startupAt=1790480598361",
+      "title": "Mineradio",
+      "ws": true,
+      "snapshot": {
+        "page": "/",
+        "title": "Mineradio",
+        "containers": [
+          {
+            "tag": "div",
+            "id": "",
+            "cls": "home-rail home-insight-rail",
+            "scrollTop": 0,
+            "scrollHeight": 447,
+            "clientHeight": 262,
+            "transform": "none",
+            "lyric": false
+          },
+          {
+            "tag": "div",
+            "id": "fx-panel",
+            "cls": "",
+            "scrollTop": 0,
+            "scrollHeight": 910,
+            "clientHeight": 478,
+            "transform": "matrix(0.97, 0, 0, 0.97, 0, 18)",
+            "lyric": false
+          },
+          {
+            "tag": "div",
+            "id": "playlist-panel",
+            "cls": "",
+            "scrollTop": 0,
+            "scrollHeight": 563,
+            "clientHeight": 500,
+            "transform": "matrix(1, 0, 0, 1, -404, 0)",
+            "lyric": false
+          },
+          {
+            "tag": "div",
+            "id": "lyric-timing-popover",
+            "cls": "lyric-timing-popover",
+            "scrollTop": 0,
+            "scrollHeight": 137,
+            "clientHeight": 137,
+            "transform": "matrix(0.98, 0, 0, 0.98, -113, 8)",
+            "lyric": true
+          }
+        ],
+        "lyric": {
+          "scrollState": null
+        },
+        "perf": {
+          "render": {
+            "mode": "vsync",
+            "fps": 165,
+            "targetFps": 0,
+            "displayHz": 163.9,
+            "adaptiveDivisor": 0,
+            "adaptiveKind": "",
+            "adaptivePressure": 0,
+            "adaptiveFrameCostMs": 0.545,
+            "foregroundFpsMode": "vsync",
+            "interactionBoost": false,
+            "skipped": 0,
+            "longFrames": 14
+          },
+          "runtime": {
+            "lastCacheTrimAt": 90010.30000000075,
+            "lastAppMemoryTrimAt": 0,
+            "lastAppMemoryTrimReason": "",
+            "lastAppMemoryTrimResult": null,
+            "cacheTrimCount": 2,
+            "lastCacheTrimReason": "active-frame",
+            "lastHeapSampleAt": 134165.90000000037,
+            "heapMB": 26,
+            "cacheCounts": {
+              "playlistCovers": 7,
+              "coverDepth": 2,
+              "beatMaps": 0,
+              "djBeatMaps": 0,
+              "stageLyricTrack": 0
+            }
+          },
+          "gpu": {
+            "status": {
+              "2d_canvas": "enabled",
+              "direct_rendering_display_compositor": "disabled_off_ok",
+              "gpu_compositing": "enabled",
+              "multiple_raster_threads": "enabled_on",
+              "opengl": "enabled_on",
+              "rasterization": "enabled_force",
+              "raw_draw": "disabled_off_ok",
+              "skia_graphite": "disabled_off",
+              "trees_in_viz": "disabled_off",
+              "video_decode": "enabled",
+              "video_encode": "enabled",
+              "webgl": "enabled",
+              "webgpu": "enabled",
+              "webnn": "disabled_off"
+            },
+            "basicInfo": {
+              "auxAttributes": {
+                "amdSwitchable": false,
+                "canSupportThreadedTextureMailbox": false,
+                "directMLFeatureLevel": "Not supported",
+                "dx12FeatureLevel": "Not supported",
+                "glImplementationParts": "(gl=none,angle=none)",
+                "glResetNotificationStrategy": 0,
+                "inProcessGpu": true,
+                "initializationTime": 0,
+                "isAsan": false,
+                "isClangCoverage": false,
+                "jpegDecodeAcceleratorSupported": false,
+                "optimus": false,
+                "overlayInfo": {
+                  "bgra8OverlaySupport": "NONE",
+                  "directComposition": false,
+                  "nv12OverlaySupport": "NONE",
+                  "p010OverlaySupport": "NONE",
+                  "rgb10a2OverlaySupport": "NONE",
+                  "supportsOverlays": false,
+                  "yuy2OverlaySupport": "NONE"
+                },
+                "passthroughCmdDecoder": false,
+                "sandboxed": false,
+                "skiaBackendType": "None",
+                "subpixelFontRendering": true,
+                "supportsD3dSharedImages": false,
+                "supportsDirectML": false,
+                "supportsDx12": false,
+                "supportsVulkan": false,
+                "targetCpuBits": 64,
+                "visibilityCallbackCallCount": 0,
+                "vulkanVersion": "Not supported"
+              },
+              "gpuDevice": [
+                {
+                  "active": false,
+                  "deviceId": 11609,
+                  "deviceString": "NVIDIA GeForce RTX 5060 Laptop GPU",
+                  "driverVersion": "32.0.16.1664",
+                  "gpuPreference": 3,
+                  "revision": 161,
+                  "subSysId": 1039667267,
+                  "vendorId": 4318
+                },
+                {
+                  "active": false,
+                  "deviceId": 32103,
+                  "deviceString": "Intel(R) Graphics",
+                  "driverVersion": "32.0.101.8424",
+                  "gpuPreference": 2,
+                  "revision": 6,
+                  "subSysId": 1039667267,
+                  "vendorId": 32902
+                },
+                {
+                  "active": false,
+                  "deviceId": 11609,
+                  "deviceString": "NVIDIA GeForce RTX 5060 Laptop GPU",
+                  "driverVersion": "32.0.16.1664",
+                  "gpuPreference": 0,
+                  "revision": 161,
+                  "subSysId": 1039667267,
+                  "vendorId": 4318
+                },
+                {
+                  "active": false,
+                  "deviceId": 11609,
+                  "deviceString": "NVIDIA GeForce RTX 5060 Laptop GPU",
+                  "driverVersion": "32.0.16.1664",
+                  "gpuPreference": 0,
+                  "revision": 161,
+                  "subSysId": 1039667267,
+                  "vendorId": 4318
+                },
+                {
+                  "active": false,
+                  "deviceId": 140,
+                  "deviceString": "Microsoft Basic Render Driver",
+                  "driverVersion": "10.0.26100.9278",
+                  "gpuPreference": 0,
+                  "revision": 0,
+                  "subSysId": 0,
+                  "vendorId": 5140
+                },
+                {
+                  "active": false,
+                  "deviceId": 44317,
+                  "driverVersion": "0.0.0.0",
+                  "gpuPreference": 0,
+                  "revision": 0,
+                  "subSysId": 0,
+                  "vendorId": 32902
+                }
+              ]
+            },
+            "switches": {
+              "safeGpuRasterization": true,
+              "ignoreGpuBlocklist": false,
+              "forceHighPerformanceGpu": false,
+              "keepBackgroundRendering": false,
+              "angle": "d3d11"
+            }
+          },
+          "hardware": {
+            "cores": 20,
+            "deviceMemoryGB": 16,
+            "devicePixelRatio": 1.75,
+            "cssPixels": 684342,
+            "renderPixels": 2095797,
+            "lowCore": false,
+            "lowMemory": false,
+            "largeSurface": false,
+            "veryLargeSurface": false,
+            "lowSpec": false,
+            "balancedSpec": false
+          },
+          "budget": {
+            "qualityRank": 0,
+            "level": 0,
+            "perfScale": 0.72,
+            "audioScale": 0.68
+          },
+          "renderer": {
+            "geometries": 30,
+            "textures": 32,
+            "calls": 19,
+            "triangles": 36
+          },
+          "viewport": {
+            "width": 1102,
+            "height": 621,
+            "devicePixelRatio": 1.75,
+            "renderPixelRatio": 0.95,
+            "canvasWidth": 1046,
+            "canvasHeight": 589,
+            "renderPixels": 616094,
+            "targetFps": 0,
+            "displayHz": 163.9,
+            "adaptiveLoad": {
+              "avgMs": 0.545,
+              "lastCostMs": 0.3,
+              "lastTargetFps": 163.9,
+              "pressure": 0,
+              "level": 0
+            },
+            "foregroundFpsMode": "vsync",
+            "interactionBoost": false,
+            "interactionReason": "restore"
+          },
+          "frameGates": {
+            "audio": {
+              "name": "main.audio",
+              "targetFps": 60,
+              "runs": 6574,
+              "skips": 13265,
+              "lastDt": 0.0183,
+              "pendingDt": 0.0059,
+              "lastReason": "audio-analysis"
+            },
+            "shelf": {
+              "name": "main.shelf",
+              "targetFps": 27,
+              "runs": 4200,
+              "skips": 15639,
+              "lastDt": 0.0426,
+              "pendingDt": 0.0059,
+              "lastReason": "shelf-manager"
+            },
+            "lyricsParticles": {
+              "name": "main.lyricsParticles",
+              "targetFps": 24,
+              "runs": 3418,
+              "skips": 16421,
+              "lastDt": 0.0424,
+              "pendingDt": 0.0303,
+              "lastReason": "lyrics-particles"
+            },
+            "stageLyrics": {
+              "name": "main.stageLyrics",
+              "targetFps": 24,
+              "runs": 3418,
+              "skips": 16421,
+              "lastDt": 0.0424,
+              "pendingDt": 0.0303,
+              "lastReason": "stage-lyrics"
+            },
+            "skullParticles": {
+              "name": "main.skullParticles",
+              "targetFps": 10,
+              "runs": 1174,
+              "skips": 18665,
+              "lastDt": 0.103,
+              "pendingDt": 0.0971,
+              "lastReason": "skull-particles"
+            },
+            "homeAudio": {
+              "name": "main.homeAudio",
+              "targetFps": 6,
+              "runs": 718,
+              "skips": 19121,
+              "lastDt": 0.1697,
+              "pendingDt": 0.1334,
+              "lastReason": "home-audio"
+            },
+            "desktopOverlay": {
+              "name": "main.desktopOverlay",
+              "targetFps": 6,
+              "runs": 713,
+              "skips": 19126,
+              "lastDt": 0.1697,
+              "pendingDt": 0.1334,
+              "lastReason": "desktop-overlay"
+            }
+          },
+          "deepSleep": false,
+          "probe": {
+            "version": "foreground-cpu-phase-a",
+            "enabled": true,
+            "uptimeMs": 133659.8,
+            "sinceResetMs": 133659.8,
+            "render": {
+              "mode": "vsync",
+              "fps": 165,
+              "frames": 157,
+              "skipped": 0,
+              "longFrames": 14,
+              "targetFps": 0,
+              "displayHz": 163.9,
+              "adaptiveDivisor": 0,
+              "adaptiveKind": "",
+              "adaptivePressure": 0,
+              "adaptiveFrameCostMs": 0.545,
+              "foregroundFpsMode": "vsync",
+              "interactionBoost": false,
+              "lastRenderAt": 134155.3,
+              "lastSampleAt": 133203.7
+            },
+            "counters": {
+              "frameGate.main.audio.runs": 6574,
+              "frameGate.main.shelf.runs": 4200,
+              "frameGate.main.lyricsParticles.runs": 3418,
+              "frameGate.main.homeAudio.runs": 718,
+              "frameGate.main.skullParticles.runs": 1174,
+              "frameGate.main.stageLyrics.runs": 3418,
+              "frameGate.main.desktopOverlay.runs": 713,
+              "frameGate.main.audio.skipped": 13265,
+              "frameGate.main.shelf.skipped": 15639,
+              "frameGate.main.lyricsParticles.skipped": 16421,
+              "frameGate.main.homeAudio.skipped": 19121,
+              "frameGate.main.skullParticles.skipped": 18665,
+              "frameGate.main.stageLyrics.skipped": 16421,
+              "frameGate.main.desktopOverlay.skipped": 19126
+            },
+            "topByTotal": [
+              {
+                "name": "frame.total",
+                "count": 20038,
+                "totalMs": 9487.4,
+                "avgMs": 0.473,
+                "maxMs": 29.4,
+                "lastMs": 0.3
+              },
+              {
+                "name": "renderer.render",
+                "count": 19839,
+                "totalMs": 4471.5,
+                "avgMs": 0.225,
+                "maxMs": 2.6,
+                "lastMs": 0.3
+              },
+              {
+                "name": "audio.analysis",
+                "count": 19839,
+                "totalMs": 1930.3,
+                "avgMs": 0.097,
+                "maxMs": 2.8,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.stage-lyrics",
+                "count": 19839,
+                "totalMs": 923,
+                "avgMs": 0.047,
+                "maxMs": 1.8,
+                "lastMs": 0
+              },
+              {
+                "name": "camera.update",
+                "count": 19839,
+                "totalMs": 317.6,
+                "avgMs": 0.016,
+                "maxMs": 0.5,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.shelf-manager",
+                "count": 19839,
+                "totalMs": 313.2,
+                "avgMs": 0.016,
+                "maxMs": 6,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.lyrics-particles",
+                "count": 19839,
+                "totalMs": 191.7,
+                "avgMs": 0.01,
+                "maxMs": 2.6,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.uniforms-preset",
+                "count": 19839,
+                "totalMs": 133.7,
+                "avgMs": 0.007,
+                "maxMs": 0.4,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.sonic-topography",
+                "count": 19839,
+                "totalMs": 69.3,
+                "avgMs": 0.003,
+                "maxMs": 0.3,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.sonic-workshop",
+                "count": 19839,
+                "totalMs": 62,
+                "avgMs": 0.003,
+                "maxMs": 0.2,
+                "lastMs": 0
+              },
+              {
+                "name": "renderer.render.splash",
+                "count": 4,
+                "totalMs": 39.5,
+                "avgMs": 9.875,
+                "maxMs": 29.1,
+                "lastMs": 9.7
+              },
+              {
+                "name": "visual.home-audio",
+                "count": 19839,
+                "totalMs": 37.5,
+                "avgMs": 0.002,
+                "maxMs": 0.3,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.skull-particles",
+                "count": 19839,
+                "totalMs": 28.4,
+                "avgMs": 0.001,
+                "maxMs": 0.1,
+                "lastMs": 0
+              },
+              {
+                "name": "visual.cover-layers",
+                "count": 19839,
+                "totalMs": 24.5,
+                "avgMs": 0.001,
+                "maxMs": 0.2,
+                "lastMs": 0
+              },
+              {
+                "name": "desktop.overlay-sync",
+                "count": 19839,
+                "totalMs": 24.5,
+                "avgMs": 0.001,
+                "maxMs": 0.1,
+                "lastMs": 0
+              }
+            ],
+            "metrics": {
+              "renderer.render.splash": {
+                "count": 4,
+                "totalMs": 39.5,
+                "avgMs": 9.875,
+                "maxMs": 29.1,
+                "lastMs": 9.7,
+                "samples": [
+                  29.1,
+                  0.3,
+                  0.4,
+                  9.7
+                ]
+              },
+              "frame.total": {
+                "count": 20038,
+                "totalMs": 9487.4,
+                "avgMs": 0.473,
+                "maxMs": 29.4,
+                "lastMs": 0.3,
+                "samples": [
+                  0.4,
+                  0.6,
+                  0.4,
+                  0.5,
+                  0.5,
+                  1.1,
+                  0.3,
+                  0.6,
+                  0.4,
+                  0.4,
+                  0.6,
+                  0.4,
+                  1.2,
+                  0.6,
+                  0.4,
+                  0.5,
+                  0.5,
+                  0.3
+                ]
+              },
+              "audio.analysis": {
+                "count": 19839,
+                "totalMs": 1930.3,
+                "avgMs": 0.097,
+                "maxMs": 2.8,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0.2,
+                  0,
+                  0,
+                  0.2,
+                  0.1,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0.2,
+                  0,
+                  0.1,
+                  0.3,
+                  0.1,
+                  0,
+                  0.2,
+                  0
+                ]
+              },
+              "visual.uniforms-preset": {
+                "count": 19839,
+                "totalMs": 133.7,
+                "avgMs": 0.007,
+                "maxMs": 0.4,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.cover-layers": {
+                "count": 19839,
+                "totalMs": 24.5,
+                "avgMs": 0.001,
+                "maxMs": 0.2,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.shelf-manager": {
+                "count": 19839,
+                "totalMs": 313.2,
+                "avgMs": 0.016,
+                "maxMs": 6,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0
+                ]
+              },
+              "visual.lyrics-particles": {
+                "count": 19839,
+                "totalMs": 191.7,
+                "avgMs": 0.01,
+                "maxMs": 2.6,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.home-audio": {
+                "count": 19839,
+                "totalMs": 37.5,
+                "avgMs": 0.002,
+                "maxMs": 0.3,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "camera.update": {
+                "count": 19839,
+                "totalMs": 317.6,
+                "avgMs": 0.016,
+                "maxMs": 0.5,
+                "lastMs": 0,
+                "samples": [
+                  0.1,
+                  0,
+                  0,
+                  0.2,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0
+                ]
+              },
+              "visual.skull-particles": {
+                "count": 19839,
+                "totalMs": 28.4,
+                "avgMs": 0.001,
+                "maxMs": 0.1,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.sonic-topography": {
+                "count": 19839,
+                "totalMs": 69.3,
+                "avgMs": 0.003,
+                "maxMs": 0.3,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.sonic-workshop": {
+                "count": 19839,
+                "totalMs": 62,
+                "avgMs": 0.003,
+                "maxMs": 0.2,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "visual.stage-lyrics": {
+                "count": 19839,
+                "totalMs": 923,
+                "avgMs": 0.047,
+                "maxMs": 1.8,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.8,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.7,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "desktop.overlay-sync": {
+                "count": 19839,
+                "totalMs": 24.5,
+                "avgMs": 0.001,
+                "maxMs": 0.1,
+                "lastMs": 0,
+                "samples": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "renderer.render": {
+                "count": 19839,
+                "totalMs": 4471.5,
+                "avgMs": 0.225,
+                "maxMs": 2.6,
+                "lastMs": 0.3,
+                "samples": [
+                  0.3,
+                  0.2,
+                  0.3,
+                  0.3,
+                  0.2,
+                  0.2,
+                  0.2,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.3,
+                  0.4,
+                  0.2,
+                  0.3
+                ]
+              }
+            }
+          }
+        },
+        "containerCount": 4
+      }
+    }
+  ]
+}

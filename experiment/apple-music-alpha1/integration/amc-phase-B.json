@@ -1,0 +1,34 @@
+{
+  "startedAt": "2026-09-27T03:32:07.669Z",
+  "term": "Levitating",
+  "steps": {
+    "search": {
+      "count": 5,
+      "first": {
+        "title": "Levitating",
+        "artist": "Dua Lipa",
+        "trackId": 1538003843,
+        "storefront": "us"
+      }
+    },
+    "play": {
+      "ok": true,
+      "chainOk": true,
+      "verified": true,
+      "stage": "OK",
+      "url": "https://music.apple.com/us/song/levitating/1538003843",
+      "mismatch": [],
+      "expected": {
+        "title": "Levitating",
+        "artist": "Dua Lipa"
+      },
+      "actual": {
+        "title": "Levitating",
+        "artist": "Dua Lipa — Future Nostalgia"
+      },
+      "artistLayer": "exact",
+      "error": ""
+    }
+  },
+  "finishedAt": "2026-09-27T03:32:13.458Z"
+}

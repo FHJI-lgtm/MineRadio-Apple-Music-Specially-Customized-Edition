@@ -112,7 +112,10 @@ function appleAccountSettingsEls() {
     tokenInput: document.getElementById('apple-web-token-input'),
     saveBtn: document.getElementById('apple-web-token-save-btn'),
     feedback: document.getElementById('apple-settings-feedback'),
-    avatarInput: document.getElementById('apple-settings-avatar-input')
+    avatarInput: document.getElementById('apple-settings-avatar-input'),
+    stealthBtn: document.getElementById('apple-stealth-toggle-btn'),
+    stealthStatus: document.getElementById('apple-stealth-status'),
+    stealthStatusText: document.getElementById('apple-stealth-status-text')
   };
 }
 
@@ -141,6 +144,79 @@ function renderAppleAccountSettings() {
   if (els.nameInput && document.activeElement !== els.nameInput) els.nameInput.value = profile.displayName;
 }
 
+// ------------------------------------------------------------
+// Apple Music 隐身模式 (Alpha=1 + 鼠标穿透), 由主进程的 watchdog 维持。
+// 这里只暴露"开/关 + 当前状态", 不暴露 alpha / 样式位 / HWND / 轮询间隔等实现细节。
+// ------------------------------------------------------------
+var appleStealthStatusCache = null;
+var appleStealthSubscribed = false;
+
+function appleStealthApi() {
+  if (typeof window === 'undefined' || !window.mineradio) return null;
+  if (typeof window.mineradio.appleStealthGet !== 'function') return null;
+  return window.mineradio;
+}
+
+function renderAppleStealthRow(payload) {
+  var els = appleAccountSettingsEls();
+  var enabled = !!(payload && payload.settings && payload.settings.enabled);
+  var status = (payload && payload.status) || {};
+  var hidden = status.hidden === true;
+  var phase = String(status.phase || 'off');
+  if (els.stealthBtn) els.stealthBtn.textContent = enabled ? '关闭隐身模式' : '开启隐身模式';
+  var text = '未启用';
+  var kind = '';
+  if (!enabled && status.lastDisabledReason) { text = '已关闭 · 检测到手动使用 Apple Music'; kind = 'wait'; }
+  if (enabled) {
+    if (hidden) { text = '已启用 · Apple Music 窗口已隐藏'; kind = 'on'; }
+    else if (phase === 'paused' || phase === 'starting') { text = '已启用 · 等待 Apple Music 启动'; kind = 'wait'; }
+    else if (phase === 'backoff') { text = '已启用 · 正在重试'; kind = 'wait'; }
+    else if (phase === 'failed') { text = '已启用 · 已安全停止（窗口已恢复）'; kind = 'error'; }
+    else { text = '已启用'; kind = 'on'; }
+  }
+  if (els.stealthStatusText) els.stealthStatusText.textContent = text;
+  if (els.stealthStatus) els.stealthStatus.className = 'apple-settings-status' + (kind ? ' ' + kind : '');
+}
+
+function refreshAppleStealthStatus() {
+  var api = appleStealthApi();
+  if (!api) { renderAppleStealthRow(null); return; }
+  if (!appleStealthSubscribed && typeof api.onAppleStealthChanged === 'function') {
+    appleStealthSubscribed = true;
+    try { api.onAppleStealthChanged(function (payload) { appleStealthStatusCache = payload; renderAppleStealthRow(payload); }); } catch (e) { }
+  }
+  try {
+    api.appleStealthGet().then(function (res) {
+      appleStealthStatusCache = res;
+      renderAppleStealthRow(res);
+    }).catch(function () { renderAppleStealthRow(null); });
+  } catch (e) { renderAppleStealthRow(null); }
+}
+
+function toggleAppleStealthMode() {
+  var api = appleStealthApi();
+  if (!api) { setAppleSettingsFeedback('当前环境不支持隐身模式', 'error'); return; }
+  var enabled = !!(appleStealthStatusCache && appleStealthStatusCache.settings && appleStealthStatusCache.settings.enabled);
+  var next = !enabled;
+  var els = appleAccountSettingsEls();
+  if (els.stealthBtn) els.stealthBtn.disabled = true;
+  setAppleSettingsFeedback(next ? '正在开启隐身模式…' : '正在关闭隐身模式…', '');
+  try {
+    api.appleStealthSet(next).then(function (res) {
+      appleStealthStatusCache = res;
+      renderAppleStealthRow(res);
+      if (els.stealthBtn) els.stealthBtn.disabled = false;
+      setAppleSettingsFeedback(next ? '隐身模式已开启' : '隐身模式已关闭', '');
+    }).catch(function () {
+      if (els.stealthBtn) els.stealthBtn.disabled = false;
+      setAppleSettingsFeedback('切换失败，请稍后重试', 'error');
+    });
+  } catch (e) {
+    if (els.stealthBtn) els.stealthBtn.disabled = false;
+    setAppleSettingsFeedback('切换失败，请稍后重试', 'error');
+  }
+}
+
 // 显示资料变了以后, 只重绘用到它的账号 UI; 用户模态没打开就不去动 activeAccountProvider。
 function refreshAppleDisplayProfileConsumers() {
   if (typeof renderUserBtn === 'function') renderUserBtn();
@@ -152,6 +228,7 @@ function openAppleAccountSettings() {
   var els = appleAccountSettingsEls();
   if (!els.mask) return;
   setAppleSettingsFeedback('', '');
+  refreshAppleStealthStatus();
   renderAppleAccountSettings();
   if (typeof openGsapModal === 'function') openGsapModal(els.mask);
   else els.mask.classList.add('show');

@@ -1,0 +1,195 @@
+{
+  "at": "2026-09-27 11:32:42.535",
+  "driver": "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\integration\\amc-chain-driver.js",
+  "logFile": "F:\\mineradio-apple-music\\experiment\\apple-music-alpha1\\integration\\mineradio-20260927-113012.log",
+  "frozenRestore": {
+    "before": {
+      "foreground": false,
+      "visible": true,
+      "rect": "-32000,-32000 276x45",
+      "zoomed": false,
+      "iconic": true
+    },
+    "reason": "minimized",
+    "restored": true,
+    "after": {
+      "foreground": true,
+      "visible": true,
+      "rect": "-12,-12 2584x1540",
+      "zoomed": true,
+      "iconic": false
+    }
+  },
+  "restore": {
+    "ok": true,
+    "alphaSetTo255": true,
+    "layeredRemoved": true,
+    "exStyleBefore": "0x00080120",
+    "exStyleAfter": "0x00000100",
+    "exStyleExpected": "0x00000100",
+    "matchesOriginal": true,
+    "minimized": false,
+    "error": ""
+  },
+  "phases": [
+    {
+      "phase": "A-stealth-off",
+      "expectation": "chain works normally with no stealth",
+      "term": "Blinding Lights",
+      "chainStdout": "{\"search\":4,\"play\":{\"ok\":true,\"verified\":true,\"stage\":\"OK\",\"actual\":{\"title\":\"Blinding Lights\",\"artist\":\"Teddy Swims — Blinding Lights - Single\"}}}",
+      "search": {
+        "count": 4,
+        "first": {
+          "title": "Blinding Lights",
+          "artist": "Teddy Swims",
+          "trackId": 1513133940,
+          "storefront": "us"
+        }
+      },
+      "play": {
+        "ok": true,
+        "chainOk": true,
+        "verified": true,
+        "stage": "OK",
+        "url": "https://music.apple.com/us/song/blinding-lights/1513133940",
+        "mismatch": [],
+        "expected": {
+          "title": "Blinding Lights",
+          "artist": "Teddy Swims"
+        },
+        "actual": {
+          "title": "Blinding Lights",
+          "artist": "Teddy Swims 鈥?Blinding Lights - Single"
+        },
+        "artistLayer": "exact",
+        "error": ""
+      },
+      "smtcBefore": {
+        "title": "Can't Feel My Face",
+        "artist": "Abel Tesfaye — Beauty Behind the Madness",
+        "status": "Playing"
+      },
+      "smtcAfter": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims — Blinding Lights - Single",
+        "status": "Playing"
+      },
+      "trackChanged": true,
+      "windowState": {
+        "alpha": -1,
+        "exStyle": "0x00000100",
+        "layered": false,
+        "transparent": false,
+        "iconic": true
+      },
+      "appLogNote": "dropped from this file to keep it small; the raw stdout log is integration/mineradio-*.log (UTF-16LE)"
+    },
+    {
+      "phase": "B-alpha-only",
+      "expectation": "chain works with Alpha=1 (no transparent)",
+      "term": "Levitating",
+      "chainStdout": "{\"search\":5,\"play\":{\"ok\":true,\"verified\":true,\"stage\":\"OK\",\"actual\":{\"title\":\"Levitating\",\"artist\":\"Dua Lipa — Future Nostalgia\"}}}",
+      "search": {
+        "count": 5,
+        "first": {
+          "title": "Levitating",
+          "artist": "Dua Lipa",
+          "trackId": 1538003843,
+          "storefront": "us"
+        }
+      },
+      "play": {
+        "ok": true,
+        "chainOk": true,
+        "verified": true,
+        "stage": "OK",
+        "url": "https://music.apple.com/us/song/levitating/1538003843",
+        "mismatch": [],
+        "expected": {
+          "title": "Levitating",
+          "artist": "Dua Lipa"
+        },
+        "actual": {
+          "title": "Levitating",
+          "artist": "Dua Lipa 鈥?Future Nostalgia"
+        },
+        "artistLayer": "exact",
+        "error": ""
+      },
+      "smtcBefore": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims — Blinding Lights - Single",
+        "status": "Playing"
+      },
+      "smtcAfter": {
+        "title": "Levitating",
+        "artist": "Dua Lipa — Future Nostalgia",
+        "status": "Playing"
+      },
+      "trackChanged": true,
+      "windowState": {
+        "alpha": 1,
+        "exStyle": "0x00080100",
+        "layered": true,
+        "transparent": false,
+        "iconic": true
+      },
+      "appLogNote": "dropped from this file to keep it small; the raw stdout log is integration/mineradio-*.log (UTF-16LE)"
+    },
+    {
+      "phase": "C-alpha-plus-transparent",
+      "expectation": "chain expected to FAIL: synthesized clicks pass through",
+      "term": "Save Your Tears",
+      "chainStdout": "{\"search\":5,\"play\":{\"ok\":false,\"verified\":false,\"stage\":\"SMTC_WRONG_TRACK\",\"actual\":{\"title\":\"Levitating\",\"artist\":\"Dua Lipa — Future Nostalgia\"}}}",
+      "search": {
+        "count": 5,
+        "first": {
+          "title": "Save Your Tears (Remix)",
+          "artist": "The Weeknd & Ariana Grande",
+          "trackId": 1563812775,
+          "storefront": "us"
+        }
+      },
+      "play": {
+        "ok": false,
+        "chainOk": false,
+        "verified": false,
+        "stage": "SMTC_WRONG_TRACK",
+        "url": "https://music.apple.com/us/song/save-your-tears-remix/1563812775",
+        "mismatch": [
+          "title",
+          "artist"
+        ],
+        "expected": {
+          "title": "Save Your Tears (Remix)",
+          "artist": "The Weeknd & Ariana Grande"
+        },
+        "actual": {
+          "title": "Levitating",
+          "artist": "Dua Lipa 鈥?Future Nostalgia"
+        },
+        "artistLayer": "none",
+        "error": ""
+      },
+      "smtcBefore": {
+        "title": "Levitating",
+        "artist": "Dua Lipa — Future Nostalgia",
+        "status": "Playing"
+      },
+      "smtcAfter": {
+        "title": "Levitating",
+        "artist": "Dua Lipa — Future Nostalgia",
+        "status": "Playing"
+      },
+      "trackChanged": false,
+      "windowState": {
+        "alpha": 1,
+        "exStyle": "0x00080120",
+        "layered": true,
+        "transparent": true,
+        "iconic": true
+      },
+      "appLogNote": "dropped from this file to keep it small; the raw stdout log is integration/mineradio-*.log (UTF-16LE)"
+    }
+  ]
+}

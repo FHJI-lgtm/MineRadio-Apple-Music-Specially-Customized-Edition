@@ -1,0 +1,37 @@
+{
+  "startedAt": "2026-09-27T03:32:20.556Z",
+  "term": "Save Your Tears",
+  "steps": {
+    "search": {
+      "count": 5,
+      "first": {
+        "title": "Save Your Tears (Remix)",
+        "artist": "The Weeknd & Ariana Grande",
+        "trackId": 1563812775,
+        "storefront": "us"
+      }
+    },
+    "play": {
+      "ok": false,
+      "chainOk": false,
+      "verified": false,
+      "stage": "SMTC_WRONG_TRACK",
+      "url": "https://music.apple.com/us/song/save-your-tears-remix/1563812775",
+      "mismatch": [
+        "title",
+        "artist"
+      ],
+      "expected": {
+        "title": "Save Your Tears (Remix)",
+        "artist": "The Weeknd & Ariana Grande"
+      },
+      "actual": {
+        "title": "Levitating",
+        "artist": "Dua Lipa — Future Nostalgia"
+      },
+      "artistLayer": "none",
+      "error": ""
+    }
+  },
+  "finishedAt": "2026-09-27T03:32:38.486Z"
+}

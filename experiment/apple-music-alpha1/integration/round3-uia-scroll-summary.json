@@ -1,0 +1,569 @@
+﻿{
+    "at":  "2026-09-27 11:45:36.887",
+    "kind":  "round3-uia-scroll",
+    "recipe":  {
+                   "stamp":  "20260927-114519",
+                   "kind":  "round3-uia-scroll",
+                   "hwnd":  68306,
+                   "originalExStyle":  256,
+                   "originalStyle":  365887488,
+                   "originalLayered":  false,
+                   "originalAlpha":  -1,
+                   "preIconic":  true,
+                   "addedLayered":  true,
+                   "addedTransparent":  true,
+                   "requestedAlpha":  1
+               },
+    "checklist":  {
+                      "stealthStateEntered":  true,
+                      "uiaRootOk":  true,
+                      "scrollTargetFound":  true,
+                      "scrollOpsAttempted":  4,
+                      "scrollOpsOk":  4,
+                      "appleMusicScrolled":  true,
+                      "alphaAlwaysOne":  true,
+                      "transparentAlwaysOn":  true,
+                      "scrollPatternApplicable":  true,
+                      "mineradioSideEffects":  0,
+                      "transportUntouched":  false,
+                      "pocLibClean":  true,
+                      "failureInjectionCaught":  true,
+                      "finallyRestored":  true,
+                      "alphaBackTo255":  true,
+                      "stylesCleared":  true,
+                      "iconicMatchesPre":  true
+                  },
+    "steps":  [
+                  {
+                      "step":  "setup",
+                      "at":  "2026-09-27 11:45:20.010",
+                      "hwnd":  68306,
+                      "originalExStyle":  "0x00000100",
+                      "preIconic":  true,
+                      "frozenRestore":  {
+                                            "before":  {
+                                                           "foreground":  true,
+                                                           "visible":  true,
+                                                           "rect":  "-32000,-32000 276x45",
+                                                           "zoomed":  false,
+                                                           "iconic":  true
+                                                       },
+                                            "reason":  "minimized",
+                                            "restored":  true,
+                                            "after":  {
+                                                          "foreground":  true,
+                                                          "visible":  true,
+                                                          "rect":  "-12,-12 2584x1540",
+                                                          "zoomed":  true,
+                                                          "iconic":  false
+                                                      }
+                                        }
+                  },
+                  {
+                      "step":  "mineradio-pre",
+                      "at":  "2026-09-27 11:45:23.302",
+                      "pages":  1,
+                      "containers":  4,
+                      "fingerprint":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "error":  ""
+                  },
+                  {
+                      "step":  "recon-scroll-targets",
+                      "at":  "2026-09-27 11:45:23.519",
+                      "uiaRootOk":  true,
+                      "count":  4,
+                      "targets":  [
+                                      {
+                                          "name":  "",
+                                          "id":  "MenuItemsScrollViewer",
+                                          "type":  "ControlType.Pane",
+                                          "vScrollable":  false,
+                                          "vPercent":  -1,
+                                          "viewSize":  100,
+                                          "area":  634764
+                                      },
+                                      {
+                                          "name":  "",
+                                          "id":  "FooterItemsScrollViewer",
+                                          "type":  "ControlType.Pane",
+                                          "vScrollable":  false,
+                                          "vPercent":  -1,
+                                          "viewSize":  100,
+                                          "area":  35490
+                                      },
+                                      {
+                                          "name":  "Call Out My Name",
+                                          "id":  "myScrollViewer",
+                                          "type":  "ControlType.Pane",
+                                          "vScrollable":  false,
+                                          "vPercent":  -1,
+                                          "viewSize":  100,
+                                          "area":  4732
+                                      },
+                                      {
+                                          "name":  "Abel Tesfaye — My Dear Melancholy,",
+                                          "id":  "myScrollViewer",
+                                          "type":  "ControlType.Pane",
+                                          "vScrollable":  false,
+                                          "vPercent":  -1,
+                                          "viewSize":  100,
+                                          "area":  10125
+                                      }
+                                  ]
+                  },
+                  {
+                      "step":  "stealth-on",
+                      "at":  "2026-09-27 11:45:23.605",
+                      "apply":  {
+                                    "hwnd":  68306,
+                                    "requestedAlpha":  1,
+                                    "exStyleBefore":  "0x00000100",
+                                    "layeredBefore":  false,
+                                    "addedLayered":  true,
+                                    "setStyleOk":  true,
+                                    "setStyleError":  0,
+                                    "setAttrOk":  true,
+                                    "setAttrError":  0,
+                                    "observedAlpha":  1,
+                                    "layeredAfter":  true,
+                                    "error":  ""
+                                },
+                      "transparent":  {
+                                          "ok":  true,
+                                          "exStyleBefore":  "0x00080100",
+                                          "exStyleAfter":  "0x00080120",
+                                          "isTransparent":  true,
+                                          "alphaReadable":  1
+                                      },
+                      "sample":  {
+                                     "at":  "2026-09-27 11:45:23.602",
+                                     "hwnd":  68306,
+                                     "layered":  true,
+                                     "transparent":  true,
+                                     "exStyle":  "0x00080120",
+                                     "requestedAlpha":  1,
+                                     "observedAlpha":  1,
+                                     "classification":  "HELD",
+                                     "flags":  "0x00000002 colorKey=0x00000000",
+                                     "visible":  true,
+                                     "iconic":  false,
+                                     "hung":  false,
+                                     "isWindow":  true,
+                                     "rect":  "-12,-12 2584x1540"
+                                 }
+                  },
+                  {
+                      "step":  "ensure-scrollable",
+                      "at":  "2026-09-27 11:45:26.316",
+                      "needed":  true,
+                      "target":  "歌曲",
+                      "result":  {
+                                     "ok":  true,
+                                     "how":  "SelectionItemPattern.Select",
+                                     "name":  "歌曲",
+                                     "index":  7,
+                                     "error":  ""
+                                 },
+                      "after":  [
+                                    {
+                                        "id":  "MenuItemsScrollViewer",
+                                        "vScrollable":  false,
+                                        "vPercent":  -1,
+                                        "area":  634764
+                                    },
+                                    {
+                                        "id":  "FooterItemsScrollViewer",
+                                        "vScrollable":  false,
+                                        "vPercent":  -1,
+                                        "area":  35490
+                                    },
+                                    {
+                                        "id":  "myScrollViewer",
+                                        "vScrollable":  false,
+                                        "vPercent":  -1,
+                                        "area":  1768
+                                    },
+                                    {
+                                        "id":  "myScrollViewer",
+                                        "vScrollable":  false,
+                                        "vPercent":  -1,
+                                        "area":  10125
+                                    },
+                                    {
+                                        "id":  "DataGridListView",
+                                        "vScrollable":  true,
+                                        "vPercent":  0,
+                                        "area":  2701900
+                                    }
+                                ]
+                  },
+                  {
+                      "step":  "baseline",
+                      "at":  "2026-09-27 11:45:27.771",
+                      "sample":  {
+                                     "at":  "2026-09-27 11:45:27.765",
+                                     "hwnd":  68306,
+                                     "layered":  true,
+                                     "transparent":  true,
+                                     "exStyle":  "0x00080120",
+                                     "requestedAlpha":  1,
+                                     "observedAlpha":  1,
+                                     "classification":  "HELD",
+                                     "flags":  "0x00000002 colorKey=0x00000000",
+                                     "visible":  true,
+                                     "iconic":  false,
+                                     "hung":  false,
+                                     "isWindow":  true,
+                                     "rect":  "-12,-12 2584x1540"
+                                 },
+                      "uiaRootOk":  true,
+                      "counts":  {
+                                     "descendants":  417,
+                                     "edits":  1,
+                                     "buttons":  132,
+                                     "listItems":  110,
+                                     "error":  ""
+                                 },
+                      "treeSignature":  "110|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                      "scrollTargets":  5,
+                      "verticallyScrollable":  1,
+                      "target":  {
+                                     "ok":  true,
+                                     "name":  "",
+                                     "automationId":  "DataGridListView",
+                                     "controlType":  "ControlType.List",
+                                     "runtimeId":  "42.68310.4.22238",
+                                     "area":  2701900,
+                                     "state":  {
+                                                   "ok":  true,
+                                                   "verticallyScrollable":  true,
+                                                   "horizontallyScrollable":  false,
+                                                   "verticalPercent":  0,
+                                                   "horizontalPercent":  -1,
+                                                   "verticalViewSize":  2.0597289931593621,
+                                                   "horizontalViewSize":  100
+                                               }
+                                 },
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}"
+                  },
+                  {
+                      "step":  "scroll-1-down",
+                      "at":  "2026-09-27 11:45:29.053",
+                      "direction":  "down",
+                      "op":  {
+                                 "ok":  true,
+                                 "direction":  "down",
+                                 "amount":  "small",
+                                 "error":  "",
+                                 "before":  {
+                                                "ok":  true,
+                                                "verticallyScrollable":  true,
+                                                "horizontallyScrollable":  false,
+                                                "verticalPercent":  0,
+                                                "horizontalPercent":  -1,
+                                                "verticalViewSize":  2.0597289931593621,
+                                                "horizontalViewSize":  100
+                                            },
+                                 "after":  {
+                                               "ok":  true,
+                                               "verticallyScrollable":  true,
+                                               "horizontallyScrollable":  false,
+                                               "verticalPercent":  0.044677759588219616,
+                                               "horizontalPercent":  -1,
+                                               "verticalViewSize":  2.0597289931593621,
+                                               "horizontalViewSize":  100
+                                           }
+                             },
+                      "beforeState":  {
+                                          "ok":  true,
+                                          "verticallyScrollable":  true,
+                                          "horizontallyScrollable":  false,
+                                          "verticalPercent":  0,
+                                          "horizontalPercent":  -1,
+                                          "verticalViewSize":  2.0597289931593621,
+                                          "horizontalViewSize":  100
+                                      },
+                      "afterState":  {
+                                         "ok":  true,
+                                         "verticallyScrollable":  true,
+                                         "horizontallyScrollable":  false,
+                                         "verticalPercent":  0.044677759588219616,
+                                         "horizontalPercent":  -1,
+                                         "verticalViewSize":  2.0597289931593621,
+                                         "horizontalViewSize":  100
+                                     },
+                      "treeSignature":  "110|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                      "treeSignatureChanged":  false,
+                      "alpha":  1,
+                      "exStyle":  "0x00080120",
+                      "layered":  true,
+                      "transparent":  true,
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true
+                  },
+                  {
+                      "step":  "scroll-2-down",
+                      "at":  "2026-09-27 11:45:30.287",
+                      "direction":  "down",
+                      "op":  {
+                                 "ok":  true,
+                                 "direction":  "down",
+                                 "amount":  "small",
+                                 "error":  "",
+                                 "before":  {
+                                                "ok":  true,
+                                                "verticallyScrollable":  true,
+                                                "horizontallyScrollable":  false,
+                                                "verticalPercent":  0.044677759588219616,
+                                                "horizontalPercent":  -1,
+                                                "verticalViewSize":  2.0597289931593621,
+                                                "horizontalViewSize":  100
+                                            },
+                                 "after":  {
+                                               "ok":  true,
+                                               "verticallyScrollable":  true,
+                                               "horizontallyScrollable":  false,
+                                               "verticalPercent":  0.089355519176439233,
+                                               "horizontalPercent":  -1,
+                                               "verticalViewSize":  2.0597289931593621,
+                                               "horizontalViewSize":  100
+                                           }
+                             },
+                      "beforeState":  {
+                                          "ok":  true,
+                                          "verticallyScrollable":  true,
+                                          "horizontallyScrollable":  false,
+                                          "verticalPercent":  0.044677759588219616,
+                                          "horizontalPercent":  -1,
+                                          "verticalViewSize":  2.0597289931593621,
+                                          "horizontalViewSize":  100
+                                      },
+                      "afterState":  {
+                                         "ok":  true,
+                                         "verticallyScrollable":  true,
+                                         "horizontallyScrollable":  false,
+                                         "verticalPercent":  0.089355519176439233,
+                                         "horizontalPercent":  -1,
+                                         "verticalViewSize":  2.0597289931593621,
+                                         "horizontalViewSize":  100
+                                     },
+                      "treeSignature":  "110|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                      "treeSignatureChanged":  false,
+                      "alpha":  1,
+                      "exStyle":  "0x00080120",
+                      "layered":  true,
+                      "transparent":  true,
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true
+                  },
+                  {
+                      "step":  "scroll-3-up",
+                      "at":  "2026-09-27 11:45:31.518",
+                      "direction":  "up",
+                      "op":  {
+                                 "ok":  true,
+                                 "direction":  "up",
+                                 "amount":  "small",
+                                 "error":  "",
+                                 "before":  {
+                                                "ok":  true,
+                                                "verticallyScrollable":  true,
+                                                "horizontallyScrollable":  false,
+                                                "verticalPercent":  0.089355519176439233,
+                                                "horizontalPercent":  -1,
+                                                "verticalViewSize":  2.0597289931593621,
+                                                "horizontalViewSize":  100
+                                            },
+                                 "after":  {
+                                               "ok":  true,
+                                               "verticallyScrollable":  true,
+                                               "horizontallyScrollable":  false,
+                                               "verticalPercent":  0.044677759588219616,
+                                               "horizontalPercent":  -1,
+                                               "verticalViewSize":  2.0597289931593621,
+                                               "horizontalViewSize":  100
+                                           }
+                             },
+                      "beforeState":  {
+                                          "ok":  true,
+                                          "verticallyScrollable":  true,
+                                          "horizontallyScrollable":  false,
+                                          "verticalPercent":  0.089355519176439233,
+                                          "horizontalPercent":  -1,
+                                          "verticalViewSize":  2.0597289931593621,
+                                          "horizontalViewSize":  100
+                                      },
+                      "afterState":  {
+                                         "ok":  true,
+                                         "verticallyScrollable":  true,
+                                         "horizontallyScrollable":  false,
+                                         "verticalPercent":  0.044677759588219616,
+                                         "horizontalPercent":  -1,
+                                         "verticalViewSize":  2.0597289931593621,
+                                         "horizontalViewSize":  100
+                                     },
+                      "treeSignature":  "110|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                      "treeSignatureChanged":  false,
+                      "alpha":  1,
+                      "exStyle":  "0x00080120",
+                      "layered":  true,
+                      "transparent":  true,
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true
+                  },
+                  {
+                      "step":  "scroll-4-up",
+                      "at":  "2026-09-27 11:45:32.802",
+                      "direction":  "up",
+                      "op":  {
+                                 "ok":  true,
+                                 "direction":  "up",
+                                 "amount":  "small",
+                                 "error":  "",
+                                 "before":  {
+                                                "ok":  true,
+                                                "verticallyScrollable":  true,
+                                                "horizontallyScrollable":  false,
+                                                "verticalPercent":  0.044677759588219616,
+                                                "horizontalPercent":  -1,
+                                                "verticalViewSize":  2.0597289931593621,
+                                                "horizontalViewSize":  100
+                                            },
+                                 "after":  {
+                                               "ok":  true,
+                                               "verticallyScrollable":  true,
+                                               "horizontallyScrollable":  false,
+                                               "verticalPercent":  0,
+                                               "horizontalPercent":  -1,
+                                               "verticalViewSize":  2.0597289931593621,
+                                               "horizontalViewSize":  100
+                                           }
+                             },
+                      "beforeState":  {
+                                          "ok":  true,
+                                          "verticallyScrollable":  true,
+                                          "horizontallyScrollable":  false,
+                                          "verticalPercent":  0.044677759588219616,
+                                          "horizontalPercent":  -1,
+                                          "verticalViewSize":  2.0597289931593621,
+                                          "horizontalViewSize":  100
+                                      },
+                      "afterState":  {
+                                         "ok":  true,
+                                         "verticallyScrollable":  true,
+                                         "horizontallyScrollable":  false,
+                                         "verticalPercent":  0,
+                                         "horizontalPercent":  -1,
+                                         "verticalViewSize":  2.0597289931593621,
+                                         "horizontalViewSize":  100
+                                     },
+                      "treeSignature":  "110|主页;新发现;广播;资料库;最近添加;艺人;专辑;歌曲;播放列表;所有播放列表;喜爱歌曲;音乐回忆 2025",
+                      "treeSignatureChanged":  false,
+                      "alpha":  1,
+                      "exStyle":  "0x00080120",
+                      "layered":  true,
+                      "transparent":  true,
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true
+                  },
+                  {
+                      "step":  "scrollitem-realize",
+                      "at":  "2026-09-27 11:45:36.159",
+                      "realize":  {
+                                      "ok":  true,
+                                      "element":  "",
+                                      "detail":  {
+                                                     "ok":  false,
+                                                     "rect":  null,
+                                                     "steps":  {
+                                                                   "realize":  false,
+                                                                   "escalated":  true,
+                                                                   "setFocus":  false,
+                                                                   "scrollSteps":  0,
+                                                                   "scrollIntoView":  false
+                                                               },
+                                                     "stage":  "REALIZE_FAILED",
+                                                     "ms":  3040
+                                                 }
+                                  },
+                      "mineradio":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true,
+                      "sample":  {
+                                     "at":  "2026-09-27 11:45:36.158",
+                                     "hwnd":  68306,
+                                     "layered":  true,
+                                     "transparent":  true,
+                                     "exStyle":  "0x00080120",
+                                     "requestedAlpha":  1,
+                                     "observedAlpha":  1,
+                                     "classification":  "HELD",
+                                     "flags":  "0x00000002 colorKey=0x00000000",
+                                     "visible":  true,
+                                     "iconic":  false,
+                                     "hung":  false,
+                                     "isWindow":  true,
+                                     "rect":  "-12,-12 2584x1540"
+                                 }
+                  },
+                  {
+                      "step":  "failure-injection",
+                      "at":  "2026-09-27 11:45:36.168",
+                      "elementIsNull":  true,
+                      "result":  {
+                                     "ok":  false,
+                                     "direction":  "down",
+                                     "amount":  "small",
+                                     "error":  "You cannot call a method on a null-valued expression.",
+                                     "before":  {
+                                                    "ok":  false,
+                                                    "error":  "You cannot call a method on a null-valued expression."
+                                                },
+                                     "after":  null
+                                 }
+                  },
+                  {
+                      "step":  "restore",
+                      "at":  "2026-09-27 11:45:36.849",
+                      "restore":  {
+                                      "ok":  true,
+                                      "alphaSetTo255":  true,
+                                      "layeredRemoved":  true,
+                                      "exStyleBefore":  "0x00080120",
+                                      "exStyleAfter":  "0x00000100",
+                                      "exStyleExpected":  "0x00000100",
+                                      "matchesOriginal":  true,
+                                      "minimized":  false,
+                                      "error":  ""
+                                  },
+                      "finalSample":  {
+                                          "at":  "2026-09-27 11:45:36.190",
+                                          "hwnd":  68306,
+                                          "layered":  false,
+                                          "transparent":  false,
+                                          "exStyle":  "0x00000100",
+                                          "requestedAlpha":  255,
+                                          "observedAlpha":  -1,
+                                          "classification":  "LAYERED_MISSING",
+                                          "flags":  "none",
+                                          "visible":  true,
+                                          "iconic":  false,
+                                          "hung":  false,
+                                          "isWindow":  true,
+                                          "rect":  "-12,-12 2584x1540"
+                                      },
+                      "minimized":  true,
+                      "preIconic":  true,
+                      "smtcBefore":  {
+                                         "title":  "Call Out My Name",
+                                         "status":  "Playing"
+                                     },
+                      "smtcAfter":  {
+                                        "title":  "Try Me",
+                                        "status":  "Playing"
+                                    },
+                      "pocLibDiff":  "",
+                      "mineradioPost":  "/||home-rail home-insight-rail|0|none ;; /|fx-panel||0|matrix(0.97, 0, 0, 0.97, 0, 18) ;; /|playlist-panel||0|matrix(1, 0, 0, 1, -404, 0) ;; /|lyric-timing-popover|lyric-timing-popover|0|matrix(0.98, 0, 0, 0.98, -113, 8) ;; lyric:{\"scrollState\":null}",
+                      "mineradioMatchesPre":  true
+                  }
+              ]
+}

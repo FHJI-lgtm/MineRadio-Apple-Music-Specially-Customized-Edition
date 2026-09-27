@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.0-beta.1
+
+- 新增 Apple Music 隐身模式（Alpha=1 + WS_EX_LAYERED + WS_EX_TRANSPARENT）：窗口视觉隐藏的同时保留 UIA 控制与播放能力。
+- 新增隐身看门狗：每秒只检查窗口属性，丢失即修复（alpha / 透明位 / 分层位 / 多属性丢失 / 窗口换新），失败按 1s→30s 退避，超过上限安全停止并恢复窗口。
+- 播放门控：MineRadio 的 Apple Music 播放链执行期间临时摘掉透明位、结束后（含失败）必定戴回；看门狗在门内不会抢修。
+- 隐身模式默认开启；用户手动唤起/操作 Apple Music 时自动关闭并记住；MineRadio 退出时自动恢复窗口。
+- Apple Music 账户设置里新增隐身模式开关与状态显示。
 ## v2.1.0
 
 - 优化 Wallpaper Engine 壁纸与全屏模式的兼容性。

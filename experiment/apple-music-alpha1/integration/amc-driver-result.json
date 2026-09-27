@@ -1,0 +1,37 @@
+{
+  "startedAt": "2026-09-27T03:31:06.568Z",
+  "term": "Blinding Lights",
+  "steps": {
+    "search": {
+      "count": 4,
+      "first": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims",
+        "trackId": 1513133940,
+        "storefront": "us"
+      }
+    },
+    "play": {
+      "ok": false,
+      "chainOk": false,
+      "verified": false,
+      "stage": "SMTC_WRONG_TRACK",
+      "url": "https://music.apple.com/us/song/blinding-lights/1513133940",
+      "mismatch": [
+        "title",
+        "artist"
+      ],
+      "expected": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims"
+      },
+      "actual": {
+        "title": "Can't Feel My Face",
+        "artist": "Abel Tesfaye — Beauty Behind the Madness"
+      },
+      "artistLayer": "none",
+      "error": ""
+    }
+  },
+  "finishedAt": "2026-09-27T03:31:24.220Z"
+}

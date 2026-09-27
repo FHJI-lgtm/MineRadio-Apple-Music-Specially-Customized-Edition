@@ -470,7 +470,11 @@ function Set-Alpha1WindowMinimized([IntPtr]$Hwnd) {
 
 function Write-Alpha1Recipe([string]$Stamp, $Recipe) {
   $p = Join-Path (Get-Alpha1ReportDir) ($Stamp + '.restore.json')
-  $Recipe | ConvertTo-Json -Depth 5 | Set-Content -Path $p -Encoding UTF8
+  # Write through .NET instead of the PowerShell pipeline: re-writing the same recipe with
+  # Set-Content once failed with 'Stream was not readable' and left the file EMPTY, which would
+  # have broken the disaster-recovery path. No BOM either.
+  $json = $Recipe | ConvertTo-Json -Depth 5
+  [System.IO.File]::WriteAllText($p, $json, (New-Object System.Text.UTF8Encoding($false)))
   return $p
 }
 function Read-Alpha1Recipe([string]$Path) {
@@ -792,6 +796,87 @@ function Invoke-Alpha1RealWheel([int]$X, [int]$Y, [int]$Delta = 120) {
     Start-Sleep -Milliseconds 150
     [Alpha1Native]::mouse_event([Alpha1Native]::MOUSEEVENTF_WHEEL, 0, 0, [uint32]$Delta, [UIntPtr]::Zero)
     for ($i = 0; $i -lt 12; $i++) { try { [System.Windows.Forms.Application]::DoEvents() } catch { } ; Start-Sleep -Milliseconds 25 }
+    $r.ok = $true
+  } catch { $r.error = $_.Exception.Message }
+  return $r
+}
+
+# ------------------------------------------------------------
+# UIA scroll helpers for round 3 (ScrollPattern / ScrollItemPattern only - never mouse wheel).
+# The frozen lib's Scroll-AmView is mouse-wheel based (it would scroll the window BELOW a
+# click-through Apple Music), so this round uses the UIA provider instead.
+# ------------------------------------------------------------
+function Get-Alpha1ScrollTargets($Root) {
+  $out = New-Object System.Collections.ArrayList
+  $all = $Root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  for ($i = 0; $i -lt [int]$all.Count; $i++) {
+    $el = $all.Item($i)
+    $hasScroll = $false
+    try { $hasScroll = [bool]$el.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::IsScrollPatternAvailableProperty) } catch { }
+    if (-not $hasScroll) { continue }
+    try {
+      $sp = $el.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+      $b = $el.Current.BoundingRectangle
+      [void]$out.Add([ordered]@{
+        index = $i; name = ('' + $el.Current.Name); automationId = ('' + $el.Current.AutomationId)
+        controlType = ('' + $el.Current.ControlType.ProgrammaticName)
+        runtimeId = (@($el.GetRuntimeId()) -join '.');
+        area = [int]($b.Width * $b.Height); width = [int]$b.Width; height = [int]$b.Height
+        verticallyScrollable = [bool]$sp.Current.VerticallyScrollable; horizontallyScrollable = [bool]$sp.Current.HorizontallyScrollable
+        verticalPercent = [double]$sp.Current.VerticalScrollPercent; horizontalPercent = [double]$sp.Current.HorizontalScrollPercent
+        verticalViewSize = [double]$sp.Current.VerticalViewSize; horizontalViewSize = [double]$sp.Current.HorizontalViewSize
+        element = $el
+      })
+    } catch { }
+  }
+  return @($out.ToArray())
+}
+function Get-Alpha1ScrollState($Element) {
+  try {
+    $sp = $Element.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+    return [ordered]@{ ok = $true; verticallyScrollable = [bool]$sp.Current.VerticallyScrollable; horizontallyScrollable = [bool]$sp.Current.HorizontallyScrollable
+      verticalPercent = [double]$sp.Current.VerticalScrollPercent; horizontalPercent = [double]$sp.Current.HorizontalScrollPercent
+      verticalViewSize = [double]$sp.Current.VerticalViewSize; horizontalViewSize = [double]$sp.Current.HorizontalViewSize }
+  } catch { return [ordered]@{ ok = $false; error = $_.Exception.Message } }
+}
+# Direction: 'down' | 'up' ; Amount: 'small' | 'large' | 'no'
+function Invoke-Alpha1Scroll($Element, [string]$Direction, [string]$Amount = 'small') {
+  $r = [ordered]@{ ok = $false; direction = $Direction; amount = $Amount; error = ''; before = $null; after = $null }
+  try {
+    $r.before = Get-Alpha1ScrollState $Element
+    $sp = $Element.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+    $v = [System.Windows.Automation.ScrollAmount]::NoAmount
+    $h = [System.Windows.Automation.ScrollAmount]::NoAmount
+    $amt = [System.Windows.Automation.ScrollAmount]::SmallIncrement
+    if ($Amount -eq 'large') { $amt = [System.Windows.Automation.ScrollAmount]::LargeIncrement }
+    if ($Amount -eq 'no') { $amt = [System.Windows.Automation.ScrollAmount]::NoAmount }
+    if ($Direction -eq 'down') { $v = $amt } elseif ($Direction -eq 'up') { $v = $amt; $v = -1 * [int]$amt } else { throw ('unknown direction ' + $Direction) }
+    $sp.Scroll($h, $v)
+    Start-Sleep -Milliseconds 400
+    $r.after = Get-Alpha1ScrollState $Element
+    $r.ok = $true
+  } catch { $r.error = $_.Exception.Message }
+  return $r
+}
+# ScrollPattern.ScrollAmount is an enum: down = positive, up = negative. Build it explicitly.
+function Invoke-Alpha1ScrollEx($Element, [string]$Direction, [string]$Amount = 'small') {
+  $r = [ordered]@{ ok = $false; direction = $Direction; amount = $Amount; error = ''; before = $null; after = $null }
+  try {
+    $r.before = Get-Alpha1ScrollState $Element
+    $sp = $Element.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
+    $hAmt = [System.Windows.Automation.ScrollAmount]::NoAmount
+    $vAmt = [System.Windows.Automation.ScrollAmount]::NoAmount
+    if ($Amount -eq 'small') { $hAmt = [System.Windows.Automation.ScrollAmount]::SmallIncrement; $vAmt = [System.Windows.Automation.ScrollAmount]::SmallIncrement }
+    if ($Amount -eq 'large') { $hAmt = [System.Windows.Automation.ScrollAmount]::LargeIncrement; $vAmt = [System.Windows.Automation.ScrollAmount]::LargeIncrement }
+    if ($Direction -eq 'up') {
+      $upAmt = [System.Windows.Automation.ScrollAmount]::SmallDecrement
+      if ($Amount -eq 'large') { $upAmt = [System.Windows.Automation.ScrollAmount]::LargeDecrement }
+      $sp.Scroll([System.Windows.Automation.ScrollAmount]::NoAmount, $upAmt)
+    } elseif ($Direction -eq 'down') {
+      $sp.Scroll([System.Windows.Automation.ScrollAmount]::NoAmount, $vAmt)
+    } else { throw ('unknown direction ' + $Direction) }
+    Start-Sleep -Milliseconds 400
+    $r.after = Get-Alpha1ScrollState $Element
     $r.ok = $true
   } catch { $r.error = $_.Exception.Message }
   return $r

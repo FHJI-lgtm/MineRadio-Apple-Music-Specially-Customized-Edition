@@ -200,6 +200,10 @@ window.addEventListener('DOMContentLoaded', () => {
 // Nothing above this line is modified.
 // ============================================================
 contextBridge.exposeInMainWorld('mineradio', {
+  // Apple Music stealth mode (Alpha=1 + click-through), toggled from the Apple Music account panel
+  appleStealthGet: () => ipcRenderer.invoke('mineradio-apple-stealth-get'),
+  appleStealthSet: (enabled) => ipcRenderer.invoke('mineradio-apple-stealth-set', { enabled: !!enabled }),
+  onAppleStealthChanged: (cb) => { if (typeof cb === 'function') ipcRenderer.on('mineradio-apple-stealth-changed', (_e, payload) => cb(payload)); },
   amc: {
     searchTracks: (payload) => ipcRenderer.invoke('amc:search', payload || {}),
     playTrack: (payload) => ipcRenderer.invoke('amc:play', payload || {}),

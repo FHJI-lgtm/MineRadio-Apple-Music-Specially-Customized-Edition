@@ -1,0 +1,34 @@
+{
+  "startedAt": "2026-09-27T03:31:56.364Z",
+  "term": "Blinding Lights",
+  "steps": {
+    "search": {
+      "count": 4,
+      "first": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims",
+        "trackId": 1513133940,
+        "storefront": "us"
+      }
+    },
+    "play": {
+      "ok": true,
+      "chainOk": true,
+      "verified": true,
+      "stage": "OK",
+      "url": "https://music.apple.com/us/song/blinding-lights/1513133940",
+      "mismatch": [],
+      "expected": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims"
+      },
+      "actual": {
+        "title": "Blinding Lights",
+        "artist": "Teddy Swims — Blinding Lights - Single"
+      },
+      "artistLayer": "exact",
+      "error": ""
+    }
+  },
+  "finishedAt": "2026-09-27T03:32:00.507Z"
+}

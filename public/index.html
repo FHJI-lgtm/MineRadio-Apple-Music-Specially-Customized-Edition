@@ -1675,6 +1675,16 @@
               onclick="submitAppleWebToken()">手动写入 Token</button>
           </div>
         </div>
+        <div class="apple-settings-section">
+          <div class="apple-settings-section-title">Apple Music 隐身模式</div>
+          <div id="apple-stealth-status" class="apple-settings-status"><span class="dot"></span><span
+              id="apple-stealth-status-text">检查中…</span></div>
+          <div class="apple-settings-hint">隐藏 Apple Music 窗口，同时保留 UIA 控制与播放能力。</div>
+          <div class="apple-settings-actions">
+            <button id="apple-stealth-toggle-btn" class="modal-btn" type="button"
+              onclick="toggleAppleStealthMode()">开启隐身模式</button>
+          </div>
+        </div>
         <div id="apple-settings-feedback" class="apple-settings-feedback" aria-live="polite"></div>
         <div class="btn-row">
           <button class="modal-btn" type="button" onclick="closeAppleAccountSettings()">关闭</button>
@@ -1857,7 +1867,7 @@
             <div>
               <div class="update-kicker">MINERADIO</div>
               <div id="update-modal-title" class="update-title">New release</div>
-              <div id="update-modal-version" class="update-version">v2.1.0</div>
+              <div id="update-modal-version" class="update-version">v2.0.0-beta.1</div>
             </div>
           </div>
           <div class="update-hero">

@@ -7,6 +7,52 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const systemMemory = require('./system-memory');
 const appleMusicControl = require('./apple-music-control');
+const { createAlphaStealth } = require('./apple-music-alpha-stealth');
+
+// ------------------------------------------------------------
+// Apple Music stealth mode: Alpha=1 + WS_EX_LAYERED + WS_EX_TRANSPARENT, maintained by a
+// lightweight watchdog. The watchdog only owns those window properties - it never touches
+// playback, SMTC, UIA, lyrics or currentPlaybackContext.
+// ------------------------------------------------------------
+const APPLE_STEALTH_SETTINGS_FILE = 'apple-music-stealth.json';
+function broadcastAppleStealthStatus() {
+  const payload = { ok: true, settings: readAppleStealthSettings(), status: appleStealthStatusPayload() };
+  try {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+        try { win.webContents.send('mineradio-apple-stealth-changed', payload); } catch (_) {}
+      }
+    });
+  } catch (_) {}
+}
+const appleStealth = createAlphaStealth({
+  log: (line) => { try { console.log(line); } catch (_) {} },
+  // The user brought Apple Music up by hand (or closed MineRadio): leave stealth mode and remember it.
+  onUserInteraction: () => {
+    writeAppleStealthSettings({ enabled: false });
+    broadcastAppleStealthStatus();
+  },
+});
+function appleStealthSettingsPath() {
+  return path.join(app.getPath('userData'), APPLE_STEALTH_SETTINGS_FILE);
+}
+function readAppleStealthSettings() {
+  // Stealth mode is ON by default (the user turns it off, or a manual Apple Music interaction does).
+  try {
+    const parsed = JSON.parse(fs.readFileSync(appleStealthSettingsPath(), 'utf8'));
+    return { enabled: !(parsed && parsed.enabled === false) };
+  } catch (_) { return { enabled: true }; }
+}
+function writeAppleStealthSettings(next) {
+  try {
+    fs.writeFileSync(appleStealthSettingsPath(), JSON.stringify({ enabled: !!(next && next.enabled) }, null, 2), 'utf8');
+    return true;
+  } catch (_) { return false; }
+}
+function appleStealthStatusPayload() {
+  const s = appleStealth.status();
+  return { enabled: s.enabled, phase: s.phase, hidden: s.hidden === true, hwnd: s.hwnd, gate: s.gate === true, lastDisabledReason: s.lastDisabledReason || '', lastError: s.lastError || '' };
+}
 const {
   WallpaperEngineLibrary,
   registerWallpaperEngineScheme,
@@ -4898,6 +4944,38 @@ ipcMain.handle('apple-music-clear-login', async () => {
 // Does NOT touch the existing `apple` search provider, provider-fallback, or the
 // credentials-based Apple Music API route. The handlers only TRANSPORT calls and results:
 // they never rewrite the chain's stage and never adjudicate between chainOk and verified.
+// ------------------------------------------------------------
+// Apple Music stealth mode: UI toggle + status (no implementation details are exposed).
+// ------------------------------------------------------------
+ipcMain.handle('mineradio-apple-stealth-get', async () => ({
+  ok: true,
+  settings: readAppleStealthSettings(),
+  status: appleStealthStatusPayload(),
+}));
+ipcMain.handle('mineradio-apple-stealth-set', async (_event, payload = {}) => {
+  const enabled = !!(payload && payload.enabled);
+  writeAppleStealthSettings({ enabled: enabled });
+  try {
+    if (enabled) { await appleStealth.enable(); } else { await appleStealth.disable(); }
+  } catch (e) {
+    console.warn('[AlphaWatchdog] toggle failed: ' + String(e && e.message));
+  }
+  broadcastAppleStealthStatus();
+  return { ok: true, settings: readAppleStealthSettings(), status: appleStealthStatusPayload() };
+});
+
+// Startup: recover any stealth properties left behind by a crash, then honour the saved setting.
+app.whenReady().then(async () => {
+  try {
+    const saved = readAppleStealthSettings();
+    const recovered = await appleStealth.recoverOrphans();
+    if (recovered && recovered.stealthy) { console.log('[AlphaWatchdog] leftover state cleaned on startup'); }
+    if (saved.enabled) { await appleStealth.enable(); }
+  } catch (e) {
+    console.warn('[AlphaWatchdog] startup recovery failed: ' + String(e && e.message));
+  }
+});
+
 // ============================================================
 ipcMain.handle('amc:search', async (_event, payload = {}) => {
   const query = payload && payload.query ? String(payload.query) : '';
@@ -4911,7 +4989,16 @@ ipcMain.handle('amc:search', async (_event, payload = {}) => {
 ipcMain.handle('amc:play', async (_event, payload = {}) => {
   const result = (payload && payload.result) ? payload.result : payload;
   const opts = (payload && payload.opts) || {};
-  return await appleMusicControl.playTrack(result || {}, opts);
+  // The frozen chain plays by synthesizing real clicks, and WS_EX_TRANSPARENT would let those
+  // clicks fall through to whatever is behind Apple Music. So the transparent bit is gated:
+  // removed for the duration of the chain and restored in finally (the watchdog honours the gate).
+  let gate = null;
+  try { gate = await appleStealth.beginTemporaryInputWindow('amc-play'); } catch (_) { gate = null; }
+  try {
+    return await appleMusicControl.playTrack(result || {}, opts);
+  } finally {
+    if (gate && gate.ok) { try { await appleStealth.endTemporaryInputWindow(); } catch (_) {} }
+  }
 });
 
 // Same transport-only contract as amc:play: the handler passes the payload through and returns the
@@ -4919,7 +5006,13 @@ ipcMain.handle('amc:play', async (_event, payload = {}) => {
 // has no expected track, so the result carries verification:'smtc-transition' instead of a title match.
 ipcMain.handle('amc:play-playlist', async (_event, payload = {}) => {
   const opts = (payload && payload.opts) || {};
-  return await appleMusicControl.playPlaylist(payload || {}, opts);
+  let gate = null;
+  try { gate = await appleStealth.beginTemporaryInputWindow('amc-play-playlist'); } catch (_) { gate = null; }
+  try {
+    return await appleMusicControl.playPlaylist(payload || {}, opts);
+  } finally {
+    if (gate && gate.ok) { try { await appleStealth.endTemporaryInputWindow(); } catch (_) {} }
+  }
 });
 
 // ------------------------------------------------------------
@@ -7210,6 +7303,8 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('before-quit', (event) => {
+  // best effort: never leave Apple Music invisible (the watchdog is owned by this process)
+  try { appleStealth.stopForQuit().catch(() => {}); } catch (_) {}
     appQuitting = true;
     if (appQuitCleanupComplete) return;
     event.preventDefault();
