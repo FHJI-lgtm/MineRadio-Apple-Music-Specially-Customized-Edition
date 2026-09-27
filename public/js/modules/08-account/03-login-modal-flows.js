@@ -32,7 +32,7 @@ function loginProviderOfficialModeText(provider) {
 }
 // Apple has no cookie import, but its second mode node (网页登录) needs a real flag so the
 // node graph can mark it active and draw the workflow edge to it.
-// Web login is Apple's primary mode; the developer-credential flow is the second mode.
+// Both Apple modes now end in the web-account login; the flag only picks which entry opens it.
 var appleWebLoginModeOpen = true;
 // Set when a workflow drop has already decided the mode: the gesture may emit one more click on the
 // mode row, which must not flip the decision back.
@@ -802,10 +802,9 @@ function openQishuiPublicSearch() {
   showToast('汽水搜索已切换为匹配源');
 }
 // ------------------------------------------------------------
-// Apple Music Web login axis (primary) - separate from the official API axis below.
+// Apple Music Web login axis - the ONLY Apple account axis since the Developer axis was retired
+// (see experiment/apple-music-windows-control/REPORT-DEVELOPER-API-RETIREMENT-AUDIT.md).
 // State source: window.desktopWindow.getAppleLyricsCredentialStatus() -> { configured }.
-// The official Apple Music API credentials (Team ID / Key ID / P8) keep their own axis and are
-// shown next to it; neither one gates the other any more.
 // ------------------------------------------------------------
 // appleWebLoginStatus now lives in 00-state/00-core-stores.js (single source of truth).
 function appleWebLoginBridge() {
@@ -819,10 +818,7 @@ function appleWebLoginStatusText() {
 }
 function appleOfficialApiAxisText() {
   var api = appleLoginStatus || {};
-  if (api.tokenConfigured) return 'Apple Music：已连接';
-  return 'Apple Music：未连接';
-  if (api.configured) return '官方 API：部分配置';
-  return '官方 API：未配置';
+  return api.tokenConfigured ? 'Apple Music：已连接' : 'Apple Music：未连接';
 }
 function appleCardStatusLine() {
   var line = appleWebLoginStatusText() + ' · ' + appleOfficialApiAxisText();
@@ -888,61 +884,17 @@ async function openAmcAppleWebLogin() {
   if (info.loggedIn) return 'Apple Music 已连接 / ' + (info.nickname || 'Apple Music') + ' / 可同步用户歌单与资料库；播放按匹配源自动换源';
   if (info.reauthRequired) return 'Apple Music 登录态已失效，请重新连接官方登录窗口';
   if (info.stale) return 'Apple Music 登录已过期，请重新连接官方登录窗口';
-  if (info.localConfigMissing) return 'Apple Music 未连接：先粘贴 Team ID、Key ID 与 P8 私钥保存配置';
   if (info.tokenConfigured) return 'Apple Music 已连接（Web 账户）';
   if (info.configured || info.searchReady) return 'Apple Music 搜索已可用；登录后可同步用户歌单与资料库';
   var missing = info.oauthMissing && info.oauthMissing.length ? (' 缺少: ' + info.oauthMissing.join(', ')) : '';
-  return '粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥（在 developer.apple.com 的 MusicKit 配置中获取）' + missing;
+  return 'Apple Music 未连接：点“打开 Apple Music 登录页面”，在官方窗口登录 Apple ID' + missing;
 }
-var APPLE_DEVELOPER_CERTIFICATES_URL = 'https://developer.apple.com/account/resources/certificates/list';
 var APPLE_MUSIC_SETUP_GUIDE_URL = 'https://developer.apple.com/documentation/applemusicapi/obtaining_keys_and_authentication_tokens';
-function openAppleDeveloperCertificates() {
-  try { window.open(APPLE_DEVELOPER_CERTIFICATES_URL, '_blank'); } catch (e) { }
-  showToast('已打开 Apple 开发者证书页');
-}
 function openAppleSetupGuide() {
   try { window.open(APPLE_MUSIC_SETUP_GUIDE_URL, '_blank'); } catch (e) { }
   showToast('已打开 Apple Music 官方接入文档');
 }
-function parseAppleConfigInput(text) {
-  text = String(text || '').trim();
-  if (!text) return {};
-  var parsed = null;
-  if (/^\s*\{/.test(text)) {
-    try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-  }
-  if (parsed && typeof parsed === 'object') {
-    var source = parsed.apple && typeof parsed.apple === 'object' ? parsed.apple : parsed;
-    return {
-      teamId: source.teamId || source.team_id || source.iss || '',
-      keyId: source.keyId || source.key_id || source.kid || '',
-      privateKey: source.privateKey || source.private_key || source.p8 || source.key || '',
-      musicId: source.musicId || source.music_id || source.clientId || source.client_id || '',
-      storefront: source.storefront || source.country || source.market || ''
-    };
-  }
-  var payload = {};
-  var loose = [];
-  text.split(/[\r\n;]+/).forEach(function (part) {
-    part = String(part || '').trim();
-    if (!part) return;
-    var pair = part.match(/^([A-Za-z0-9_\-\s]+)\s*[:=]\s*(.+)$/);
-    if (!pair) {
-      loose.push(part);
-      return;
-    }
-    var key = pair[1].toLowerCase().replace(/[\s_-]+/g, '');
-    var value = pair[2].trim();
-    if (key === 'teamid' || key === 'iss' || key === 'appleteamid') payload.teamId = value;
-    else if (key === 'keyid' || key === 'kid' || key === 'applekeyid') payload.keyId = value;
-    else if (key === 'privatekey' || key === 'p8' || key === 'key' || key === 'privatekeycontent') payload.privateKey = value;
-    else if (key === 'musicid' || key === 'clientid' || key === 'musickitid') payload.musicId = value;
-    else if (key === 'storefront' || key === 'country' || key === 'market') payload.storefront = value;
-  });
-  if (!payload.teamId && loose.length >= 1) payload.teamId = loose[0];
-  if (!payload.keyId && loose.length >= 2) payload.keyId = loose[1];
-  return payload;
-}
+
 function updateLoginProviderUi() {
   var meta = platformMeta(loginProvider);
   var isQQ = loginProvider === 'qq';
@@ -965,6 +917,9 @@ function updateLoginProviderUi() {
   var kugouBtn = document.getElementById('login-provider-kugou');
   var qishuiBtn = document.getElementById('login-provider-qishui');
   var qqCookieSaveBtn = document.getElementById('qq-cookie-save-btn');
+  // The Apple panel has no free-text credential box any more (the Developer form is retired): reset the
+  // shared textarea for every provider, then hide it in the Apple branch below.
+  if (qqCookieInput) qqCookieInput.style.display = '';
   var canOpenNeteaseWeb = !!(window.desktopWindow && typeof window.desktopWindow.openNeteaseMusicLogin === 'function');
   var canUseQishuiQrLogin = true;
   var qishuiSearchReady = qishuiPublicSearchReady();
@@ -1034,7 +989,7 @@ function updateLoginProviderUi() {
   var isApple = loginProvider === 'apple';
   var appleBtn = document.getElementById('login-provider-apple');
   var canOpenAppleLogin = !!appleWebLoginBridge();
-  // Two isolated axes for Apple: 网页登录 (web, primary) and 官方登录 (developer credentials).
+  // Apple has a single account axis now (the web account); appleWebMode only picks which entry opens it.
   var appleWebMode = isManualCookieOpenForProvider('apple');
   var appleBusy = !!(appleConfigBusy || appleOAuthBusy);
   if (isApple) {
@@ -1046,9 +1001,7 @@ function updateLoginProviderUi() {
     if (appleBtn) appleBtn.classList.toggle('active', true);
     if (title) title.textContent = 'Apple Music';
     if (desc) desc.innerHTML = canOpenAppleLogin
-      ? (appleWebMode
-        ? '登录 Apple Music 网页账号即可使用（自动获取登录态）。<b>官方 API</b> 为高级可选能力，仅在需要歌单 / 收藏等官方接口时再配置。'
-        : '官方 API 登录：使用 Apple 开发者凭据（Team ID / Key ID / P8 私钥）打开官方授权窗口，用于歌单 / 收藏 / 资料库等接口。')
+      ? '登录 Apple Music 网页账号即可使用（自动获取登录态），可同步用户歌单与资料库；播放走 Apple Music 应用，不再需要开发者凭据。'
       : '当前环境不支持桌面授权桥；请在 Mineradio 桌面版中连接 Apple Music。';
     if (shell) {
       shell.classList.add('web-login-preview');
@@ -1058,20 +1011,19 @@ function updateLoginProviderUi() {
       qqPanel.classList.add('show', 'spotify-guide-panel');
     }
     if (qqCookieToggle) qqCookieToggle.classList.remove('show');
-    if (qqCookieInput) qqCookieInput.placeholder = appleLoginStatus.privateKeyConfigured
-      ? '官方 API 配置（高级）：已保存凭据；可粘贴新的 Team ID / Key ID / 私钥 覆盖（每行一项，或粘贴 JSON）'
-      : '官方 API 配置（高级）：粘贴 Team ID、Key ID、P8 私钥（每行一项，或粘贴 JSON）';
+    // This textarea existed only to collect Team ID / Key ID / P8: with the Developer axis retired it is
+    // hidden for Apple, and the manual media-user-token entry in the note below is the only input left.
+    if (qqCookieInput) qqCookieInput.style.display = 'none';
     if (qqCookieNote) qqCookieNote.innerHTML =
-      '<div class="spotify-guide-title">官方 API 配置（高级，可选）</div>' +
+      '<div class="spotify-guide-title">登录 Apple Music 网页账号</div>' +
       '<div class="spotify-guide-steps">' +
-        '<span>1. 在 Apple 开发者后台创建 MusicKit Key（ES256），下载 .p8 私钥</span>' +
-        '<span>2. 把 Team ID、Key ID、P8 私钥内容粘贴到输入框并保存</span>' +
-        '<span>3. 点“连接 Apple Music”，在官方窗口登录 Apple ID</span>' +
+        '<span>1. 点“打开 Apple Music 登录页面”，在官方窗口登录 Apple ID</span>' +
+        '<span>2. 登录成功后自动保存网页登录态，可同步用户歌单与资料库</span>' +
+        '<span>3. 播放仍由 Apple Music 应用承担（SMTC 跟随），不需要开发者凭据</span>' +
       '</div>' +
       '<div class="spotify-guide-actions">' +
-        '<button type="button" class="spotify-guide-link" onclick="openAppleDeveloperCertificates()">开发者证书页</button>' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleSetupGuide()">官方接入文档</button>' +
-        '<span>仅官方 API（歌单 / 收藏 / 资料库）需要此配置</span>' +
+        '<span>歌单 / 专辑 / 歌词都走 Web 读取</span>' +
       '</div>' +
       '<div class="apple-manual-token-row">' +
         '<small>备用：粘贴 music user token（浏览器登录 music.apple.com 后取 Cookie 中的 media-user-token）</small>' +
@@ -1079,8 +1031,8 @@ function updateLoginProviderUi() {
         '<button type="button" class="spotify-guide-link" onclick="submitAppleManualToken()" style="margin-top:8px">保存手动 token</button>' +
       '</div>';
     if (qqCookieSaveBtn) {
-      qqCookieSaveBtn.disabled = appleBusy;
-      qqCookieSaveBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : '保存开发者凭据');
+      qqCookieSaveBtn.disabled = appleBusy || !canOpenAppleLogin;
+      qqCookieSaveBtn.textContent = appleOAuthBusy ? '等待登录…' : '打开 Apple Music 登录页面';
     }
     if (qqCard) {
       qqCard.style.display = '';
@@ -1088,7 +1040,7 @@ function updateLoginProviderUi() {
       var amCardMark = qqCard.querySelector('b');
       var amCardLabel = qqCard.querySelector('span');
       if (amCardMark) amCardMark.textContent = 'AM';
-      if (amCardLabel) amCardLabel.textContent = appleWebMode ? (appleWebLoginStatus.busy ? '等待 Apple Music 登录' : '打开 Apple Music 登录页面') : '官方 API 登录';
+      if (amCardLabel) amCardLabel.textContent = (appleWebLoginStatus.busy || appleOAuthBusy) ? '等待 Apple Music 登录' : '打开 Apple Music 登录页面';
     }
     if (st) {
       st.className = 'preview';
@@ -1101,8 +1053,8 @@ function updateLoginProviderUi() {
         refreshBtn.onclick = openAmcAppleWebLogin;
       } else {
         refreshBtn.disabled = appleBusy || !canOpenAppleLogin;
-        refreshBtn.textContent = appleConfigBusy ? '保存中…' : (appleOAuthBusy ? '等待登录…' : (appleLoginStatus.privateKeyConfigured ? '连接 Apple Music' : '保存并连接'));
-        refreshBtn.onclick = appleLoginStatus.privateKeyConfigured ? openAppleWebLogin : submitAppleConfigLogin;
+        refreshBtn.textContent = appleOAuthBusy ? '等待登录…' : '打开 Apple Music 登录页面';
+        refreshBtn.onclick = openAppleWebLogin;
       }
     }
     if (!appleWebLoginStatus.ready) {
@@ -1511,14 +1463,8 @@ async function openAppleWebLogin() {
     if (statusEl) { statusEl.textContent = '当前环境不支持 Apple Music 本地登录桥，请使用 Mineradio 桌面版。'; statusEl.className = 'fail'; }
     return;
   }
-  if (!appleLoginStatus.privateKeyConfigured && !appleLoginStatus.tokenConfigured) {
-    var latestStatus = await refreshAppleLoginStatus();
-    if (!latestStatus.privateKeyConfigured && !latestStatus.tokenConfigured) {
-      updateLoginProviderUi();
-      if (statusEl) { statusEl.textContent = '先粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥，然后点击“保存并连接”。'; statusEl.className = 'fail'; }
-      return;
-    }
-  }
+  // No credential precondition: the Developer axis is retired and desktop/main.js no longer gates the
+  // official login window on Team ID / Key ID / P8 - the account IS the web account (media-user-token).
   appleOAuthBusy = true;
   updateLoginProviderUi();
   if (statusEl) { statusEl.textContent = '正在打开 Apple Music 官方登录窗口，请在窗口中登录 Apple ID…'; statusEl.className = 'preview'; }
@@ -1526,9 +1472,7 @@ async function openAppleWebLogin() {
   try {
     var result = await api.openAppleMusicLogin();
     if (!result || !result.ok) {
-      if (result && result.error === 'APPLE_MUSIC_CREDENTIALS_REQUIRED') {
-        throw new Error(result.message || '请先保存 Apple 开发者凭据');
-      }
+      // AppleMusicLogin no longer reports a credential precondition: the Developer axis is retired.
       throw new Error((result && (result.message || result.error)) || 'Apple Music 登录未完成');
     }
     if (statusEl) { statusEl.textContent = '正在同步 Apple Music 账号、资料库和歌单…'; statusEl.className = 'preview'; }
@@ -1552,45 +1496,6 @@ async function openAppleWebLogin() {
     updateLoginProviderUi();
     if (failText && statusEl) { statusEl.textContent = failText; statusEl.className = 'fail'; }
   }
-}
-async function submitAppleConfigLogin() {
-  if (appleConfigBusy || appleOAuthBusy) return;
-  var input = document.getElementById('qq-cookie-input');
-  var statusEl = document.getElementById('qr-status');
-  var saveBtn = document.getElementById('qq-cookie-save-btn');
-  var config = parseAppleConfigInput(input ? input.value : '');
-  if (!config.teamId && !config.keyId && !config.privateKey && appleLoginStatus.privateKeyConfigured) return openAppleWebLogin();
-  if (!config.teamId || !config.keyId || !config.privateKey) {
-    if (statusEl) { statusEl.textContent = '请同时粘贴 Team ID、Key ID 与 P8 私钥'; statusEl.className = 'fail'; }
-    if (input) {
-      try { input.focus({ preventScroll: true }); } catch (e) { try { input.focus(); } catch (_) { } }
-    }
-    return;
-  }
-  appleConfigBusy = true;
-  if (saveBtn) saveBtn.classList.add('busy');
-  if (statusEl) { statusEl.textContent = '正在保存 Apple Music 开发者凭据…'; statusEl.className = 'preview'; }
-  updateLoginProviderUi();
-  var shouldOpenLogin = false;
-  try {
-    var info = await apiJson('/api/apple/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
-    });
-    if (!info || info.error || info.ok === false) throw new Error((info && (info.message || info.error)) || 'Apple Music 凭据保存失败');
-    appleLoginStatus = normalizeAppleLoginStatus(info);
-    if (input) input.value = '';
-    if (statusEl) { statusEl.textContent = 'Apple 开发者凭据已保存，正在打开官方登录窗口…'; statusEl.className = 'preview'; }
-    shouldOpenLogin = true;
-  } catch (e) {
-    if (statusEl) { statusEl.textContent = e && e.message ? e.message : 'Apple Music 凭据保存失败'; statusEl.className = 'fail'; }
-  } finally {
-    appleConfigBusy = false;
-    if (saveBtn) saveBtn.classList.remove('busy');
-    updateLoginProviderUi();
-  }
-  if (shouldOpenLogin) await openAppleWebLogin();
 }
 async function submitAppleManualToken() {
   var input = document.getElementById('apple-manual-token-input');
@@ -1786,7 +1691,7 @@ async function openQishuiWebLogin() {
 }
 async function submitQQCookieLogin() {
   if (loginProvider === 'spotify') return submitSpotifyConfigLogin();
-  if (loginProvider === 'apple') return submitAppleConfigLogin();
+  if (loginProvider === 'apple') return openAppleWebLogin();
   if (loginProvider === 'qishui') return openQishuiWebLogin();
   if (loginProvider === 'netease') return submitNeteaseCookieLogin();
   var isKugou = loginProvider === 'kugou';

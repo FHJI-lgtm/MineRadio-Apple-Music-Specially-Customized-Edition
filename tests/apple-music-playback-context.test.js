@@ -340,6 +340,8 @@ test('32. no source file references an identifier that was deleted with the lega
     'smtcHoverCollapseTimer', 'smtcExpandDirection', 'SMTC_EDGE_SAFE_MARGIN', 'smtcPanelSize',
     'SMTC_ROW_COVER_OFFSET', 'smtcEnsureLyricSourceUi', 'smtcToggleLyricSourcePanel', 'smtcLyricSourceRow',
     'smtcRenderLyricSourcePanel', 'handleAppleSearch', 'APPLE_AMP_API_BASE', 'originAmp',
+    // the Developer credential form retired with the Apple account axis (the login modal is web-only now)
+    'parseAppleConfigInput', 'openAppleDeveloperCertificates', 'APPLE_DEVELOPER_CERTIFICATES_URL', 'submitAppleConfigLogin',
   ];
   const roots = ['public', 'desktop', 'scripts', 'tests'];
   const files = [];

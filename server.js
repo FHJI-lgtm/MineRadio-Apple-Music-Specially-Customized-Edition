@@ -129,8 +129,6 @@ const {
   handleSpotifyLyric,
 } = require('./spotify-api');
 const {
-  getAppleConfig,
-  saveAppleConfig,
   saveAppleUserToken,
   clearAppleToken,
   getAppleDeveloperToken,
@@ -164,7 +162,6 @@ const LOGIN_EASTER_EGG_PROTECTED_ROUTES = new Set([
   '/api/qishui/login/qrcode',
   '/api/qishui/login/check',
   '/api/spotify/config',
-  '/api/apple/config',
 ]);
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const DEFAULT_COOKIE_FILE = path.join(__dirname, '.cookie');
@@ -5298,39 +5295,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pn === '/api/apple/config') {
-    try {
-      if (req.method !== 'POST') {
-        sendJSON(res, { provider: 'apple', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405);
-        return;
-      }
-      const body = await readRequestBody(req);
-      const saved = saveAppleConfig(body);
-      const status = await handleAppleStatus();
-      sendJSON(res, Object.assign({}, status, saved, {
-        ok: true,
-        configured: true,
-        message: status.loggedIn
-          ? status.message
-          : 'Apple Music 开发者凭据已保存，可打开官方登录窗口连接 Apple ID。'
-      }));
-    } catch (err) {
-      console.error('[AppleMusicConfig]', err);
-      const missing = err && err.missing || [];
-      sendJSON(res, {
-        provider: 'apple',
-        ok: false,
-        configured: getAppleConfig().configured,
-        loggedIn: false,
-        error: err.code || err.message,
-        message: err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' || err.message === 'APPLE_MUSIC_CREDENTIALS_REQUIRED'
-          ? '请先粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥。'
-          : err.message,
-        missing,
-      }, err && err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' ? 400 : 500);
-    }
-    return;
-  }
+  // /api/apple/config removed with the Developer account axis: it wrote the Developer credential file
+  // (Team ID / Key ID / P8) and returned the Developer status. Nothing reads that file any more - the
+  // Apple account IS the web account (media-user-token), written by the login window path.
 
 // /api/apple/oauth/dev-token removed with the Developer account axis: it minted a Developer JWT
 // (Team ID / Key ID / P8) and no renderer ever called it.
