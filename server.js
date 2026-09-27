@@ -143,7 +143,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5289,7 +5289,8 @@ const server = http.createServer(async (req, res) => {
 
   if (pn === '/api/apple/status') {
     try {
-      sendJSON(res, await handleAppleStatus());
+      // Web axis only: the Developer account axis is retired (see REPORT-DEVELOPER-API-RETIREMENT-AUDIT.md).
+    sendJSON(res, await handleAppleAccountStatusWeb());
     } catch (err) {
       console.error('[AppleMusicStatus]', err);
       sendJSON(res, { provider: 'apple', configured: false, loggedIn: false, error: err.message }, 500);
@@ -5331,16 +5332,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pn === '/api/apple/oauth/dev-token') {
-    try {
-      const token = await getAppleDeveloperToken();
-      sendJSON(res, { provider: 'apple', ok: true, developerToken: token, expiresIn: 300 });
-    } catch (err) {
-      console.error('[AppleMusicDevToken]', err);
-      sendJSON(res, { provider: 'apple', ok: false, error: err.code || err.message, message: err.message, missing: err.missing || [] }, err && err.code === 'APPLE_MUSIC_CREDENTIALS_REQUIRED' ? 400 : 500);
-    }
-    return;
-  }
+// /api/apple/oauth/dev-token removed with the Developer account axis: it minted a Developer JWT
+// (Team ID / Key ID / P8) and no renderer ever called it.
 
   if (pn === '/api/apple/login/token') {
     try {

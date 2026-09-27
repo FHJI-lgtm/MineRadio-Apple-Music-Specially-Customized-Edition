@@ -186,6 +186,59 @@ async function handleApplePlaylistTracksWeb(playlistId, opts) {
     message: '',
   };
 }
+// ---- Apple account status (WEB axis only) ------------------------------------------------------------
+// The Developer account axis (Team ID / Key ID / P8 -> JWT -> /v1/me/*) is retired: the Apple account IS
+// the web account (media-user-token). This reports that state and nothing else - no credential file, no JWT,
+// no Developer request. It lives here (not in apple-music-api.js) because that module's boundary forbids it
+// from touching the media-user-token.
+function appleWebCredentialSnapshot() {
+  let token = '';
+  let storefront = '';
+  let authorizedAt = 0;
+  try { token = normalizeText(webApi.getMediaUserToken && webApi.getMediaUserToken()); } catch (_) { }
+  try {
+    const store = lyricsCredential.createAppleMusicLyricsCredentialStore({});
+    const snap = (typeof store.read === 'function' ? store.read() : (typeof store.get === 'function' ? store.get() : null)) || {};
+    if (!token) token = normalizeText(snap.mediaUserToken || snap.token);
+    storefront = normalizeText(snap.storefront);
+    authorizedAt = Number(snap.authorizedAt) || 0;
+  } catch (_) { }
+  return { token: token, storefront: storefront, authorizedAt: authorizedAt };
+}
+async function handleAppleAccountStatusWeb() {
+  const snap = appleWebCredentialSnapshot();
+  const loggedIn = !!snap.token;
+  return {
+    provider: 'apple',
+    accountAxis: 'web',
+
+    loggedIn: loggedIn,
+    configured: loggedIn,
+    profileReady: loggedIn,
+    nickname: '',
+    storefront: snap.storefront,
+    tokenConfigured: loggedIn,
+    tokenReady: loggedIn,
+    authorizedAt: snap.authorizedAt,
+    stale: false,
+    reauthRequired: false,
+    privateKeyConfigured: false,
+    capabilities: {
+      search: false,
+      playlists: loggedIn,
+      library: false,
+      play: false,
+      lyrics: loggedIn,
+      profile: loggedIn,
+    },
+    error: '',
+    errorMessage: '',
+    message: loggedIn
+      ? 'Apple Music 已连接（Web 账户）：播放走 Windows 应用，歌单/专辑/歌词走 Web 读取。'
+      : 'Apple Music 未连接：点击连接后在官方窗口登录 Apple ID。',
+  };
+}
+
 // ---- Apple Music WEB path for catalog album detail (step 3C) -----------------------------------------
 // Scope: CATALOG albums only (the caller supplies a catalog album id). Library albums carry no catalog id
 // (playParams.catalogId === undefined) and are deliberately NOT supported in this step - no id is ever
@@ -256,6 +309,7 @@ async function handleAppleAlbumDetailWeb(albumId, opts) {
 }
 module.exports = {
   ensureCredentialSource,
+  handleAppleAccountStatusWeb,
   handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracksWeb,
   handleAppleAlbumDetailWeb,
