@@ -130,8 +130,6 @@ const {
 } = require('./spotify-api');
 const {
   clearAppleToken,
-  handleAppleLibraryCheck,
-  handleAppleLibrarySet,
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
@@ -5322,70 +5320,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pn === '/api/apple/song/like/check') {
-    try {
-      const ids = String(url.searchParams.get('ids') || url.searchParams.get('id') || '')
-        .split(',').map(value => value.trim()).filter(Boolean);
-      sendJSON(res, await handleAppleLibraryCheck('track', ids));
-    } catch (err) {
-      console.error('[AppleMusicLikeCheck]', err);
-      sendJSON(res, { provider: 'apple', liked: {}, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
-    }
-    return;
-  }
-
-  if (pn === '/api/apple/song/like') {
-    try {
-      const body = req.method === 'POST' ? await readRequestBody(req) : {};
-      const song = body.song || {
-        id: body.id || url.searchParams.get('id') || '',
-        appleId: body.appleId || url.searchParams.get('appleId') || '',
-        isrc: body.isrc || url.searchParams.get('isrc') || '',
-      };
-      const liked = String(body.like != null ? body.like : (url.searchParams.get('like') || 'true')) !== 'false';
-      sendJSON(res, await handleAppleLibrarySet('track', song, liked));
-    } catch (err) {
-      console.error('[AppleMusicLike]', err);
-      sendJSON(res, {
-        provider: 'apple',
-        success: false,
-        error: err.code || err.message,
-        message: err.code === 'APPLE_MUSIC_LOGIN_REQUIRED'
-          ? '请在账号面板重新连接 Apple Music。'
-          : err.message,
-      }, Number(err.statusCode) || 500);
-    }
-    return;
-  }
-
-  if (pn === '/api/apple/album/like/check') {
-    try {
-      const ids = String(url.searchParams.get('ids') || url.searchParams.get('id') || '')
-        .split(',').map(value => value.trim()).filter(Boolean);
-      sendJSON(res, await handleAppleLibraryCheck('album', ids));
-    } catch (err) {
-      console.error('[AppleMusicAlbumLikeCheck]', err);
-      sendJSON(res, { provider: 'apple', liked: {}, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
-    }
-    return;
-  }
-
-  if (pn === '/api/apple/album/like') {
-    try {
-      const body = req.method === 'POST' ? await readRequestBody(req) : {};
-      const album = body.album || {
-        id: body.id || body.albumId || url.searchParams.get('id') || '',
-        albumId: body.albumId || '',
-        upc: body.upc || url.searchParams.get('upc') || '',
-      };
-      const liked = String(body.like != null ? body.like : (url.searchParams.get('like') || 'true')) !== 'false';
-      sendJSON(res, await handleAppleLibrarySet('album', album, liked));
-    } catch (err) {
-      console.error('[AppleMusicAlbumLike]', err);
-      sendJSON(res, { provider: 'apple', success: false, error: err.code || err.message, message: err.message }, Number(err.statusCode) || 500);
-    }
-    return;
-  }
+  // /api/apple/song/like|song/like/check|album/like|album/like/check removed with the Developer account axis:
+  // Apple 写入 (红心 / 收藏专辑) 一直靠 Developer 凭据 (JWT + Music-User-Token), 现在整个能力下线。
+  // 渲染层保留了置灰的「收藏专辑」入口, 不再发任何请求 (05-playback/06-track-detail-lyrics-actions.js)。
 
   if (pn === '/api/apple/playlist/tracks') {
     try {

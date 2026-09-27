@@ -345,6 +345,16 @@ test('32. no source file references an identifier that was deleted with the lega
     // the Developer status/profile/write read chain retired with it (account IS the web account)
     'normalizeAppleProfile', 'getAppleConfigFile', 'verifyAppleUserToken', 'APPLE_PROFILE_CACHE_TTL_MS',
     'handleAppleLibrarySongs', 'dedupeAppleTracks', 'appleCacheWrap', 'writeJsonFile',
+    // and finally the whole Developer request/credential chain (Apple writes went with it)
+    'handleAppleLibraryCheck', 'handleAppleLibrarySet', 'appleApiHeaders', 'getAppleDeveloperToken',
+    'signAppleDeveloperJwt', 'appleDevTokenCache', 'readStoredAppleToken', 'requireAppleUserToken',
+    'appleSend', 'appleRequestJson', 'appleRequestText', 'appleDelay', 'appleTransientError',
+    'resolveAppleCatalogIdsToIsrc', 'resolveAppleCatalogAlbumsToUpc', 'appleIdentityValues',
+    'appleIsrcPattern', 'findAppleLibrarySongIdByIsrc', 'findAppleLibraryAlbumIdByUpc',
+    'readAppleFileConfig', 'appleConfigFileCandidates', 'normalizeAppleFileConfig',
+    'normalizeApplePrivateKey', 'firstEnv', 'base64url', 'uniqueList', 'APPLE_API_BASE',
+    'APPLE_DEV_TOKEN_TTL_MS', 'APPLE_USER_AGENT', 'APPLE_TRANSIENT_RETRY_DELAYS_MS',
+    'APPLE_SEARCH_LIMIT_MAX', 'resetAppleRuntimeStateForTests', 'appleProfileCache', 'appleSearchCache',
   ];
   const roots = ['public', 'desktop', 'scripts', 'tests'];
   const files = [];

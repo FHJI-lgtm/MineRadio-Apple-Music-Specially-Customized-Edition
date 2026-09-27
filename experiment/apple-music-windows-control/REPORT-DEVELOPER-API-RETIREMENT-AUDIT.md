@@ -6,14 +6,14 @@
 
 | # | 验收项 | 结论 | 证据 |
 |---|---|---|---|
-| 1 | 主流程已无 Developer API 依赖 | ⚠️ 基本成立（账户状态链除外） | 搜索/歌单/专辑/播放/歌词/UI 主链见 #3-#7；唯一残留见 #2 |
-| 2 | JWT / Team ID / Key ID / P8 不再被运行时读取 | ❌ **不成立** | `apple-music-api.js:486 appleApiHeaders()` → `getAppleDeveloperToken()`(:370) → `signAppleDeveloperJwt()`(:358)，读 teamId/keyId/privateKey；`handleAppleStatus()`(:754) → `getAppleProfile()`(:798) → `appleGet('/v1/me/profile')` 走该 header 链。UI 触发：`08-account/02-login-status.js:567`（`/api/apple/status`）、`03-login-modal-flows.js:1576`（`/api/apple/config`）。另 `desktop/main.js:3234` 在登录流程里读 `getAppleCredentials()` |
+| 1 | 主流程已无 Developer API 依赖 | ✅ | 搜索/歌单/专辑/播放/歌词/UI 主链见 #3-#7；账户状态链见 #2，两者都已收口（§六~§九） |
+| 2 | JWT / Team ID / Key ID / P8 不再被运行时读取 | ✅ **成立** | 整条读取链已删除（§八、§九）：`apple-music-api.js` 不再 import `crypto`/`https`，没有 developer token / 凭证文件 / `/v1/me/*` 的任何实现；`/api/apple/status` 走 web 轴（`e06d3c0`），`/api/apple/config`（§六）、`/api/apple/login/token`（§八）、`/api/apple/song|album/like*`（§九）路由已删；`desktop/main.js` 也无 Developer 助手调用（test 17 钉住） |
 | 3 | Web bearer + media-user-token 覆盖现有读操作 | ✅ | `server.js:5460`→`handleApplePlaylistTracksWeb`、`:5473`→`handleAppleAlbumDetailWeb`、`:5383`→`handleAppleUserPlaylistsWeb`（`desktop/apple-music-web-reads-api.js`）。唯一走 Developer 的读是 #2 的资料链 |
 | 4 | AM 播放走 Windows App + SMTC | ✅ | `/api/apple/song/url` → `handleAppleSongUrl`(`apple-music-api.js:1405`) 已是**纯 stub**：`playable:false` + `restriction`，零凭据、零外部调用；播放与控制走 AMC(UIA)+SMTC |
 | 5 | 歌词走现有 Web/歌词链 | ✅ | `apple-music-api.js:1425 handleAppleLyric` 是 **thin delegate** → `desktop/apple-music-lyrics-api.js:234`（注释明示为兼容 server.js 与既有脚本而保留的转发） |
 | 6 | 旧 SMTC hover UI 已不存在 | ✅ | `95c53df`（`03-smtc-ui.js` 1035→392 行）+ `a92f641`；31 个旧标识符全仓扫描 0 残留；`05` 内嵌词源面板（−156 行）一并删除 |
 | 7 | 新 UI 是唯一入口 | ✅ | 唯一入口 = 底栏「词」→ 同步设置（`#lyric-sync-entry-btn` → `toggleSyncSettingsPanel`），歌词源 = 独立窗口；三个设置节点由隐藏宿主 `smtcEnsureSettingsHost()` 创建、被面板**搬入**（单实例、无重复 id） |
-| 8 | 不误删仍被依赖的 Developer 代码 | ✅ | 保留：`mapAppleTrack / appleErrorDetails / APPLE_LIKED_PLAYLIST_ID`（`apple-music-web-reads-api.js:27` 复用）、`getAppleConfig / getAppleCredentials / saveAppleUserToken / clearAppleToken`（登录流程 + web token store）、`resetAppleRuntimeStateForTests`；`scripts/apple-music-web-mapper-compat.js` 仍可作为新旧映射兼容校验 |
+| 8 | 不误删仍被依赖的代码 | ✅ | 保留且仍被引用：`mapAppleTrack / mapAppleLibraryPlaylist / appleErrorDetails`（`apple-music-web-reads-api.js:27`、`scripts/apple-music-web-mapper-compat.js`）、`APPLE_LIKED_PLAYLIST_ID`、`clearAppleToken`（`/api/apple/logout`）、`handleAppleSongUrl`（stub）、`handleAppleLyric`（web 委托）、`normalizeText`；其余 Developer 代码已删（§八、§九，`apple-music-api.js` 1419 → 199 行） |
 | 9 | 完整回归 | ⚠️ 37/38 | 全部 `tests/*.test.js` 实跑：**37 PASS / 1 FAIL**。失败者为 `update-external-only.test.js:29 assert.equal(packageData.version, '2.1.0')`，而 `package.json` 为 `1.2.3` —— **预先存在**：`git diff --name-only 4a6ae2f..HEAD` 中没有任何 `package.json`/update 相关文件 |
 
 ## 二、仍然存在的 Developer 面（不清除就不能称「退休」）
@@ -25,7 +25,7 @@
 3. ~~`/api/apple/login/token` 仍走 Developer 面~~ **已解决**（§七 + §八）：渲染层的「备用：粘贴 media-user-token」并入 Apple Music 账户设置后走 web credential store；路由本体与它背后的 `saveAppleUserToken` / `handleAppleStatus` / `getAppleProfile` / `getAppleDeveloperToken` 调用链已在 §八 删除。
 4. ~~两条 token store 不是同一个~~ **已解决**（§七）：手动 token 与网页登录窗口现在写同一个 store（`.apple-music-lyrics-credential.json`，主进程 safeStorage），`/api/apple/status`、状态行与账户设置里的状态不再自相矛盾。Developer 的 `.apple-music-token.json` 已没有渲染层写入方（只剩上面那条无调用方的路由与退出登录时的一次 `clearAppleToken()`）。
 5. ~~死代码/死字段~~ **已解决**（§八）：`saveAppleConfig`、`handleAppleStatus`/`getAppleProfile`/`normalizeAppleProfile`/`appleProfileCache`、`getAppleConfig`/`tokenConfigured`、`saveAppleUserToken`/`verifyAppleUserToken`、`writeJsonFile`/`getAppleConfigFile`、三个 Developer 读 handler、`handleAppleLibrarySongs`/`dedupeAppleTracks`/`appleCacheWrap` 全部删除；渲染层 `appleLoginStatus.privateKeyConfigured` 与 `appleConfigBusy` 也已从 store/normalizer/logout/web 状态里清掉。
-6. **Apple 写入（更正：只有 song 那一对不可达）**：`/api/apple/song/like|song/like/check` 被 `adapter.like === false` 门掉（`05-playback/06-track-detail-lyrics-actions.js:1449`，守卫 :1611 / :1690）✔；但 `/api/apple/album/like|album/like/check` **没有**被 `collect:false` 门住 —— `albumCollectionConfig()`(:284) 照旧返回 apple 配置、`renderAlbumCollectionButton()`(:292) 照旧渲染「收藏专辑」、`syncAlbumCollectionState()`(:309) 与 `toggleAlbumCollection()`(:331) 照旧发请求。两条 album 路由**可达**，且仍会走 Developer JWT（`appleApiHeaders` → `getAppleDeveloperToken`），这是验收项 #2 现在唯一的可达触发点。
+6. ~~Apple 写入~~ **已解决**（§九，方案 B）：4 条 like 路由与 `handleAppleLibraryCheck/Set` 已删；详情面板「收藏专辑」入口保留但**置灰**并提示「Apple 暂不支持收藏」，不再发任何请求、也不再引用已删路由。
 
 ## 三、最小后续切片（进度）
 
@@ -35,9 +35,9 @@
 4. ~~登录弹窗的 Developer 凭据表单 + `/api/apple/config`~~ **已完成**（Slice D，§六）。
 5. ~~把手动 token 路径并入 web 轴~~ **已完成**（§七：`saveAppleWebToken` → 既有 `mineradio-apple-lyrics-credential-set` → `createAppleMusicLyricsCredentialStore`；`submitAppleManualToken` 与散落的 token 输入框已删除）。
 6. ~~删 `saveAppleConfig`、`/api/apple/login/token`（连同 `handleAppleStatus` 调用链）与 `privateKeyConfigured` / `appleConfigBusy` 死字段~~ **已完成**（§八：`apple-music-api.js` 1419 → 844 行，`server.js` 同步收窄 import）。
-7. **待定（有前提，不能当纯删）**：删 `/api/apple/song/like|album/like|like/check` 路由 + `handleAppleLibraryCheck/Set`。song 对是死路由；**album 对可达**（§二.6 更正），删它必须同时决定详情面板「收藏专辑」按钮的处置（隐藏 / 明确显示「Apple 暂不支持收藏」）。做完这条，`appleGet` / `appleApiHeaders` / `getAppleDeveloperToken` / `signAppleDeveloperJwt` / `getAppleCredentials` 才会整条变成死代码。
+7. ~~删 like 路由 + `handleAppleLibraryCheck/Set`~~ **已完成**（§九，方案 B：入口置灰保留）。至此 `appleGet` / `appleApiHeaders` / `getAppleDeveloperToken` / `signAppleDeveloperJwt` / `getAppleCredentials` 整条变死并已删除；`apple-music-api.js` 1419 → 199 行。
 
-验收项 #2（JWT / Team ID / Key ID / P8 不再被运行时读取）：**账户轴、登录、播放、歌词、UI 路径上已成立**；唯一残留是 §三.7 的 album 收藏路由（可达但需要用户点「收藏专辑」）。做完 7 才能把 #2 整体翻 ✅，**在那之前不应打 `developer-api-retired`**。
+验收项 #2（JWT / Team ID / Key ID / P8 不再被运行时读取）**已成立**（§一）。`developer-api-retired` 这个 tag 现在立得住 —— 是否打由项目所有者决定。
 
 ## 四、本次 checkpoint
 
@@ -83,3 +83,12 @@ Developer 账号轴收尾的 UI / 路由切除。改动：
    - 渲染层死字段：`appleLoginStatus.privateKeyConfigured`（store 默认值、normalizer 两处、两处 logout 重置、web 状态响应）与 `appleConfigBusy` 全部清除。
    - **保留（仍被依赖）**：`mapAppleTrack` / `mapAppleLibraryPlaylist` / `appleErrorDetails`（web 读取复用）、`getAppleCredentials` / `getAppleDeveloperToken` / `signAppleDeveloperJwt` / `appleApiHeaders` / `appleGet`（§三.7 的 like/album 路由仍在用）、`clearAppleToken`（`/api/apple/logout` 仍在用）、`handleAppleSongUrl`（纯 stub）、`handleAppleLyric`（web 委托）。
 3. **测试**：`tests/apple-account-settings.test.js` 新增 TEST 16–18（vm 跑真实退出登录函数体并断言「既清分区也清 web 凭证」、main.js 不再调用任何已删助手、两条主线文件不再有 Developer 读取链）；`tests/apple-music-playback-context.test.js` test 32 的 retired 清单补 8 个已删标识符，并把本测试文件加入 skip（它自己就会点名这些标识符）。全量 `node --test tests/*.test.js` → **239 项，238 pass / 1 fail**（仍是既有的 `update-external-only` 版本断言）。
+
+## 九、Apple 写入能力下线（方案 B：入口置灰保留）（2026-09-27）
+
+- **渲染层**（`public/js/modules/05-playback/06-track-detail-lyrics-actions.js`）：`albumCollectionConfig()` 的 apple 分支改为 `{ provider, id, supported: false, label }`（**没有 endpoint**）；`renderAlbumCollectionButton()` 渲染 `<button id="album-collection-toggle" class="detail-action-toggle unsupported" disabled title="Apple 暂不支持收藏">暂不支持收藏</button>`；`syncAlbumCollectionButton()` 对 `supported === false` 保持置灰（不会把文案改回「收藏专辑」）；`syncAlbumCollectionState()` 与 `toggleAlbumCollection()` 提前返回（后者 toast「Apple 暂不支持收藏专辑」）；`songAccountAdapter('apple')` 的 `likeCheckUrl`/`likeUrl` 清空（`like:false` 的既有门不变）。其他平台（网易云 / Spotify / 汽水）的收藏链一字未改。CSS 只加了 `.detail-action-toggle.unsupported` / `[disabled]` 两个置灰规则。
+- **服务端**（`server.js`）：删 `/api/apple/song/like/check`、`/api/apple/song/like`、`/api/apple/album/like/check`、`/api/apple/album/like` 四条路由与 `handleAppleLibraryCheck/Set` 两个 import。
+- **`apple-music-api.js` 1419 → 199 行**：连同 `handleAppleLibraryCheck/Set` 及其 helper（`resolveAppleCatalogIdsToIsrc/AlbumsToUpc`、`findAppleLibrarySongIdByIsrc/AlbumIdByUpc`、`appleIdentityValues`、`appleIsrcPattern`）删掉整条请求链：`appleGet`/`appleSend`/`appleUrl`/`appleRequestText`/`appleRequestJson`/`appleDelay`/`appleTransientError`、`appleApiHeaders`/`getAppleDeveloperToken`/`signAppleDeveloperJwt`/`base64url`/`appleDevTokenCache`、`getAppleCredentials`/`readAppleFileConfig`/`appleConfigFileCandidates`/`normalizeAppleFileConfig`/`normalizeApplePrivateKey`/`firstEnv`、`readStoredAppleToken`/`requireAppleUserToken`、`resetAppleRuntimeStateForTests` 及相关常量；`require('https')`/`require('crypto')` 一并移除，文件头与段落注释同步改写（不再声称自己是一个 Developer API bridge）。
+- **保留**：`normalizeText`、`appleErrorDetails`、`appleArtworkUrl`、`appleArtistList`、`mapAppleTrack`、`mapAppleLibraryPlaylist`（web 读取复用；`desktop/apple-music-lyrics-api.js` 的注释也从「列一串零命中符号」改成「Developer 链已不存在」）、`handleAppleSongUrl`（stub）、`handleAppleLyric`（转发）、`getAppleTokenFile` + `clearAppleToken`（只删不读，供 `/api/apple/logout` 清历史文件）、`APPLE_LIKED_PLAYLIST_ID`。
+- **验收项 #2 现在成立**：源码树里不再有任何读 Team ID / Key ID / P8 或签 developer JWT 的代码；test 32 的 retired 清单（+34 个标识符）与 `tests/apple-account-settings.test.js` TEST 18/19 双保险。
+- 测试：全量 `node --test tests/*.test.js` → **240 项，239 pass / 1 fail**（仍是既有的 `update-external-only` 版本断言）。

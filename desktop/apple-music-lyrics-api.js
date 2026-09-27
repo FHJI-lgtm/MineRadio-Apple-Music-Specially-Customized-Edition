@@ -5,9 +5,8 @@
 //   local second: Apple Music package / INetCache TTML parse + LRC build
 //   never throws: a web failure only console.warn()s and falls back to the local path
 //
-// No Developer-credential dependency of any kind: zero hits for appleGet / appleSend /
-// appleApiHeaders / getAppleDeveloperToken / getAppleCredentials / signAppleDeveloperJwt /
-// readStoredAppleToken / appleDevTokenCache / appleProfileCache.
+// No Developer-credential dependency of any kind: the Developer request/credential chain
+// (developer JWT, credential file, /v1/me/*) no longer exists in apple-music-api.js at all.
 //
 // Two deliberate couplings, both injected by the caller so this file stays cycle-free:
 //   - setTextNormalizer(fn) : reuses apple-music-api.js's existing normalizeText (no copy)

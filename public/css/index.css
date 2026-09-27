@@ -10168,6 +10168,23 @@ body.login-guide-active #login-guide-canvas {
   transform: translateY(-1px)
 }
 
+.detail-action-toggle.unsupported,
+.detail-action-toggle[disabled] {
+  cursor: not-allowed;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, .10);
+  background: rgba(255, 255, 255, .03);
+  color: rgba(255, 255, 255, .42)
+}
+
+.detail-action-toggle.unsupported:hover,
+.detail-action-toggle[disabled]:hover {
+  border-color: rgba(255, 255, 255, .10);
+  background: rgba(255, 255, 255, .03);
+  color: rgba(255, 255, 255, .42);
+  transform: none
+}
+
 .detail-loading,
 .detail-empty {
   padding: 14px 4px;

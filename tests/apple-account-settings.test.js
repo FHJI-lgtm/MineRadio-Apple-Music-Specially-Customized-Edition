@@ -378,19 +378,42 @@ test('18. Developer 读取/写入链已从 apple-music-api.js 与 server.js 下�
     'getAppleConfig', 'saveAppleConfig', 'saveAppleUserToken', 'verifyAppleUserToken', 'getAppleConfigFile',
     'writeJsonFile', 'handleAppleUserPlaylists', 'handleApplePlaylistTracks', 'handleAppleAlbumDetail',
     'handleAppleLibrarySongs', 'APPLE_PROFILE_CACHE_TTL_MS',
+    // 最后一段: Apple 写入能力 (Developer JWT + Music-User-Token) 与整条请求链
+    'handleAppleLibraryCheck', 'handleAppleLibrarySet', 'appleApiHeaders', 'getAppleDeveloperToken',
+    'signAppleDeveloperJwt', 'appleDevTokenCache', 'readStoredAppleToken', 'requireAppleUserToken',
+    'appleSend', 'appleRequestJson', 'appleRequestText', 'appleIsrcPattern', 'base64url',
+    'resolveAppleCatalogIdsToIsrc', 'normalizeApplePrivateKey', 'APPLE_API_BASE', 'APPLE_USER_AGENT',
   ]) {
     assert.ok(apiCode.indexOf(symbol) < 0, 'apple-music-api.js 不得再有 ' + symbol);
   }
+  // 这个模块现在只剩 mappers + stub + 歌词转发 (+ 历史 token 文件清理)
+  assert.match(apiCode, /module\.exports = \{\n  clearAppleToken,\n  handleAppleSongUrl,\n  handleAppleLyric,/);
   const serverCode = stripCommentLines(read('server.js'));
   for (const symbol of [
     'handleAppleStatus', 'getAppleProfile', 'saveAppleUserToken', 'getAppleConfig', 'getAppleDeveloperToken',
-    'api/apple/login/token', 'api/apple/config',
+    'api/apple/login/token', 'api/apple/config', 'api/apple/song/like', 'api/apple/album/like',
+    'handleAppleLibraryCheck', 'handleAppleLibrarySet',
   ]) {
     assert.ok(serverCode.indexOf(symbol) < 0, 'server.js 不得再有 ' + symbol);
   }
-  // 账号轴那两条路由必须只剩 web 实现
+  // 账号轴与目录读取必须只剩 web 实现
   assert.match(serverCode, /handleAppleAccountStatusWeb\(\)/);
   assert.match(serverCode, /handleAppleUserPlaylistsWeb\(/);
+});
+
+test('19. Apple 收藏专辑入口保留但置灰, 渲染层不再引用任何 Apple 写入接口', () => {
+  const code = stripCommentLines(read('public/js/modules/05-playback/06-track-detail-lyrics-actions.js'));
+  for (const route of ['/api/apple/album/like', '/api/apple/song/like']) {
+    assert.ok(code.indexOf(route) < 0, '不得再引用已删的 ' + route + ' 路由');
+  }
+  assert.match(code, /supported: false, label: 'Apple Music'/);
+  assert.match(code, /disabled title="Apple 暂不支持收藏">暂不支持收藏</);
+  assert.match(code, /showToast\('Apple 暂不支持收藏专辑'\)/);
+  assert.match(code, /config\.supported === false/);
+  // 其他平台的收藏链一字未改
+  assert.match(code, /endpoint: '\/api\/album\/subscribe'/);
+  assert.match(code, /endpoint: '\/api\/spotify\/album\/like'/);
+  assert.match(code, /endpoint: '\/api\/qishui\/album\/collect'/);
 });
 
 console.log('[OK] Apple Music 账户设置: 显示资料存储 / 与登录态分离 / 手动 Web Token 复用既有 store / 无 Developer 新引用');

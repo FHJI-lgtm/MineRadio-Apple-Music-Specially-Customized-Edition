@@ -281,7 +281,8 @@ function albumCollectionConfig(song) {
   if (!albumId) return null;
   if (provider === 'netease') return { provider: provider, id: String(albumId), endpoint: '/api/album/subscribe', field: 'subscribed', label: '网易云' };
   if (provider === 'spotify') return { provider: provider, id: String(albumId), endpoint: '/api/spotify/album/like', field: 'like', label: 'Spotify' };
-  if (provider === 'apple') return { provider: provider, id: String(albumId), endpoint: '/api/apple/album/like', field: 'like', label: 'Apple Music' };
+  // Apple: 能力已随 Developer 轴退休 —— 按钮保留但置灰, 不提供 endpoint (也不引用已删路由)。
+  if (provider === 'apple') return { provider: provider, id: String(albumId), supported: false, label: 'Apple Music' };
   if (provider === 'qishui') return { provider: provider, id: String(albumId), endpoint: '/api/qishui/album/collect', field: 'collected', label: '汽水音乐' };
   return null;
 }
@@ -292,6 +293,10 @@ function albumCollectionKey(song) {
 function renderAlbumCollectionButton(song) {
   var config = albumCollectionConfig(song);
   if (!config) return '';
+  if (config.supported === false) {
+    // 只置灰并说明原因: 不点击、不发请求、不引用任何已删的 Apple 写入接口。
+    return '<button id="album-collection-toggle" class="detail-action-toggle unsupported" type="button" disabled title="Apple 暂不支持收藏">暂不支持收藏</button>';
+  }
   var key = albumCollectionKey(song);
   var collected = !!detailAlbumCollectionState[key];
   return '<button id="album-collection-toggle" class="detail-action-toggle' + (collected ? ' on' : '') + '" type="button" onclick="toggleAlbumCollection()">' +
@@ -302,13 +307,25 @@ function syncAlbumCollectionButton(song) {
   song = song || detailCommentSong || currentCoverSong();
   var btn = document.getElementById('album-collection-toggle');
   if (!btn) return;
+  var config = albumCollectionConfig(song);
+  if (config && config.supported === false) {
+    btn.classList.remove('on');
+    btn.classList.add('unsupported');
+    btn.disabled = true;
+    btn.title = 'Apple 暂不支持收藏';
+    btn.textContent = '暂不支持收藏';
+    return;
+  }
+  btn.classList.remove('unsupported');
+  btn.disabled = false;
   var collected = !!detailAlbumCollectionState[albumCollectionKey(song)];
   btn.classList.toggle('on', collected);
   btn.textContent = collected ? '已收藏专辑' : '收藏专辑';
 }
 function syncAlbumCollectionState(song) {
   var config = albumCollectionConfig(song);
-  if (!config || !isSongAccountLoggedIn(config.provider)) return;
+  // 置灰的能力 (provider 不支持) 不去探测状态: 服务端那条路由已经不存在。
+  if (!config || config.supported === false || !isSongAccountLoggedIn(config.provider)) return;
   var url = '';
   var responseField = '';
   if (config.provider === 'netease') {
@@ -316,9 +333,6 @@ function syncAlbumCollectionState(song) {
     responseField = 'subscribed';
   } else if (config.provider === 'spotify') {
     url = '/api/spotify/album/like/check?ids=' + encodeURIComponent(config.id);
-    responseField = 'liked';
-  } else if (config.provider === 'apple') {
-    url = '/api/apple/album/like/check?ids=' + encodeURIComponent(config.id);
     responseField = 'liked';
   }
   if (!url) return;
@@ -332,6 +346,7 @@ async function toggleAlbumCollection() {
   var song = detailCommentSong || currentCoverSong();
   var config = albumCollectionConfig(song);
   if (!config) { showToast('当前平台暂不支持收藏专辑'); return; }
+  if (config.supported === false) { showToast('Apple 暂不支持收藏专辑'); return; }
   if (!ensureLoggedInForAction(config.provider)) return;
   var key = albumCollectionKey(song);
   var next = !detailAlbumCollectionState[key];
@@ -1446,12 +1461,13 @@ var SONG_ACCOUNT_ACTION_ADAPTERS = {
   apple: {
     provider: 'apple',
     label: 'Apple Music',
-    like: false,   // Apple writes are disabled in this phase (Developer-authenticated POST)
-    collect: false,   // Apple writes are disabled in this phase
+    // Apple 写入已随 Developer 账号轴退休: 红心 / 收藏 / 建歌单都不提供, 服务端也不再有对应路由。
+    like: false,
+    collect: false,
     createPlaylist: false,
-    likeCheckUrl: '/api/apple/song/like/check',
+    likeCheckUrl: '',
     likeCheckParam: 'ids',
-    likeUrl: '/api/apple/song/like',
+    likeUrl: '',
     playlistAddUrl: '',
     playlistCreateUrl: '',
     playlistTracksUrl: '/api/apple/playlist/tracks'
