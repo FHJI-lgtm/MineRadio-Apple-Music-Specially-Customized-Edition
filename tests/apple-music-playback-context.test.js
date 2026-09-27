@@ -330,9 +330,16 @@ test('30. openSyncSettingsPanel really opens, and no rule hides the panel it jus
     'the 词 popover must be hidden BY ID - the sync panel shares the .lyric-timing-popover class');
   assert.ok(!/\.lyric-timing-control\.sync-open \.lyric-timing-popover/.test(css),
     'a class-scoped hide would also hide #sync-settings-panel: it would open invisible and unclickable');
-  // the retired hover panel: hidden, but kept as the host those settings nodes are created in
+  // the retired floating cluster: the whole container (hover panel + draggable cover widget + inline
+  // source panel) is hidden, but kept as the host those settings nodes are created in and then moved out of
+  assert.match(css, /#smtc-hover-container \{\s*display: none !important\s*\}/,
+    'the whole legacy floating container must be retired');
   assert.match(css, /#smtc-hover-panel \{\s*display: none !important\s*\}/,
-    'the old top-right hover panel must be retired (its settings live in the 词 popover now)');
+    'and the panel stays retired even if the container is ever shown again');
+  // nothing that must stay visible may live in that container
+  const smtcUi = read('public/js/modules/12-smtc/03-smtc-ui.js');
+  assert.ok(smtcUi.indexOf("chip.style.visibility = 'hidden'") > 0,
+    'the status chip is body-level and already hidden by itself - it is not lost with the container');
   const mod = read('public/js/modules/06-lyrics/06-lyric-timing-offset.js');
   const slice = (name) => {
     const s = mod.indexOf('function ' + name + '(');
