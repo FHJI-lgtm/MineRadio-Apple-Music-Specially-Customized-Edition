@@ -5794,6 +5794,71 @@ body.home-controls-locked #bottom-bar {
   z-index: 8
 }
 
+/* 同步设置（MineRadio「词」体系）：复用 .lyric-timing-popover 外观；它是单实例容器 ——
+   打开时把现有 SMTC 设置节点搬入，因此这里只负责显示/隐藏与两个小节标签，不定义新的视觉体系。 */
+.sync-settings-popover {
+  display: none;
+  width: 244px;
+  z-index: 9
+}
+
+/* 打开同步设置时收起「词」校准 popover：两者同为 bottom:46px 居中，同时显示会互相压住。
+   收起后由面板自己的 × / 点击外部 / Esc / 鼠标离开控件来关闭。
+   必须按 **id** 限定：#sync-settings-panel 也带 .lyric-timing-popover 类（复用外观），
+   用类选择器会连它一起隐藏 —— 面板会「打开但看不见、也点不到」。 */
+.lyric-timing-control.sync-open #lyric-timing-popover {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateX(-50%) translateY(8px) scale(.98) !important
+}
+
+.sync-settings-popover.open {
+  display: grid;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0)
+}
+
+.sync-settings-popover .sync-settings-label {
+  margin: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  opacity: .66
+}
+
+.sync-settings-popover .sync-settings-actions button {
+  width: 100%;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .82);
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid rgba(255, 255, 255, .12);
+  cursor: pointer
+}
+
+/* 原右上角 SMTC 悬浮控制面板（hover 封面展开的那块）已下线：它的三块设置在「词 → 同步设置」里，
+   它的上一首/播放/下一首由底栏承载（底栏已接 SMTC），歌词源入口在「词」里。
+   DOM 仍保留为**隐藏宿主**：那三个设置节点（#smtc-session-row / #smtc-builtin-timer-block /
+   #smtc-hover-delay-slot）由既有 SMTC 模块按 id 创建，同步设置打开时会把它们整体搬进自己的容器；
+   搬出隐藏子树后即可见，因此这里只隐藏、不删除，也不产生重复实例。 */
+#smtc-hover-panel {
+  display: none !important
+}
+
+.sync-settings-popover .sync-settings-close {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: rgba(255, 255, 255, .7);
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .12);
+  cursor: pointer
+}
+
 #bottom-bar.soft-hidden .lyric-timing-popover,
 body:not(.controls-visible) .lyric-timing-popover,
 .lyric-timing-control.closing .lyric-timing-popover {

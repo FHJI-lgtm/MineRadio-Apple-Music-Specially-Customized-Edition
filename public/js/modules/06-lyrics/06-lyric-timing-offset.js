@@ -260,3 +260,140 @@ function bindLyricTimingOffsetControls() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindLyricTimingOffsetControls);
 else bindLyricTimingOffsetControls();
+
+// ============================================================
+// MineRadio「词」体系：同步设置入口（方案 B）
+//
+// 这里**只做入口 + 单实例容器**，绝不渲染第二份设置控件。容器首次打开时，把现有 SMTC 设置节点
+// 整体「搬入」本容器：
+//   #smtc-session-row        SMTC 会话状态 + 刷新会话（03-smtc-ui.js）
+//   #smtc-builtin-timer-block 时间轴来源（06-smtc-builtin-timer.js）
+//   #smtc-hover-delay-slot   SMTC 会话延迟（05-smtc-lyric-sources.js 渲染）
+// 既有实现全部按 id 查找，因此 smtcRenderSmtcSessionRow / smtcEnsureBuiltinTimerUi /
+// smtcRenderSessionDelayBlock / smtcRenderSessionDelayValue / smtcUpdateSessionDelayEnabledState
+// 一行都不用改，也不会出现重复 id。
+//
+// 不动：SMTC store / 时间轴稳定器 / 播放控制 / 进度条 / AM currentPlaybackContext。
+// ============================================================
+var syncSettingsOpen = false;
+var syncSettingsAdopted = false;
+var syncSettingsBound = false;
+
+function syncSettingsPanelEl() { return document.getElementById('sync-settings-panel'); }
+function syncSettingsControlRoot() { return document.getElementById('lyric-timing-control'); }
+
+function syncSettingsAdoptExistingBlocks() {
+  if (syncSettingsAdopted) return true;
+  var panel = syncSettingsPanelEl();
+  var sessionSlot = document.getElementById('sync-settings-session');
+  var body = document.getElementById('sync-settings-body');
+  if (!panel || !sessionSlot || !body) return false;
+  // 先把 SMTC 悬浮容器（含延迟槽）构建出来，否则搬无可搬
+  if (typeof smtcEnsureHoverContainer === 'function') {
+    try { smtcEnsureHoverContainer(); } catch (e) { }
+  }
+  var row = document.getElementById('smtc-session-row');
+  if (row && row.parentNode !== sessionSlot) sessionSlot.appendChild(row);
+  var slot = document.getElementById('smtc-hover-delay-slot');
+  if (slot && slot.parentNode !== body) body.appendChild(slot);
+  var timerBlock = document.getElementById('smtc-builtin-timer-block');
+  if (timerBlock && timerBlock.parentNode !== body) body.insertBefore(timerBlock, slot || null);
+  // 这两个块此前可能从未渲染（悬浮面板没展开过）→ 用既有幂等函数补建，落在搬入后的容器里
+  if (typeof smtcEnsureHoverSessionDelay === 'function') { try { smtcEnsureHoverSessionDelay(); } catch (e) { } }
+  if (typeof smtcEnsureBuiltinTimerUi === 'function') { try { smtcEnsureBuiltinTimerUi(); } catch (e) { } }
+  syncSettingsAdopted = true;
+  return true;
+}
+
+function syncSettingsRefreshValues() {
+  if (typeof smtcRenderSmtcSessionRow === 'function') { try { smtcRenderSmtcSessionRow(); } catch (e) { } }
+  if (typeof smtcRenderSessionDelayValue === 'function') { try { smtcRenderSessionDelayValue(); } catch (e) { } }
+  if (typeof smtcRenderBuiltinTimerUi === 'function') { try { smtcRenderBuiltinTimerUi(); } catch (e) { } }
+  if (typeof smtcUpdateSessionDelayEnabledState === 'function') { try { smtcUpdateSessionDelayEnabledState(); } catch (e) { } }
+}
+
+function syncSettingsBindOnce() {
+  if (syncSettingsBound) return;
+  var root = syncSettingsControlRoot();
+  if (!root) return;
+  syncSettingsBound = true;
+  // 鼠标离开「词」控件即收起。加一个宽限期并在触发时复核：指针在两块面板之间穿行时可能瞬间被判为
+
+  // leave（mouseleave 只看当前目标链，不看路径），立即关闭会让人以为「面板自己关了」。
+
+  root.addEventListener('mouseleave', function () {
+
+    if (!syncSettingsOpen) return;
+
+    setTimeout(function () {
+
+      if (!syncSettingsOpen) return;
+
+      if (typeof lyricTimingControlIsActive === 'function' && lyricTimingControlIsActive(root)) return;
+
+      closeSyncSettingsPanel();
+
+    }, 140);
+
+  });
+  document.addEventListener('click', function (e) {
+    if (!syncSettingsOpen) return;
+    if (root.contains(e.target)) return;
+    closeSyncSettingsPanel();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (syncSettingsOpen && e.key === 'Escape') closeSyncSettingsPanel();
+  });
+}
+
+function openSyncSettingsPanel(event) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  if (!syncSettingsAdoptExistingBlocks()) return false;
+  var panel = syncSettingsPanelEl();
+  var root = syncSettingsControlRoot();
+  if (!panel) return false;
+  panel.classList.add('open');
+  if (root) root.classList.add('sync-open');
+  syncSettingsOpen = true;
+  syncSettingsBindOnce();
+  syncSettingsRefreshValues();
+  return true;
+}
+
+function closeSyncSettingsPanel(force) {
+  var panel = syncSettingsPanelEl();
+  var root = syncSettingsControlRoot();
+  if (panel) panel.classList.remove('open');
+  if (root) root.classList.remove('sync-open');
+  syncSettingsOpen = false;
+  return !force;
+}
+
+function toggleSyncSettingsPanel(event) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  return syncSettingsOpen ? closeSyncSettingsPanel() : openSyncSettingsPanel();
+}
+
+// 「歌词源」入口：只调用既有窗口（音源优先级真正的排序 UI 仍在那个独立窗口里）。
+function openLyricSourceSettingsFromBar(event) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  var api = window.desktopWindow;
+  if (!api || typeof api.openLyricsSourceWindow !== 'function') return false;
+  var order = (typeof smtcLyricSourceSettings === 'function') ? (smtcLyricSourceSettings().order || []) : [];
+  api.openLyricsSourceWindow({ order: order });
+  return true;
+}
+
+// 恢复默认：只用既有 setter（会话延迟归零 + 时间轴来源回到 SMTC），不直接写 localStorage、
+// 不碰 SMTC store / 稳定器 / 播放控制。
+function resetSyncSettings() {
+  var delay = null;
+  var mode = null;
+  if (typeof smtcSetSessionDelayMs === 'function') { try { delay = smtcSetSessionDelayMs(0); } catch (e) { } }
+  if (typeof smtcSetLyricTimelineMode === 'function') { try { mode = smtcSetLyricTimelineMode('SMTC'); } catch (e) { } }
+  syncSettingsRefreshValues();
+  if (typeof showToast === 'function') {
+    showToast('同步设置已恢复默认' + (delay === null ? '' : ('（延迟 ' + delay + 'ms')) + (mode ? '（时间轴 SMTC）' : ''));
+  }
+  return { delayMs: delay, timelineMode: mode };
+}

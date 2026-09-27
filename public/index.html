@@ -658,7 +658,7 @@
             <button class="fx-mini-btn ghost" id="lyric-glow-beat-btn" type="button"
               onclick="toggleFx('lyricGlowBeat')">跟随鼓点</button>
           </div>
-          <div class="fx-section-label">歌词源</div>
+          <div class="fx-section-label">歌词模式</div>
           <div class="lyric-source-row">
             <div class="fx-seg lyric-source-seg" id="lyric-source-seg">
               <button id="lyric-source-original" type="button" class="active"
@@ -1360,7 +1360,28 @@
                 <button type="button" data-lyric-offset-reset title="重置当前歌曲歌词校准">0</button>
                 <button type="button" data-lyric-offset-step="0.1" title="歌词提前 0.1 秒">+0.1</button>
               </div>
-            </div>
+              <div class="lyric-timing-actions">
+                <button type="button" id="lyric-source-entry-btn" onclick="openLyricSourceSettingsFromBar(event)"
+                  title="歌词源（音源优先级：QQ / 酷狗 / 网易云 / Apple Music）">歌词源</button>
+                <button type="button" id="lyric-sync-entry-btn" onclick="toggleSyncSettingsPanel(event)"
+                  title="SMTC 会话 / 时间轴来源 / SMTC 会话延迟">同步设置</button>
+              </div>
+              </div>
+              <!-- 同步设置：单实例容器。打开时把现有 SMTC 设置节点（会话行 / 时间轴来源 / 会话延迟）搬入此处，
+                   绝不渲染第二份；复用 .lyric-timing-popover 外观，不新造 CSS 体系。 -->
+              <div id="sync-settings-panel" class="lyric-timing-popover sync-settings-popover" onclick="event.stopPropagation()">
+                <div class="lyric-timing-head">
+                  <span>同步设置</span>
+                  <button type="button" id="sync-settings-close-btn" class="sync-settings-close" onclick="closeSyncSettingsPanel(true)"
+                    title="收起同步设置">×</button>
+                </div>
+                <div id="sync-settings-session"></div>
+                <div class="sync-settings-label">时间轴来源</div>
+                <div id="sync-settings-body"></div>
+                <div class="sync-settings-actions">
+                  <button type="button" id="sync-settings-reset-btn" onclick="resetSyncSettings()">恢复默认</button>
+                </div>
+              </div>
           </div>
           <div id="volume-control" class="volume-control">
             <button id="volume-btn" class="ctrl-btn" onclick="toggleVolumePanel(event)" title="音量 / 静音"><svg

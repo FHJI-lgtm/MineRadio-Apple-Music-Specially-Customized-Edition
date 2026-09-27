@@ -324,6 +324,103 @@ test('19. the comment section is omitted for Apple Music and kept for every othe
   assert.equal(box.__enabled(null), true, 'unknown input keeps the previous behaviour');
 });
 
+test('30. openSyncSettingsPanel really opens, and no rule hides the panel it just opened', () => {
+  const css = read('public/css/index.css');
+  assert.match(css, /\.lyric-timing-control\.sync-open #lyric-timing-popover \{/,
+    'the 词 popover must be hidden BY ID - the sync panel shares the .lyric-timing-popover class');
+  assert.ok(!/\.lyric-timing-control\.sync-open \.lyric-timing-popover/.test(css),
+    'a class-scoped hide would also hide #sync-settings-panel: it would open invisible and unclickable');
+  // the retired hover panel: hidden, but kept as the host those settings nodes are created in
+  assert.match(css, /#smtc-hover-panel \{\s*display: none !important\s*\}/,
+    'the old top-right hover panel must be retired (its settings live in the 词 popover now)');
+  const mod = read('public/js/modules/06-lyrics/06-lyric-timing-offset.js');
+  const slice = (name) => {
+    const s = mod.indexOf('function ' + name + '(');
+    const e = mod.indexOf('\n}', s);
+    assert.ok(s >= 0 && e > s, name + ' must exist');
+    return mod.slice(s, e + 2);
+  };
+  const mk = (id) => ({ id: id, classList: { _s: new Set(), add: function (c) { this._s.add(c); }, remove: function (c) { this._s.delete(c); }, contains: function (c) { return this._s.has(c); } }, contains: () => false, addEventListener: () => {} });
+  const els = {};
+  ['sync-settings-panel', 'sync-settings-session', 'sync-settings-body', 'lyric-timing-control'].forEach((id) => { els[id] = mk(id); });
+  const box = {
+    // the module-level flags live outside the sliced functions - they must exist or reading them throws
+    syncSettingsOpen: false, syncSettingsAdopted: false, syncSettingsBound: false,
+    document: { getElementById: (id) => els[id] || null, addEventListener: () => {} },
+    console: { warn: () => {} },
+  };
+  vm.createContext(box);
+  vm.runInContext([
+    slice('syncSettingsPanelEl'), slice('syncSettingsControlRoot'), slice('syncSettingsAdoptExistingBlocks'),
+    slice('syncSettingsRefreshValues'), slice('syncSettingsBindOnce'), slice('openSyncSettingsPanel'), slice('closeSyncSettingsPanel'),
+  ].join('\n') + '\nthis.__open = openSyncSettingsPanel; this.__close = closeSyncSettingsPanel;', box);
+  assert.equal(box.__open(), true, 'opening must succeed (a missing mount point used to return false silently)');
+  assert.ok(els['sync-settings-panel'].classList.contains('open'), 'the panel gets .open');
+  assert.ok(els['lyric-timing-control'].classList.contains('sync-open'), 'and the 词 control collapses its own popover');
+  box.__close();
+  assert.ok(!els['sync-settings-panel'].classList.contains('open'));
+  assert.ok(!els['lyric-timing-control'].classList.contains('sync-open'));
+  // moving the pointer between the two panels must not close it instantly (mouseleave fires on the target
+  // chain, so crossing the gap between them would otherwise look like "the panel closed itself")
+});
+
+test('28. the 词 popover owns the sync entry, and the sync panel is a SINGLE-instance container', () => {
+  const html = read('public/index.html');
+  assert.match(html, /id="lyric-sync-entry-btn"[^>]*onclick="toggleSyncSettingsPanel\(event\)"/);
+  assert.match(html, /id="lyric-source-entry-btn"[^>]*onclick="openLyricSourceSettingsFromBar\(event\)"/);
+  assert.match(html, /id="sync-settings-panel"[^>]*class="[^"]*lyric-timing-popover[^"]*sync-settings-popover/);
+  assert.match(html, /id="sync-settings-session"><\/div>/);
+  assert.match(html, /id="sync-settings-body"><\/div>/);
+  // the panel must live inside the 词 control (so hover / focus keeps it open) and before #volume-control
+  const ctrl = html.indexOf('id="lyric-timing-control"');
+  const panel = html.indexOf('id="sync-settings-panel"');
+  const vol = html.indexOf('id="volume-control"');
+  assert.ok(ctrl >= 0 && panel > ctrl && vol > panel, 'the sync panel belongs to the 词 control');
+  // div balance inside that control: inserting markup here already broke the DOM once
+  const seg = html.slice(ctrl, vol);
+  assert.equal((seg.match(/<div\b/g) || []).length, (seg.match(/<\/div>/g) || []).length,
+    'every <div> in the 词 control must be closed (a missing one swallows the rest of the bar)');
+  // and the module must MOVE the existing SMTC nodes: never build a second set (no duplicate fixed ids)
+  const mod = read('public/js/modules/06-lyrics/06-lyric-timing-offset.js');
+  const start = mod.indexOf('function syncSettingsAdoptExistingBlocks() {');
+  const end = mod.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'syncSettingsAdoptExistingBlocks must exist');
+  const adopt = mod.slice(start, end);
+  assert.ok(adopt.indexOf('appendChild') > 0 && adopt.indexOf('insertBefore') > 0, 'it relocates the existing nodes');
+  assert.ok(adopt.indexOf('createElement') < 0 && adopt.indexOf('innerHTML') < 0, 'it never renders a second copy');
+  assert.ok(adopt.indexOf("'smtc-session-row'") > 0, 'the SMTC session row is relocated');
+  assert.ok(adopt.indexOf("'smtc-builtin-timer-block'") > 0, 'the timeline-source block is relocated');
+  assert.ok(adopt.indexOf("'smtc-hover-delay-slot'") > 0, 'the session-delay slot is relocated');
+});
+
+test('29. 恢复默认 writes only through the existing setters', () => {
+  const mod = read('public/js/modules/06-lyrics/06-lyric-timing-offset.js');
+  const rs = mod.indexOf('function syncSettingsRefreshValues() {');
+  const re = mod.indexOf('\n}', rs);
+  const start = mod.indexOf('function resetSyncSettings() {');
+  const end = mod.indexOf('\n}', start);
+  assert.ok(rs >= 0 && re > rs && start >= 0 && end > start, 'resetSyncSettings must exist');
+  const box = {
+    calls: [],
+    localStorage: { setItem: () => { throw new Error('reset must not write storage directly'); } },
+  };
+  box.smtcSetSessionDelayMs = (v) => { box.calls.push(['delay', v]); return 0; };
+  box.smtcSetLyricTimelineMode = (m) => { box.calls.push(['mode', m]); return m; };
+  box.smtcRenderSmtcSessionRow = () => box.calls.push(['paint-row']);
+  box.smtcRenderSessionDelayValue = () => box.calls.push(['paint-delay']);
+  box.smtcRenderBuiltinTimerUi = () => box.calls.push(['paint-timer']);
+  box.smtcUpdateSessionDelayEnabledState = () => box.calls.push(['paint-enabled']);
+  box.showToast = (t) => box.calls.push(['toast', t]);
+  vm.createContext(box);
+  vm.runInContext(mod.slice(rs, re + 2) + '\n' + mod.slice(start, end + 2) + '\nthis.__reset = resetSyncSettings;', box);
+  const res = box.__reset();
+  assert.deepEqual(box.calls.slice(0, 2), [['delay', 0], ['mode', 'SMTC']], 'the two settings go through their setters');
+  assert.equal(res.delayMs, 0);
+  assert.equal(res.timelineMode, 'SMTC');
+  assert.equal(box.calls.filter((c) => c[0] === 'paint-delay').length, 1, 'the shown value is repainted');
+  assert.ok(box.calls.some((c) => c[0] === 'toast'));
+});
+
 test('26. the bar prev/next follow the session; the internal auto-advance never does', () => {
   const ctrl = read('public/js/modules/05-playback/14-player-controls.js');
   const nStart = ctrl.indexOf('function nextTrack(userInitiated) {');
