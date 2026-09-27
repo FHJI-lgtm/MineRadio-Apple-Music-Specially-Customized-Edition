@@ -280,8 +280,9 @@ function smtcControlCommand(cmd) {
 }
 
 // 由 00-smtc-store.js 的 thumbnail 事件回调调用 (函数提升, 跨 bundle 可用)
+// SMTC 缩略图 -> 主可视化封面（这是唯一的封面数据通路）。旧浮动簇里那个 64×64 小封面只是显示层，但它
+// 被删掉后这里残留的一次调用会抛 ReferenceError，把紧随其后的真正传输入口一起掐死 —— 所以只保留这一个调用。
 function onSmtcThumbnailChanged(thumb) {
-  smtcUpdateCover();
   smtcApplyVisualizerCover(thumb);
 }
 

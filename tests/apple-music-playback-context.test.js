@@ -324,6 +324,46 @@ test('19. the comment section is omitted for Apple Music and kept for every othe
   assert.equal(box.__enabled(null), true, 'unknown input keeps the previous behaviour');
 });
 
+test('32. no source file references an identifier that was deleted with the legacy cluster', () => {
+  // Why this exists: the legacy UI was deleted by line-range surgery, and a leftover CALL (not a declaration)
+  // is invisible to `node --check` and to any per-file test - it only explodes at runtime, in the one path
+  // that used it. That is exactly how the SMTC cover feed broke (a stale smtcUpdateCover() call in front of
+  // the real visualizer entry point threw before it could run). An earlier PowerShell glob scan gave a false
+  // negative; this walk uses fs and covers every source file.
+  const retired = [
+    'smtcEnsureHoverContainer', 'smtcEnsureCover', 'smtcUpdateCover', 'smtcEnsureControls', 'smtcUpdateControls',
+    'smtcHoverExpand', 'smtcHoverScheduleCollapse', 'smtcApplyExpandDirection', 'smtcExpandCollapsedTransform',
+    'smtcPanelDimensions', 'smtcComputeExpandDirection', 'smtcPanelRectFor', 'smtcRenderHoverPanelInfo',
+    'smtcRenderHoverLyricSource', 'smtcPlayerContainer', 'smtcCoverGeometry', 'smtcClampPlayerPosition',
+    'smtcApplyPlayerPosition', 'smtcLoadPlayerPosition', 'smtcSavePlayerPosition', 'smtcResetPlayerPosition',
+    'smtcPointerInPlayer', 'smtcPlayerDragStart', 'smtcPlayerDragMoved', 'smtcPlayerDragging',
+    'smtcHoverCollapseTimer', 'smtcExpandDirection', 'SMTC_EDGE_SAFE_MARGIN', 'smtcPanelSize',
+    'SMTC_ROW_COVER_OFFSET', 'smtcEnsureLyricSourceUi', 'smtcToggleLyricSourcePanel', 'smtcLyricSourceRow',
+    'smtcRenderLyricSourcePanel', 'handleAppleSearch', 'APPLE_AMP_API_BASE', 'originAmp',
+  ];
+  const roots = ['public', 'desktop', 'scripts', 'tests'];
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) { if (!['node_modules', '.git', '.dsh', 'dist'].includes(entry.name)) walk(p); }
+      else if (entry.name.endsWith('.js')) files.push(p);
+    }
+  };
+  roots.forEach((r) => walk(path.join(ROOT, r)));
+  ['server.js', 'apple-music-api.js'].forEach((f) => files.push(path.join(ROOT, f)));
+  // the test itself names the retired identifiers on purpose
+  const skip = path.join(ROOT, 'tests', 'apple-music-playback-context.test.js');
+  const offenders = [];
+  for (const file of files) {
+    if (file === skip) continue;
+    const src = fs.readFileSync(file, 'utf8');
+    for (const name of retired) if (src.indexOf(name) >= 0) offenders.push(path.relative(ROOT, file) + ' :: ' + name);
+  }
+  assert.deepEqual(offenders, [], 'a deleted identifier must not survive anywhere in the source tree');
+  assert.ok(files.length > 100, 'the walk must actually reach the source tree, not a stub list');
+});
+
 test('30. openSyncSettingsPanel really opens, and no rule hides the panel it just opened', () => {
   const css = read('public/css/index.css');
   assert.match(css, /\.lyric-timing-control\.sync-open #lyric-timing-popover \{/,
