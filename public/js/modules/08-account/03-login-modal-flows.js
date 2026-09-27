@@ -25,15 +25,13 @@ function loginProviderSupportsCookieMode(provider) {
 function loginProviderOfficialModeText(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'spotify') return { title: 'OAuth', sub: '弹出 Spotify 授权窗口' };
-  if (provider === 'apple') return { title: '官方登录', sub: '展开登录入口（不自动打开）' };
+  if (provider === 'apple') return { title: '网页登录', sub: '官方窗口登录（不自动打开）' };
   if (provider === 'qishui') return { title: '扫码', sub: '使用抖音 App 官方授权' };
   if (provider === 'kugou') return { title: '官网', sub: '弹出酷狗官方窗口' };
   return { title: '扫码', sub: '连接后弹出官方窗口' };
 }
-// Apple has no cookie import, but its second mode node (网页登录) needs a real flag so the
-// node graph can mark it active and draw the workflow edge to it.
-// Both Apple modes now end in the web-account login; the flag only picks which entry opens it.
-var appleWebLoginModeOpen = true;
+// Apple has a single login mode (网页登录 = 官方窗口 + media-user-token): the top mode node is its
+// entry and the Cookie node stays disabled, so there is no per-provider mode flag any more.
 // Set when a workflow drop has already decided the mode: the gesture may emit one more click on the
 // mode row, which must not flip the decision back.
 var loginModeSelectSuppressedUntil = 0;
@@ -44,14 +42,12 @@ function setManualCookieOpenForProvider(provider, open) {
   else if (provider === 'qq') qqManualCookieOpen = !!open;
   else if (provider === 'kugou') kugouManualCookieOpen = !!open;
   else if (provider === 'qishui') qishuiManualCookieOpen = false;
-  else if (provider === 'apple') appleWebLoginModeOpen = !!open;
 }
 function isManualCookieOpenForProvider(provider) {
   provider = normalizeLoginProviderKey(provider);
   if (provider === 'netease') return !!neteaseManualCookieOpen;
   if (provider === 'qq') return !!qqManualCookieOpen;
   if (provider === 'kugou') return !!kugouManualCookieOpen;
-  if (provider === 'apple') return !!appleWebLoginModeOpen;
   if (provider === 'qishui') return false;
   return false;
 }
@@ -153,8 +149,8 @@ function loginWorkflowNearMr(point, graph) {
   var mr = loginWorkflowMrTargetPoint(graph);
   return !!(point && mr && workflowPointDistance(point, mr) <= 108);
 }
-// Mode nodes (官方登录 / 网页登录) as drop targets. Apple-only: its two nodes carry two
-// different flows, so the workflow line may end on whichever one the user picked.
+// Mode nodes as drop targets. A provider's disabled node is never a target (Apple / Spotify / 汽水
+// only have the single 网页登录 entry), so the workflow line can only end on a usable node.
 function loginWorkflowModeNode(mode) {
   return document.getElementById(mode === 'cookie' ? 'login-mode-cookie' : 'login-mode-official');
 }
@@ -166,9 +162,11 @@ function loginWorkflowModeElementAtPoint(clientX, clientY) {
   for (var i = 0; i < stack.length; i += 1) {
     var el = stack[i];
     if (!el) continue;
-    if (el.id === 'login-mode-cookie') return 'cookie';
-    if (el.id === 'login-mode-official') return 'official';
-    var node = el.closest ? el.closest('#login-mode-official, #login-mode-cookie') : null;
+    var node = (el.id === 'login-mode-cookie' || el.id === 'login-mode-official')
+      ? el
+      : (el.closest ? el.closest('#login-mode-official, #login-mode-cookie') : null);
+    // 禁用节点 (不支持 Cookie 的平台) 不是投放目标: 拖到它上面按「落在 MR 附近」处理。
+    if (node && node.disabled) continue;
     if (node) return node.id === 'login-mode-cookie' ? 'cookie' : 'official';
   }
   return '';
@@ -280,11 +278,6 @@ function connectLoginProviderToMr(provider, preferredMode) {
   markLoginNodeConnecting();
   updateLoginProviderUi();
   connectLoginMode(preferredMode || loginWorkflowActiveMode());
-  // A drop decides the mode; re-assert it after the connect path so nothing downstream flips it back.
-  if (preferredMode && provider === 'apple') {
-    setManualCookieOpenForProvider('apple', preferredMode === 'cookie');
-    updateLoginProviderUi();
-  }
 }
 function finishLoginWorkflowDrag(e) {
   var graph = document.getElementById('login-node-graph');
@@ -549,13 +542,13 @@ function updateLoginNodeGraphUi() {
   if (cookie) {
     var cookieTitle = cookie.querySelector('b');
     var cookieSub = cookie.querySelector('small');
-    var appleWebLoginEntry = loginProvider === 'apple';
-    if (cookieTitle) cookieTitle.textContent = appleWebLoginEntry ? '网页登录' : 'Cookie';
-    if (cookieSub) cookieSub.textContent = appleWebLoginEntry
-      ? '登录 Apple Music 网页账号；在连线后的按钮中打开登录页面'
-      : (loginProviderSupportsCookieMode(loginProvider) ? '连接后打开手动导入' : '该平台不支持 Cookie 导入');
-    cookie.disabled = appleWebLoginEntry ? false : !loginProviderSupportsCookieMode(loginProvider);
-    cookie.classList.toggle('active', isManualCookieOpenForProvider(loginProvider));
+    if (cookieTitle) cookieTitle.textContent = 'Cookie';
+    if (cookieSub) cookieSub.textContent = loginProviderSupportsCookieMode(loginProvider)
+      ? '连接后打开手动导入'
+      : '该平台不支持 Cookie 导入';
+    // 不支持 Cookie 的平台 (Apple / Spotify / 汽水) 只有上面的单一登录入口: 这个节点禁用且永不 active。
+    cookie.disabled = !loginProviderSupportsCookieMode(loginProvider);
+    cookie.classList.toggle('active', cookie.disabled ? false : isManualCookieOpenForProvider(loginProvider));
   }
   var copy = graph && graph.querySelector('.login-node-copy');
   if (copy) {
@@ -576,16 +569,10 @@ function connectLoginProvider(provider) {
 function selectLoginMode(mode) {
   // A workflow drop already decided the mode; ignore the click the same gesture may emit afterwards.
   if (Date.now() < loginModeSelectSuppressedUntil) return;
-  if (mode === 'cookie' && loginProvider === 'apple') {
-    // Apple's node 2 is the 网页登录 mode entry: it only selects the mode and reveals the panel,
-    // it never opens a page by itself.
-    setManualCookieOpenForProvider('apple', true);
-    setLoginAuthDrawerOpen(true);
-    updateLoginProviderUi();
-    return;
-  }
   if (mode === 'cookie' && !loginProviderSupportsCookieMode(loginProvider)) {
-    showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : 'Spotify 使用官方 OAuth 登录');
+    showToast(loginProvider === 'qishui'
+      ? '汽水音乐仅使用官方扫码登录'
+      : (loginProvider === 'apple' ? 'Apple Music 不使用 Cookie 导入，请在「网页登录」里打开官方窗口' : 'Spotify 使用官方 OAuth 登录'));
     return;
   }
   setManualCookieOpenForProvider(loginProvider, mode === 'cookie');
@@ -604,13 +591,6 @@ function connectLoginMode(mode) {
   setLoginAuthDrawerOpen(true);
   markLoginNodeConnecting();
   if (mode === 'cookie') {
-    if (loginProvider === 'apple') {
-      // 网页登录 mode: the login page is opened only from the explicit button after the connection.
-      setManualCookieOpenForProvider('apple', true);
-      setLoginAuthDrawerOpen(true);
-      updateLoginProviderUi();
-      return;
-    }
     if (!loginProviderSupportsCookieMode(loginProvider)) {
       showToast(loginProvider === 'qishui' ? '汽水音乐仅使用官方扫码登录' : (loginProvider === 'apple' ? 'Apple Music 使用官方登录窗口或手动 token' : 'Spotify 使用官方 OAuth 登录'));
       return;
@@ -989,8 +969,7 @@ function updateLoginProviderUi() {
   var isApple = loginProvider === 'apple';
   var appleBtn = document.getElementById('login-provider-apple');
   var canOpenAppleLogin = !!appleWebLoginBridge();
-  // Apple has a single account axis now (the web account); appleWebMode only picks which entry opens it.
-  var appleWebMode = isManualCookieOpenForProvider('apple');
+  // Apple has a single mode (网页登录 = 官方窗口 -> media-user-token), so the panel below is not branched.
   var appleBusy = !!appleOAuthBusy;
   if (isApple) {
     if (neteaseBtn) neteaseBtn.classList.toggle('active', false);
@@ -1040,18 +1019,12 @@ function updateLoginProviderUi() {
     }
     if (st) {
       st.className = 'preview';
-      st.textContent = appleWebMode ? appleCardStatusLine() : appleLoginStatusText();
+      st.textContent = appleCardStatusLine();
     }
     if (refreshBtn) {
-      if (appleWebMode) {
-        refreshBtn.disabled = appleWebLoginStatus.busy || !canOpenAppleLogin;
-        refreshBtn.textContent = appleWebLoginStatus.busy ? '等待登录…' : (appleWebLoginStatus.configured ? '重新登录 Apple Music' : '登录 Apple Music');
-        refreshBtn.onclick = openAmcAppleWebLogin;
-      } else {
-        refreshBtn.disabled = appleBusy || !canOpenAppleLogin;
-        refreshBtn.textContent = appleOAuthBusy ? '等待登录…' : '打开 Apple Music 登录页面';
-        refreshBtn.onclick = openAppleWebLogin;
-      }
+      refreshBtn.disabled = appleWebLoginStatus.busy || !canOpenAppleLogin;
+      refreshBtn.textContent = appleWebLoginStatus.busy ? '等待登录…' : (appleWebLoginStatus.configured ? '重新登录 Apple Music' : '登录 Apple Music');
+      refreshBtn.onclick = openAmcAppleWebLogin;
     }
     if (!appleWebLoginStatus.ready) {
       appleWebLoginStatus.ready = true;

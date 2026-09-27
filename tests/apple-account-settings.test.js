@@ -416,4 +416,18 @@ test('19. Apple 收藏专辑入口保留但置灰, 渲染层不再引用任何 A
   assert.match(code, /endpoint: '\/api\/qishui\/album\/collect'/);
 });
 
+test('20. Apple 只有一个登录模式: 上面「网页登录」, 下面 Cookie 禁用 (对齐 Spotify)', () => {
+  const code = stripCommentLines(read('public/js/modules/08-account/03-login-modal-flows.js'));
+  assert.match(code, /if \(provider === 'apple'\) return \{ title: '网页登录', sub: '官方窗口登录（不自动打开）' \};/);
+  for (const gone of ['appleWebLoginModeOpen', 'appleWebMode', 'appleWebLoginEntry']) {
+    assert.ok(code.indexOf(gone) < 0, 'Apple 的双模式标志应已删除: ' + gone);
+  }
+  // Cookie 节点回到通用规则: 不支持 Cookie 的平台 (Apple / Spotify / 汽水) 禁用且永不 active
+  assert.match(code, /cookie\.disabled = !loginProviderSupportsCookieMode\(loginProvider\);/);
+  assert.match(code, /cookie\.classList\.toggle\('active', cookie\.disabled \? false : isManualCookieOpenForProvider\(loginProvider\)\);/);
+  assert.match(code, /if \(node && node\.disabled\) continue;/, '禁用节点不得再作为拖放目标');
+  // 置灰外观沿用既有 .login-mode-node:disabled (Spotify 同款)
+  assert.match(read('public/css/index.css'), /\.login-mode-node:disabled \{/);
+});
+
 console.log('[OK] Apple Music 账户设置: 显示资料存储 / 与登录态分离 / 手动 Web Token 复用既有 store / 无 Developer 新引用');
