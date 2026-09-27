@@ -33,7 +33,6 @@ const APPLE_API_BASE = (process.env.MINERADIO_APPLE_API_BASE || 'https://api.mus
 // amp-api.music.apple.com accepts the same developer + media-user tokens
 // and is the host used by the Apple Music web player; advanced users can
 // switch to it if the official host rejects their token.
-const APPLE_AMP_API_BASE = (process.env.MINERADIO_APPLE_AMP_API_BASE || 'https://amp-api.music.apple.com').replace(/\/+$/, '');
 const DEFAULT_APPLE_CONFIG_FILE = path.join(__dirname, '.apple-music-credentials.json');
 const DEFAULT_APPLE_TOKEN_FILE = path.join(__dirname, '.apple-music-token.json');
 const DEFAULT_APPLE_STOREFRONT = 'us';
@@ -492,7 +491,8 @@ async function appleApiHeaders(opts) {
   };
   const userToken = normalizeText(opts.userToken);
   if (userToken) headers['Music-User-Token'] = userToken;
-  if (opts.originAmp) headers.Origin = 'https://music.apple.com';
+// Developer-only Origin override removed with the Developer axis.
+
   return headers;
 }
 
@@ -824,51 +824,6 @@ async function getAppleProfile(options) {
     return value;
   })().finally(() => { appleProfileCache.promise = null; });
   return appleProfileCache.promise;
-}
-
-async function handleAppleSearch(keywords, limit, offset) {
-  keywords = normalizeText(keywords);
-  limit = Math.max(1, Math.min(APPLE_SEARCH_LIMIT_MAX, Number(limit) || 10));
-  offset = Math.max(0, Number(offset) || 0);
-  const config = getAppleConfig();
-  if (!keywords) return { provider: 'apple', configured: config.configured, songs: [], message: config.message };
-  if (!config.capabilities.search) {
-    return {
-      provider: 'apple',
-      configured: config.configured,
-      songs: [],
-      error: 'APPLE_MUSIC_CREDENTIALS_REQUIRED',
-      reason: 'missing_apple_credentials',
-      message: config.message,
-      missing: config.missing,
-    };
-  }
-  const storefront = config.storefront || DEFAULT_APPLE_STOREFRONT;
-  const cacheKey = [keywords.toLowerCase(), limit, offset, storefront].join('|');
-  return appleCacheWrap(appleSearchCache, cacheKey, 2 * 60 * 1000, async () => {
-    const json = await appleGet('/v1/catalog/' + encodeURIComponent(storefront) + '/search', {
-      term: keywords,
-      types: 'songs',
-      limit: Math.min(APPLE_SEARCH_LIMIT_MAX, limit),
-      offset,
-    }, { timeoutMs: 12000 });
-    const results = json && json.results && json.results.songs ? json.results.songs : {};
-    const items = Array.isArray(results.data) ? results.data : [];
-    const songs = dedupeAppleTracks(items.map((item, index) => mapAppleTrack(item, offset + index, keywords, { storefront })).filter(Boolean)).slice(0, limit);
-    return {
-      provider: 'apple',
-      configured: true,
-      storefront,
-      songs,
-      rawCount: items.length,
-      total: Number(results.total) || items.length,
-      offset,
-      limit,
-      nextOffset: offset + items.length,
-      hasMore: !!(results.next),
-      message: songs.length ? '' : 'Apple Music 没有返回匹配结果。',
-    };
-  });
 }
 
 function mapAppleLibraryPlaylist(item) {
@@ -1441,7 +1396,6 @@ module.exports = {
   saveAppleUserToken,
   clearAppleToken,
   handleAppleStatus,
-  handleAppleSearch,
   handleAppleUserPlaylists,
   handleApplePlaylistTracks,
   handleAppleAlbumDetail,
@@ -1452,7 +1406,6 @@ module.exports = {
   APPLE_LIKED_PLAYLIST_ID,
   APPLE_SEARCH_LIMIT_MAX,
   APPLE_API_BASE,
-  APPLE_AMP_API_BASE,
   _test: {
     getAppleCredentials,
     signAppleDeveloperJwt,

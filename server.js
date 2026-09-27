@@ -135,7 +135,6 @@ const {
   clearAppleToken,
   getAppleDeveloperToken,
   handleAppleStatus,
-  handleAppleSearch,
   handleAppleUserPlaylists,
   handleApplePlaylistTracks,
   handleAppleAlbumDetail,

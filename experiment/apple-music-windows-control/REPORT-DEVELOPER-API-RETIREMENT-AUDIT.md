@@ -25,7 +25,7 @@
 
 ## 三、最小后续切片（建议，本次未做）
 
-1. 删死代码（`handleAppleSearch` + `server.js` import、`APPLE_AMP_API_BASE`、`originAmp`）—— 纯删，零行为变化。
+1. ~~删死代码（`handleAppleSearch` + `server.js` import、`APPLE_AMP_API_BASE`、`originAmp`）—— 纯删，零行为变化。~~ **已完成**（本报告之后的提交：`apple-music-api.js` −49 行、`server.js` −1 行，全仓 0 残留）。
 2. `handleAppleStatus` 停止调用 `getAppleProfile()`（昵称/歌单数可由 web 轴或本地 token 派生），`capabilities` 改由 web 轴能力决定 → **JWT 与凭据读取归零**。
 3. `desktop/main.js` 登录流程只读 web token store（`storefront` 从 web token 取），不再 `getAppleCredentials()`。
 4. 可选：删 `/api/apple/song/like|album/like|like/check` 路由 + `handleAppleLibraryCheck/Set`。
