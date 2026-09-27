@@ -8991,6 +8991,12 @@ body.login-guide-active #login-guide-canvas {
   text-align: left
 }
 
+/* Apple 引导面板比其它平台高 (卡片 + 三步说明 + 两个入口按钮): 抽屉的固定 420px 会把尾部裁掉。
+   只对 Apple 放开高度, 让内容自己撑开 (再高就由弹窗自己滚动)。 */
+.login-node-graph[data-provider="apple"] + #login-auth-drawer.show {
+  max-height: 560px
+}
+
 .login-auth-body {
   display: grid;
   justify-items: center;

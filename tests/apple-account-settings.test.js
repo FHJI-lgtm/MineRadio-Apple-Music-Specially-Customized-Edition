@@ -430,4 +430,15 @@ test('20. Apple 只有一个登录模式: 上面「网页登录」, 下面 Cooki
   assert.match(read('public/css/index.css'), /\.login-mode-node:disabled \{/);
 });
 
+test('21. Apple 面板不再有共用的「保存」按钮, 抽屉也放得下引导内容', () => {
+  const code = stripCommentLines(read('public/js/modules/08-account/03-login-modal-flows.js'));
+  // Apple 面板里那个「保存」按钮 (原本提交 Developer 凭据 / cookie) 对 Apple 隐藏, 其它平台恢复
+  assert.match(code, /if \(qqCookieSaveBtn\) qqCookieSaveBtn\.style\.display = 'none';/);
+  assert.match(code, /if \(qqCookieSaveBtn\) qqCookieSaveBtn\.style\.display = '';/);
+  // 引导内容本身也收短了: 不再有第三步之外的那条尾部说明
+  assert.ok(code.indexOf('歌单 / 专辑 / 歌词都走 Web 读取') < 0, '尾部说明已并入步骤');
+  // 抽屉固定 420px 会裁掉 Apple 的尾部: 只对 Apple 放开高度
+  assert.match(read('public/css/index.css'), /\.login-node-graph\[data-provider="apple"\] \+ #login-auth-drawer\.show \{\n  max-height: 560px\n\}/);
+});
+
 console.log('[OK] Apple Music 账户设置: 显示资料存储 / 与登录态分离 / 手动 Web Token 复用既有 store / 无 Developer 新引用');

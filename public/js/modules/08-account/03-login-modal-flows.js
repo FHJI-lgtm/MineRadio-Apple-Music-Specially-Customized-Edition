@@ -900,6 +900,7 @@ function updateLoginProviderUi() {
   // The Apple panel has no free-text credential box any more (the Developer form is retired): reset the
   // shared textarea for every provider, then hide it in the Apple branch below.
   if (qqCookieInput) qqCookieInput.style.display = '';
+  if (qqCookieSaveBtn) qqCookieSaveBtn.style.display = '';
   var canOpenNeteaseWeb = !!(window.desktopWindow && typeof window.desktopWindow.openNeteaseMusicLogin === 'function');
   var canUseQishuiQrLogin = true;
   var qishuiSearchReady = qishuiPublicSearchReady();
@@ -996,19 +997,17 @@ function updateLoginProviderUi() {
     if (qqCookieNote) qqCookieNote.innerHTML =
       '<div class="spotify-guide-title">登录 Apple Music 网页账号</div>' +
       '<div class="spotify-guide-steps">' +
-        '<span>1. 点“打开 Apple Music 登录页面”，在官方窗口登录 Apple ID</span>' +
-        '<span>2. 登录成功后自动保存网页登录态，可同步用户歌单与资料库</span>' +
-        '<span>3. 显示名称 / 头像与手动写入 Token 都在「Apple Music 账户设置」里</span>' +
+        '<span>1. 点上方卡片打开官方窗口登录 Apple ID</span>' +
+        '<span>2. 登录态自动保存，可同步用户歌单与资料库</span>' +
+        '<span>3. 显示名称 / 头像与手动 Token 在「Apple Music 账户设置」里</span>' +
       '</div>' +
       '<div class="spotify-guide-actions">' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleAccountSettings()">Apple Music 账户设置</button>' +
         '<button type="button" class="spotify-guide-link" onclick="openAppleSetupGuide()">官方接入文档</button>' +
-        '<span>歌单 / 专辑 / 歌词都走 Web 读取</span>' +
       '</div>';
-    if (qqCookieSaveBtn) {
-      qqCookieSaveBtn.disabled = appleBusy || !canOpenAppleLogin;
-      qqCookieSaveBtn.textContent = appleOAuthBusy ? '等待登录…' : '打开 Apple Music 登录页面';
-    }
+    // 面板这个「保存」按钮原本是提交 Developer 凭据 / cookie 的: Apple 现在是「上方卡片 +
+    // 账户设置」两个入口, 留着它只会被挤到下一行、再被抽屉的固定高度裁掉。所以直接隐藏。
+    if (qqCookieSaveBtn) qqCookieSaveBtn.style.display = 'none';
     if (qqCard) {
       qqCard.style.display = '';
       qqCard.disabled = appleBusy || !canOpenAppleLogin;
