@@ -819,8 +819,8 @@ function appleWebLoginStatusText() {
 }
 function appleOfficialApiAxisText() {
   var api = appleLoginStatus || {};
-  if (api.privateKeyConfigured && api.tokenConfigured) return '官方 API：已配置';
-  if (api.privateKeyConfigured) return '官方 API：凭据已保存';
+  if (api.tokenConfigured) return 'Apple Music：已连接';
+  return 'Apple Music：未连接';
   if (api.configured) return '官方 API：部分配置';
   return '官方 API：未配置';
 }
@@ -889,7 +889,7 @@ async function openAmcAppleWebLogin() {
   if (info.reauthRequired) return 'Apple Music 登录态已失效，请重新连接官方登录窗口';
   if (info.stale) return 'Apple Music 登录已过期，请重新连接官方登录窗口';
   if (info.localConfigMissing) return 'Apple Music 未连接：先粘贴 Team ID、Key ID 与 P8 私钥保存配置';
-  if (info.privateKeyConfigured) return 'Apple 开发者凭据已保存，点击“连接 Apple Music”打开官方登录窗口（登录 Apple ID 后自动获取 music user token）';
+  if (info.tokenConfigured) return 'Apple Music 已连接（Web 账户）';
   if (info.configured || info.searchReady) return 'Apple Music 搜索已可用；登录后可同步用户歌单与资料库';
   var missing = info.oauthMissing && info.oauthMissing.length ? (' 缺少: ' + info.oauthMissing.join(', ')) : '';
   return '粘贴 Apple 开发者 Team ID、Key ID 与 P8 私钥（在 developer.apple.com 的 MusicKit 配置中获取）' + missing;
