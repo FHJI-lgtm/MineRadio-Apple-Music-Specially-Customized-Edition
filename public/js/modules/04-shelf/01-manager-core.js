@@ -74,7 +74,7 @@ function makeShelfManager() {
         if (provider === 'apple' && String(pl.id || '').indexOf('apple:') !== 0) pl = Object.assign({}, pl, { id: 'apple:' + pl.id });
         return {
           type: 'playlist', title: pl.name, sub: sourceLabel + ' · ' + (pl.trackCount ? pl.trackCount + ' 首 · 播放 ' : '') + compactCount(pl.playCount || 0),
-          cover: playlistCoverOrFallback(pl), tag: (pl.shelfPane || pl.shelf_pane) === 'fav' || (!(pl.shelfPane || pl.shelf_pane) && pl.subscribed) ? '收藏歌单' : (provider === 'qishui' ? '汽水歌单' : '我的歌单'), playlistId: (provider === 'qq' ? 'qq:' : (provider === 'kugou' ? 'kugou:' : (provider === 'qishui' ? 'qishui:' : (provider === 'spotify' ? 'spotify:' : (provider === 'apple' ? 'apple:' : ''))))) + pl.id, provider: provider
+          cover: playlistCoverOrFallback(pl), tag: (pl.shelfPane || pl.shelf_pane) === 'fav' || (!(pl.shelfPane || pl.shelf_pane) && pl.subscribed) ? '收藏歌单' : (provider === 'qishui' ? '汽水歌单' : '我的歌单'), playlistId: (function () { var pref = provider === 'qq' ? 'qq:' : (provider === 'kugou' ? 'kugou:' : (provider === 'qishui' ? 'qishui:' : (provider === 'spotify' ? 'spotify:' : (provider === 'apple' ? 'apple:' : '')))); var rid = String(pl.id || ''); return (pref && rid.indexOf(pref) !== 0) ? (pref + rid) : rid; })(), provider: provider
         };
       });
       if (shelfShowsPodcasts() && (shelfPane === 'mine' || shelfMergesCollections()) && myPodcastCollections.length) {
@@ -543,11 +543,49 @@ function makeShelfManager() {
     }
   }
 
+  // ------------------------------------------------------------
+  // Apple Music 歌单（AM）：MineRadio 这边没有它的本地曲目，所以「播放歌单」不是把歌塞进本地队列，
+  // 而是把这个歌单本身交给 Apple Music 播放。走的还是那条已经验证过的 AMC 歌单链（IPC amc:play-playlist），
+  // 与 06-lyrics 面板的「播放歌单」同一套契约：歌单名 + 实测的资料库作用域标签；
+  // 判定是 verification:'smtc-transition'（SMTC 进入播放），不是「歌对了」。
+  // ------------------------------------------------------------
+  function playApplePlaylistCard(card, action) {
+    var title = String((card && card.item && card.item.title) || action.title || '').trim();
+    var url = String((card && card.item && (card.item.appleUrl || card.item.url)) || '').trim();
+    var amc = window.mineradio && window.mineradio.amc;
+    pulseCard(card, 1.05);
+    if (!amc || typeof amc.playPlaylist !== 'function') {
+      if (typeof showToast === 'function') showToast('Apple Music 播放不可用（IPC 未就绪）');
+      return false;
+    }
+    var payload = { name: title };
+    if (url) payload.url = url;
+    else payload.scopeLabel = (typeof AMC_PLAYLIST_SCOPE_LABEL === 'string' && AMC_PLAYLIST_SCOPE_LABEL) ? AMC_PLAYLIST_SCOPE_LABEL : '你的资料库';
+    if (typeof showToast === 'function') showToast('交给 Apple Music 播放：' + (title || '歌单'));
+    Promise.resolve(amc.playPlaylist(payload)).then(function (res) {
+      var stage = (res && res.stage) || 'NO_RESULT';
+      var via = (res && res.playVia) || '';
+      if (typeof showToast !== 'function') return;
+      if (res && res.verified) showToast('✓ Apple Music 已开始播放：' + (title || '歌单') + (via ? ' · ' + via : ''));
+      else if (stage === 'AMBIGUOUS') showToast('资料库里有多个同名歌单，无法确定播哪一个');
+      else if (stage === 'PLAYLIST_NOT_FOUND') showToast('Apple Music 资料库里没找到：' + (title || '歌单'));
+      else showToast('Apple Music 播放失败：' + stage);
+    }).catch(function () { if (typeof showToast === 'function') showToast('Apple Music 播放失败（IPC 错误）'); });
+    return true;
+  }
+
   function playPlaylistCard(card) {
     if (!card || !card.mesh || !card.mesh.userData) return false;
     var action = card.mesh.userData.action;
     if (!action || action.kind !== 'loadPlaylist' || !action.playlistId) return false;
     if (String(action.playlistId).indexOf('podcast:') === 0) return false;
+    if (String(action.playlistId).indexOf('apple:') === 0 || (card.item && card.item.provider === 'apple')) {
+      if (contentList && contentList.isOpen && contentList.isOpen()) contentList.close();
+      openCardIdx = -1;
+      setShelfPinnedOpen(false, true);
+      if (typeof setFocusZone === 'function') setFocusZone(null, true);
+      return playApplePlaylistCard(card, action);
+    }
     pulseCard(card, 1.05);
     if (contentList && contentList.isOpen && contentList.isOpen()) contentList.close();
     openCardIdx = -1;

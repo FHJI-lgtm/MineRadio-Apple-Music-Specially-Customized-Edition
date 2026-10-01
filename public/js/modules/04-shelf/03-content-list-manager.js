@@ -118,6 +118,10 @@ function makeContentListManager() {
     var playableCount = allTracks.filter(function (song) { return song && song.id && song.type !== 'podcast-radio'; }).length;
     var contentCount = allTracks.filter(function (song) { return song && song.id; }).length;
     var isLoading = allTracks.length === 1 && isLoadingLabel(allTracks[0] && allTracks[0].name);
+    // NOTE: drawPanel has no playlistId binding - derive the Apple flag from what IS in scope
+    // (contentSource / sourceCard), otherwise this line throws ReferenceError and the panel never draws.
+    var applePlaylistDetail = (contentSource && contentSource.provider === 'apple')
+      || (sourceCard && sourceCard.item && (sourceCard.item.provider === 'apple' || isApplePlaylistKey(sourceCard.item.playlistId)));
     var countLabel = contentKind === 'podcast'
       ? (contentCount ? (contentCount + ' 项播客内容') : (isLoading ? '正在载入' : '暂无播客内容'))
       : (playableCount ? (playableCount + ' 首歌曲') : (isLoading ? '正在载入' : '暂无可播放歌曲'));
@@ -564,6 +568,11 @@ function makeContentListManager() {
     disposePanelObject(targetPanel);
   }
 
+  // Apple Music 歌单在本模块里没有本地曲目：它不是「空歌单」，而是由 Apple Music 自己播放。
+  // 卡片上的「▶ 播放歌单」会把它交给 AMC 歌单链（见 04-shelf/01-manager-core.js）。
+  function isApplePlaylistKey(id) {
+    return String(id || '').indexOf('apple:') === 0;
+  }
   function startRowsLoadedIntro() {
     rowAnimAt = uniforms.uTime.value;
     panelDirty = true;
@@ -750,7 +759,12 @@ function makeContentListManager() {
         disposeRows();
         var tracks = podcastCollectionKey ? (r.items || []) : (r.tracks || []);
         if (!tracks.length) {
-          allTracks = [{ name: podcastCollectionKey ? '播客为空' : '歌单为空', artist: '' }];
+          var appleEmpty = isApplePlaylistKey(playlistId);
+          var apiError = String((r && r.error) || '').trim();
+          allTracks = [{
+            name: podcastCollectionKey ? '播客为空' : (appleEmpty ? (apiError ? ('Apple Music 读取失败：' + apiError) : '这个歌单是空的') : '歌单为空'),
+            artist: podcastCollectionKey ? '' : (appleEmpty ? '点卡片上的「▶ 播放歌单」交给 Apple Music 播放整张歌单' : '')
+          }];
           panelDirty = true;
           rowsDirty = true;
           startRowsLoadedIntro();
