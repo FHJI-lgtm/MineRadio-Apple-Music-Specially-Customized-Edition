@@ -122,13 +122,13 @@ if ($TrackTitle -and $Commit) {
         try { $okSel2 = $row.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$obj2) } catch { }
         if ($okSel2) { $clickable = $row } else { $obj3 = $null; if ($row.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$obj3)) { $clickable = $row } }
       } catch { }
-      if ($clickable) { $exact = ($nm.Trim() -eq $TrackTitle.Trim()); $hits += @{ el = $clickable; exact = $exact; name = $nm } }
+      if ($clickable) { $exact = ($nm.Trim() -eq $TrackTitle.Trim()); $hits += @{ el = $clickable; titleEl = $n; exact = $exact; name = $nm } }
     }
     $o['trackAttempts'] += @{ card = $ci; name = (Truncate-AmText ([string]$pickCard.name) 40); rows = @($dump).Count; hits = @($hits).Count }
     if (@($hits).Count -gt 0) {
       $chosen = @($hits | Where-Object { $_.exact })[0]
       if (-not $chosen) { $chosen = $hits[0] }
-      $trackHit = $chosen.el; $trackHitName = [string]$chosen.name; $trackExact = [bool]$chosen.exact
+      $trackHit = $chosen.el; $trackTitleEl = $chosen.titleEl; $trackHitName = [string]$chosen.name; $trackExact = [bool]$chosen.exact
       break
     }
   }
@@ -144,10 +144,40 @@ if ($TrackTitle -and $Commit) {
     $o['ok'] = $false
   } else {
     try { [void](Realize-AmRow $trackHit 2500 120 $app2.hwnd) } catch { }
-    $rectT = $null; try { $rectT = $trackHit.Current.BoundingRectangle } catch { }
+    # Click the LEFT part of the TITLE text, not the row centre: the explicit-content badge (E) sits right
+    # after the title and swallows a centred click, which is what made a row click do nothing.
+    # Measured row geometry (After Hours / Scared To Live): the row is ~2022px wide, the title Text child
+    # sits at the left after the track number, and the explicit-content badge follows it. So aim at the
+    # CENTRE OF THE TITLE TEXT - never at the row centre (empty space / badge) and never at the row's left
+    # edge. A synthetic click also only activates an unfocused window, so click twice if SMTC stays put.
+    $titleTextEl = $null
+    try {
+      $rowKids = $trackHit.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+      foreach ($k in $rowKids) {
+        try {
+          if (([string]$k.Current.ControlType.ProgrammaticName) -eq 'ControlType.Text' -and (Normalize-AmText ([string]$k.Current.Name)).IndexOf($want) -ge 0) { $titleTextEl = $k; break }
+        } catch { }
+      }
+    } catch { }
+    $rectT = $null
+    try { if ($titleTextEl) { $rectT = $titleTextEl.Current.BoundingRectangle } } catch { $rectT = $null }
+    if (-not $rectT -or $rectT.Width -le 0) { try { $rectT = $trackHit.Current.BoundingRectangle } catch { $rectT = $null } }
     $ptT = Get-AmSafeClickPoint $rectT
+    if ($rectT -and $rectT.Width -gt 20) {
+      $aimX = $rectT.Left + ($rectT.Width / 2)
+      $aimY = $rectT.Top + ($rectT.Height / 2)
+      $aimRect = New-Object System.Windows.Rect($aimX, $aimY, 2, 2)
+      $ptT = Get-AmSafeClickPoint $aimRect
+      $o['aimPoint'] = ('' + [int]$ptT.x + ',' + [int]$ptT.y)
+    }
     $clickT = Invoke-AmRowPlay $app2.hwnd $trackHit $ptT.x $ptT.y
     $o['trackClicked'] = [bool]$clickT.ok
+    # Song rows need a real DOUBLE click (measured: the page's play button needs one click, a row needs two).
+    # Two clicks at the same point ~120 ms apart is what Apple Music's row gesture expects.
+    Start-Sleep -Milliseconds 120
+    $clickT2 = Invoke-AmRowPlay $app2.hwnd $trackHit $ptT.x $ptT.y
+    $o['trackDoubleClicked'] = [bool]$clickT2.ok
+    Start-Sleep -Milliseconds 600
     $deadlineT = (Get-Date).AddMilliseconds($SmtcTimeoutMs)
     $okT = $false
     while ((Get-Date) -lt $deadlineT) {
