@@ -27,7 +27,7 @@
 
 const https = require('https');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
 
@@ -169,6 +169,96 @@ function runChain(result, opts) {
 }
 
 /** The chain prints one JSON line on stdout (plus human lines with -Human). Take the last that parses. */
+// ------------------------------------------------------------
+// Bound a PowerShell chain with a hard deadline.
+//
+// Why: the UIA chain is a child process whose work (searching Apple Music, walking the accessibility
+// tree) can stall. Previously the promise settled only on 'close', so a hung chain left the caller - and
+// the renderer - waiting forever, with no error and no feedback.
+//
+// Guarantees:
+//   * settles EXACTLY ONCE, even when the deadline races a normal exit;
+//   * on deadline it kills the process TREE (taskkill /T /F on Windows) and reports stage UIA_TIMEOUT.
+//     It only ever targets the pid it spawned - never another powershell.exe and never Apple Music;
+//   * spawn error / non-zero exit / unparsable stdout each yield a distinct stage instead of silence.
+//
+// @param {{powershell:string, args:string[], timeoutMs:number}} cfg
+function runChainWithDeadline(cfg) {
+  const timeoutMs = Math.max(1000, Number(cfg.timeoutMs) || DEFAULT_CHAIN_TIMEOUT_MS);
+  const startedMs = Date.now();
+  return new Promise((resolve) => {
+    let out = '', err = '', child = null, settled = false, killed = false;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      resolve(Object.assign({ out: out, err: err, ms: Date.now() - startedMs }, r));
+    };
+
+    try {
+      child = spawn(cfg.powershell, cfg.args, { windowsHide: true });
+    } catch (e) {
+      finish({ ok: false, stage: 'SPAWN_FAILED', detail: String((e && e.message) || e), exitCode: null, killed: false, raw: null });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      killed = true;
+      killChainTree(child.pid);
+      // Deliberately do NOT wait for 'close': a tree that refuses to die must not keep us stuck.
+      finish({
+        ok: false, stage: 'UIA_TIMEOUT', killed: true, exitCode: null, raw: null,
+        detail: 'chain exceeded ' + timeoutMs + 'ms and was killed' + (child.pid ? ' (pid=' + child.pid + ')' : ''),
+      });
+    }, timeoutMs);
+
+    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      finish({ ok: false, stage: 'SPAWN_FAILED', detail: String((e && e.message) || e), exitCode: null, killed: killed, raw: null });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (killed || settled) {
+        finish({ ok: false, stage: 'UIA_TIMEOUT', killed: true, exitCode: code, raw: null, detail: 'chain was killed before it reported' });
+        return;
+      }
+      const parsed = lastJsonLine(out);
+      if (!parsed) {
+        finish({
+          ok: false, stage: code === 0 ? 'NO_JSON' : ('CHAIN_EXIT_' + code), killed: false, exitCode: code, raw: null,
+          detail: err.trim() || out.trim().slice(-400) || 'no JSON on stdout',
+        });
+        return;
+      }
+      finish({ ok: !!parsed.ok, stage: parsed.stage || 'NO_STAGE', killed: false, exitCode: code, raw: parsed, detail: '' });
+    });
+  });
+}
+
+// Windows: the chain spawns helpers of its own, so kill the tree. taskkill is only ever called with the
+// concrete pid we spawned.
+function killChainTree(pid) {
+  if (!pid) return false;
+  try {
+    if (process.platform === 'win32') {
+      const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+      return !!(r && r.status === 0);
+    }
+    process.kill(pid, 'SIGKILL');
+    return true;
+  } catch (_) {
+    try { process.kill(pid); } catch (__) { }
+    return false;
+  }
+}
+
+// Hard deadline for one chain run. It must stay ABOVE a normal chain completion so a real business
+// verdict (AMBIGUOUS / PLAYLIST_NOT_FOUND / PLAYBACK_STARTED) wins the race and only a genuinely stuck
+// chain is killed. Worst measured path: app launch 30s + stability wait 6s + scope retries 3x6s + SMTC
+// 8s ~= 56s, so 90s leaves headroom while still bounding the user's wait.
+const DEFAULT_CHAIN_TIMEOUT_MS = 90000;
+
 function lastJsonLine(text) {
   const lines = String(text || '').split(/\r?\n/);
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -434,34 +524,22 @@ async function playPlaylist(payload = {}, opts = {}) {
   if (payload.noMinimize) args.push('-NoMinimize');
   const powershell = opts.powershell || 'powershell.exe';
 
-  const run = await new Promise((resolve) => {
-    let out = '', err = '';
-    let child;
-    try {
-      child = spawn(powershell, args, { windowsHide: true });
-    } catch (e) {
-      resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null });
-      return;
-    }
-    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
-    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
-    child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }));
-    child.on('close', (code) => {
-      const parsed = lastJsonLine(out);
-      resolve({
-        ok: !!(parsed && parsed.ok),
-        stage: parsed ? parsed.stage : 'NO_JSON',
-        exitCode: code,
-        detail: parsed ? '' : (err.trim() || out.trim().slice(-400)),
-        raw: parsed,
-      });
-    });
+  // Hard deadline: a stuck chain must never leave the caller waiting forever. The bound sits above a
+  // normal chain completion so a real verdict wins the race; only a genuinely hung chain is killed.
+  const run = await runChainWithDeadline({
+    powershell: powershell,
+    args: args,
+    timeoutMs: opts.timeoutMs || DEFAULT_CHAIN_TIMEOUT_MS,
   });
 
   const raw = run.raw;
   const base = { name: name, scopeLabel: scopeLabel, verification: 'smtc-transition', route: 'playlist' };
   if (!raw) {
+    // run.detail/run.killed/run.ms carry the deadline verdict (e.g. UIA_TIMEOUT with the killed pid and
+    // elapsed time) so the caller can log why the chain never produced a stage.
     return Object.assign(base, {
+      killed: !!run.killed,
+      elapsedMs: Number(run.ms) || 0,
       ok: false, verified: false, stage: run.stage || 'FAILED', playVia: '',
       mismatch: ['playback'], smtc: null, error: run.detail || 'chain reported failure',
     });
@@ -499,7 +577,16 @@ async function playPlaylist(payload = {}, opts = {}) {
   });
 }
 
+// Test-only entry to the bounded runner. It executes the SAME code path playPlaylist uses, with a
+// caller-supplied command, so the deadline / single-settle / kill behaviour can be verified against a
+// deliberately hanging or failing child instead of against a real Apple Music session.
+// It is not used by any production caller.
+async function __runChainForTest(cfg) {
+  return runChainWithDeadline(Object.assign({ powershell: 'powershell.exe', args: [] }, cfg || {}));
+}
+
 module.exports = {
+  __runChainForTest,
   searchTracks,
   playTrack,
   verifyAgainstSmtc,

@@ -44,12 +44,50 @@ function Find-AmScopeChip($root, [string]$Label) {
   return $null
 }
 
-function Get-AmPlaylistCardCandidates($root, [string]$Name) {
+function Get-AmScopeChipState($chip) {
+  # 读 chip 自身的开关状态。这是**唯一可信**的范围判据：
+  # chip 是 TogglePattern 按钮（REPORT-B-I-PLAYLIST-CARD.md 4.1，AutomationId=SearchLibrary），
+  # 切换语义意味着"再点一次是关掉" —— 盲点会把已开启的范围点回 Apple Music 全局范围。
+  # 返回 'On' / 'Off' / ''（读不到）。
+  if (-not $chip) { return '' }
+  try {
+    $obj = $null
+    if ($chip.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$obj)) {
+      $st = $obj.Current.ToggleState
+      if ($st -eq [System.Windows.Automation.ToggleState]::On) { return 'On' }
+      if ($st -eq [System.Windows.Automation.ToggleState]::Off) { return 'Off' }
+      return 'Indeterminate'
+    }
+  } catch { }
+  return ''
+}
+
+function Invoke-AmScopeChipSelect($chip) {
+  # 按状态确保 chip 处于 On。已经是 On 就不点（避免把它关掉）。
+  # 读不到状态时退回盲点（与既有行为一致），由调用方的结果验证兜底。
+  $before = Get-AmScopeChipState $chip
+  if ($before -eq 'On') { return @{ clicked = $false; stateBefore = $before; stateAfter = $before; reason = 'already-on' } }
+  try {
+    $obj = $null
+    if ($chip.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$obj)) {
+      $obj.Toggle()
+    } else {
+      return @{ clicked = $false; stateBefore = $before; stateAfter = $before; reason = 'no-toggle-pattern' }
+    }
+  } catch {
+    return @{ clicked = $false; stateBefore = $before; stateAfter = $before; reason = 'toggle-threw' }
+  }
+  Start-Sleep -Milliseconds 200
+  $after = Get-AmScopeChipState $chip
+  return @{ clicked = $true; stateBefore = $before; stateAfter = $after; reason = 'toggled' }
+}
+
+function Get-AmPlaylistCardCandidates($root, [string]$Name, [switch]$EarlyExitOnAmbiguous) {
   # Tree-wide: find nodes whose NAME (or text) normalises to the playlist name, then walk up to the nearest
   # clickable ancestor (Invoke or SelectionItem). This deliberately does NOT use Get-AmListItems, which is
   # shaped for song rows. Errors are returned, never swallowed into empty data.
   $want = Normalize-AmText $Name
-  $errors = @(); $hits = @()
+  $errors = @(); $hits = @(); $earlyExit = $false; $earlyExitAt = 0
   $all = $null
   try { $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) }
   catch { return @{ ok = $false; errors = @([string]$_.Exception.Message); candidates = @() } }
@@ -148,12 +186,22 @@ function Get-AmPlaylistCardCandidates($root, [string]$Name) {
       element = $h.element; name = $h.name; rectKey = $key
       selfType = $h.selfType; selfRect = $h.selfRect; ancestors = @($h.ancestors)
     }
+    # EARLY EXIT (ambiguity): without -CardIndex the caller can never use more than two distinct
+    # candidates - this function's contract is 0 -> PLAYLIST_NOT_FOUND, 2+ -> AMBIGUOUS and nothing is
+    # clicked. Enumerating the remaining matches cost one full UIA walk each (name read + up to 6
+    # pattern probes + ~4 property reads + 3 ancestor levels per match), which is the multi-result
+    # stall. Two DISTINCT deduped rects already prove ambiguity, so stop here. Disabled when the caller
+    # may pick by index, because -CardIndex needs the complete list preserved.
+    if ($EarlyExitOnAmbiguous -and $uniq.Count -ge 2) {
+      $earlyExit = $true; $earlyExitAt = $uniq.Count
+      break
+    }
   }
   # CONTRACT: one object { ok; errors; candidates } - the catch path above already returns that shape and
   # both callers read .candidates. Returning the bare $uniq array instead made @($res.candidates) collapse
   # to @($null) (PowerShell yields nothing for a member no element has, and @($null) has Count 1), so
   # 'nothing matched' AND 'two matched' both arrived as a single NULL card - a PROBE_ONLY false positive.
-  return @{ ok = $true; errors = @($errors); candidates = @($uniq) }
+  return @{ ok = $true; errors = @($errors); candidates = @($uniq); earlyExit = [bool]$earlyExit; earlyExitAt = [int]$earlyExitAt }
 }
 function Find-AmPlaylistCards($items, [string]$Name) {
   $want = Normalize-AmText $Name
@@ -344,6 +392,41 @@ function Find-AmPlaylistPagePlayButton($root, [string]$PlayLabel, [switch]$Allow
   return $out
 }
 
+function Wait-AmResultStability($Hwnd, [string]$Name, [int]$BudgetMs = 6000, [int]$SampleMs = 400, [int]$MaxSamples = 16) {
+  # Bounded replacement for an unconditional fixed sleep. Apple Music renders search results in waves,
+  # so scanning a half-built tree is both slow and wrong. Stability = two consecutive samples agreeing
+  # on BOTH the deduped candidate count AND the raw descendant-node count: a single counter can look
+  # stable (e.g. still 0) while the tree is still growing, and the candidate count alone can stay flat
+  # while the result list keeps changing underneath. Both bounds (samples and wall clock) are explicit,
+  # so the poll can never loop forever.
+  #
+  #   ready=$true  candidates=1   -> one candidate settled; safe to scan.
+  #   ready=$true  candidates>=2  -> two distinct candidates already seen; the ambiguity contract
+  #                                  applies immediately, no need to wait for the rest to load.
+  #   ready=$false                -> budget exhausted while the tree never settled. Callers must NOT
+  #                                  treat this as 'not found'; it gets its own stage.
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $prevCand = -1; $prevNodes = -1; $stable = 0; $samples = 0; $cand = 0; $nodes = 0
+  while ($samples -lt $MaxSamples -and $sw.ElapsedMilliseconds -lt $BudgetMs) {
+    Start-Sleep -Milliseconds $SampleMs
+    $samples++
+    $root = (Get-AmRoot $Hwnd).root
+    if (-not $root) { continue }
+    $candRes = Get-AmPlaylistCardCandidates $root $Name -EarlyExitOnAmbiguous
+    $cand = @($candRes.candidates).Count
+    try { $nodes = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)).Count } catch { $nodes = -1 }
+    if ($cand -ge 2) {
+      return @{ ready = $true; reason = 'ambiguous_seen'; samples = $samples; candidates = $cand; nodes = $nodes; ms = [int]$sw.ElapsedMilliseconds; candidateCount = $cand }
+    }
+    if ($prevCand -eq $cand -and $prevNodes -eq $nodes) { $stable++ } else { $stable = 0 }
+    $prevCand = $cand; $prevNodes = $nodes
+    if ($stable -ge 1) {
+      return @{ ready = $true; reason = 'settled'; samples = $samples; candidates = $cand; nodes = $nodes; ms = [int]$sw.ElapsedMilliseconds; candidateCount = $cand }
+    }
+  }
+  return @{ ready = $false; reason = 'wait_budget'; samples = $samples; candidates = $cand; nodes = $nodes; ms = [int]$sw.ElapsedMilliseconds; candidateCount = $cand }
+}
+
 function Invoke-AmPlayPlaylist {
   [CmdletBinding()]
   param(
@@ -417,15 +500,35 @@ function Invoke-AmPlayPlaylist {
           }
           if (-not $chip) { $stage = 'SCOPE_CHIP_NOT_FOUND'; $detail = 'label=' + $ScopeLabel + ' after ' + (($cs - 1) * 300) + 'ms'; break }
           try {
-            $pt0 = Get-AmSafeClickPoint $chip.Current.BoundingRectangle
-            [void](Invoke-AmSingleClick $app.hwnd $chip $pt0.x $pt0.y -NoForeground:$NoForeground)
-            Start-Sleep -Milliseconds 1200
+            # 按状态切换，而不是盲点：chip 是 TogglePattern 开关，盲点会把已开启的范围点回全局。
+            $scopeClick = Invoke-AmScopeChipSelect $chip
+            $result.scopeChipClicked = [bool]$scopeClick.clicked
+            $result.scopeChipReason = [string]$scopeClick.reason
+            $result.scopeChipStateBefore = [string]$scopeClick.stateBefore
+            $result.scopeChipStateAfter = [string]$scopeClick.stateAfter
+            if (-not $result.scopeStateHistory) { $result.scopeStateHistory = @() }
+            $result.scopeStateHistory += ($scopeClick.stateBefore + '->' + $scopeClick.stateAfter)
+            # Bounded stability poll instead of a blind 1200ms sleep: after a scope toggle the list is
+            # a different, still-rendering tree, and scanning it early is the stall.
+            $st0 = Wait-AmResultStability $app.hwnd $Name $SearchWaitMs
+            $result.scopeStability = @{ ready = $st0.ready; reason = $st0.reason; samples = $st0.samples; candidates = $st0.candidates; nodes = $st0.nodes; ms = $st0.ms }
             $result.scopeSwitched = $true
             $result.scopeSwitchAttempts = $att
           } catch { $stage = 'SCOPE_SWITCH_FAILED'; $detail = $_.Exception.Message; break }
-          $scopeProbe = Get-AmPlaylistCardCandidates (Get-AmRoot $app.hwnd).root $Name
-          if (@($scopeProbe.candidates).Count -gt 0) { $result.scopeVerified = $true; break }
+          # 判据一（强）：chip 自身状态为 On。
+          if ($result.scopeChipStateAfter -eq 'On') { $result.scopeVerified = $true; break }
+          # 判据二（兜底）：状态读不到时，用「资料库范围内能找到目标卡片」作为结果验证。
+          $scopeProbe = Get-AmPlaylistCardCandidates (Get-AmRoot $app.hwnd).root $Name -EarlyExitOnAmbiguous
+          if (-not $result.scopeChipStateAfter -and @($scopeProbe.candidates).Count -gt 0) { $result.scopeVerified = $true; break }
         }
+      }
+      # HARD GATE (user-mandated): 音乐库内的搜索必须在『你的资料库』范围内完成。
+      # 范围切换未通过结果验证时，绝不允许继续去主范围（Apple Music 目录）里搜 —— 那会把目录里
+      # 同名的条目当成资料库条目选中。宁可失败并报出原因，也不静默降级。
+      # 用独立 stage 中止：后面的主扫描因为 stage 不再是 UNKNOWN 会自然跳过。
+      if (-not $result.scopeVerified) {
+        $stage = 'SCOPE_NOT_VERIFIED'
+        $detail = 'label=' + $ScopeLabel + ' attempts=' + $result.scopeSwitchAttempts + '：未能在资料库范围内确认目标，已中止（不回落到目录范围搜索）'
       }
     }
   }
@@ -434,8 +537,22 @@ function Invoke-AmPlayPlaylist {
     $rootFresh = (Get-AmRoot $app.hwnd).root
     # $items was never assigned, so -DumpItems dumped nothing and the PLAYLIST_NOT_FOUND detail always
     # reported listItems=0 - a diagnostic that lied. am-play.ps1 fills the same variable the same way.
+    # Bounded stability poll before scanning: results render in waves, so scanning a half-built tree is
+    # both slow and wrong. Returns as soon as TWO distinct candidates exist (ambiguity applies at once)
+    # or after two agreeing samples.
+    $st = Wait-AmResultStability $app.hwnd $Name $SearchWaitMs
+    $result.resultStability = @{ ready = $st.ready; reason = $st.reason; samples = $st.samples; candidates = $st.candidates; nodes = $st.nodes; ms = $st.ms }
+    if (-not $st.ready) {
+      # An unsettled tree is NOT 'not found': it gets its own stage so the caller can retry instead of
+      # being told the album does not exist.
+      $stage = 'RESULT_NOT_STABLE'
+      $detail = 'result tree did not settle within ' + $SearchWaitMs + 'ms (samples=' + $st.samples + ' candidates=' + $st.candidates + ' nodes=' + $st.nodes + ')'
+      $cards = @(); $items = @()
+    }
+    if ($stage -eq 'UNKNOWN') {
     $items = @(Get-AmListItems $rootFresh)
-    $candRes = Get-AmPlaylistCardCandidates $rootFresh $Name
+    $candRes = Get-AmPlaylistCardCandidates $rootFresh $Name -EarlyExitOnAmbiguous:($CardIndex -le 0)
+    $result.scanEarlyExit = [bool]$candRes.earlyExit; $result.scanEarlyExitAt = [int]$candRes.earlyExitAt
     $cards = @($candRes.candidates)
     $result.dumpErrors = @($candRes.errors)
 
@@ -462,6 +579,7 @@ function Invoke-AmPlayPlaylist {
       $result.items = $dump
     }
     # option 4: the caller supplies the position; nothing is guessed here. It only SELECTS - whether that
+    }
     # selection is allowed to click is decided below, after the PROBE check.
     $indexPicks = ($CardIndex -ge 1 -and $CardIndex -le $cards.Count)
     if ($cards.Count -eq 0) { $stage = 'PLAYLIST_NOT_FOUND'; $detail = 'listItems=' + @($items).Count }
