@@ -1,0 +1,3 @@
+$label = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\scope-label.txt', [System.Text.Encoding]::UTF8)
+$section = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\album-section-label.txt', [System.Text.Encoding]::UTF8)
+& 'F:\mineradio-apple-music\experiment\apple-music-windows-control\poc\play-album-library.ps1' -Name 'Starboy' -ScopeLabel $label.Trim() -SectionLabel $section.Trim() -Commit

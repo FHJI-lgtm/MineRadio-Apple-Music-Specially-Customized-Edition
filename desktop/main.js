@@ -5015,6 +5015,19 @@ ipcMain.handle('amc:play-playlist', async (_event, payload = {}) => {
   }
 });
 
+// Library-scope album play: the wrapper probes first and keeps the candidate sitting in the album
+// section before committing (see play-album-library.ps1). Same gate + pass-through contract as amc:play.
+ipcMain.handle('amc:play-album', async (_event, payload = {}) => {
+  const opts = (payload && payload.opts) || {};
+  let gate = null;
+  try { gate = await appleStealth.beginTemporaryInputWindow('amc-play-album'); } catch (_) { gate = null; }
+  try {
+    return await appleMusicControl.playAlbumInLibrary(payload || {}, opts);
+  } finally {
+    if (gate && gate.ok) { try { await appleStealth.endTemporaryInputWindow(); } catch (_) {} }
+  }
+});
+
 // ------------------------------------------------------------
 // Apple Music App section: dedicated login entry.
 // Single purpose: establish the Apple Music Web account session / media-user-token only.

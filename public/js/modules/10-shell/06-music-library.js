@@ -271,6 +271,7 @@
   // 已知限制（本次不解决）：同名专辑会 AMBIGUOUS；链路判定是 SMTC 转换，不是"歌对了"。
   // ----------------------------------------------------------------
   var AMC_ALBUM_SCOPE_LABEL = '你的资料库';   // 与 02-playlist-detail.js 实测到的同一个本地化标签
+  var AMC_ALBUM_SECTION_LABEL = '专辑';        // 搜索结果里「专辑」分组（同名专辑卡 vs 同名单曲行的消歧依据）
 
   function readCardAlbum(card) {
     if (!card || !card.getAttribute) return null;
@@ -286,14 +287,14 @@
       return;
     }
     var amc = window.mineradio && window.mineradio.amc;
-    if (!amc || typeof amc.playPlaylist !== 'function') {
+    if (!amc || typeof amc.playAlbum !== 'function') {
       // 沿用项目既有措辞，不新造错误文案
       if (typeof showToast === 'function') showToast('Apple Music 播放不可用（IPC 未就绪）');
       return;
     }
     if (typeof showToast === 'function') showToast('交给 Apple Music 播放：' + name);
-    var payload = { name: name, scopeLabel: AMC_ALBUM_SCOPE_LABEL };
-    Promise.resolve(amc.playPlaylist(payload)).then(function (res) {
+    var payload = { name: name, scopeLabel: AMC_ALBUM_SCOPE_LABEL, sectionLabel: AMC_ALBUM_SECTION_LABEL };
+    Promise.resolve(amc.playAlbum(payload)).then(function (res) {
       if (typeof showToast !== 'function') return;
       var stage = (res && res.stage) || 'NO_RESULT';
       var via = (res && res.playVia) || '';
@@ -314,6 +315,9 @@
       if (typeof showToast === 'function') showToast('Apple Music 播放失败（IPC 错误）');
     });
   }
+
+  // 专辑详情页（10-shell/07-album-detail.js）复用同一个播放入口，避免两套语义。
+  window.playMlibAlbum = playLibraryAlbum;
 
   // 事件委托挂在两个网格上：卡片是 innerHTML 重建的，逐个绑定会随重渲染失效。
   // 用 closest 取到"这一张卡片"，所以永远只用当前卡片自己的数据。

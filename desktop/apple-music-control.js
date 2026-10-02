@@ -501,6 +501,58 @@ async function playTrack(result, opts = {}) {
  * @param {{name?:string, playlist?:string, scopeLabel?:string, cardIndex?:number, tryHoverPlay?:boolean}} payload
  * @param {{chainScript?:string, smtcTimeoutMs?:number, powershell?:string}} [opts]
  */
+const DEFAULT_ALBUM_SCRIPT = path.join(
+  __dirname, '..', 'experiment', 'apple-music-windows-control', 'poc', 'play-album-library.ps1'
+);
+
+/**
+ * Play an ALBUM from the Apple Music LIBRARY. The frozen playlist chain already searches, force-
+ * selects the library scope chip and verifies it, but it refuses to guess when the name matches more
+ * than one card - and an album search is inherently ambiguous on Apple Music (the album card
+ * 'Starboy' AND the song row 'Starboy (feat. Daft Punk)' both match). The library wrapper probes
+ * first, keeps the candidate that sits in the album section (localized label passed in), and only
+ * then commits that index. Same verdict contract: SMTC is the fact, stages are never rewritten.
+ */
+async function playAlbumInLibrary(payload = {}, opts = {}) {
+  const name = String(payload.name || payload.album || payload.title || '').trim();
+  if (!name) {
+    return { ok: false, verified: false, stage: 'BAD_INPUT', name: '', error: 'album name is required' };
+  }
+  const scopeLabel = String((payload.scopeLabel != null ? payload.scopeLabel : opts.scopeLabel) || '你的资料库').trim();
+  const sectionLabel = String((payload.sectionLabel != null ? payload.sectionLabel : opts.sectionLabel) || '专辑').trim();
+  const script = opts.albumScript || DEFAULT_ALBUM_SCRIPT;
+  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+    '-Name', name, '-ScopeLabel', scopeLabel, '-SectionLabel', sectionLabel,
+    '-Commit', '-SmtcTimeoutMs', String(opts.smtcTimeoutMs || 8000)];
+  if (payload.url) args.push('-Url', String(payload.url));
+  const powershell = opts.powershell || 'powershell.exe';
+  const run = await new Promise((resolve) => {
+    let out = '', err = '';
+    let child;
+    try { child = spawn(powershell, args, { windowsHide: true }); }
+    catch (e) { resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }); return; }
+    child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { err += d.toString('utf8'); });
+    child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }));
+    child.on('close', (code) => {
+      const parsed = lastJsonLine(out);
+      resolve({ ok: !!(parsed && parsed.ok), stage: parsed ? parsed.stage : 'NO_JSON', exitCode: code,
+        detail: parsed ? '' : (err.trim() || out.trim().slice(-400)), raw: parsed });
+    });
+  });
+  const raw = run.raw;
+  const base = { name: name, scopeLabel: scopeLabel, sectionLabel: sectionLabel, verification: 'smtc-transition', route: 'library-album' };
+  if (!raw) {
+    return Object.assign(base, { ok: false, verified: false, stage: run.stage || 'FAILED', error: run.detail || 'chain reported failure' });
+  }
+  return Object.assign(base, {
+    ok: !!raw.ok, verified: !!raw.ok, stage: raw.stage,
+    scopeVerified: !!raw.scopeVerified, scopeBefore: raw.scopeBefore || '', scopeAfter: raw.scopeAfter || '',
+    candidateCount: raw.candidateCount, pickedIndex: raw.pickedIndex, pickedName: raw.pickedName || '',
+    pickedSection: raw.pickedSection || '', disambiguation: raw.disambiguation || '',
+    detail: raw.detail || '', exitCode: run.exitCode,
+  });
+}
 async function playPlaylist(payload = {}, opts = {}) {
   const name = String(payload.name || payload.playlist || '').trim();
   if (!name) {
@@ -598,5 +650,7 @@ module.exports = {
   ARTIST_ALIASES,
   DEFAULT_CHAIN_SCRIPT,
   playPlaylist,
+  playAlbumInLibrary,
+  DEFAULT_ALBUM_SCRIPT,
   DEFAULT_PLAYLIST_SCRIPT,
 };
