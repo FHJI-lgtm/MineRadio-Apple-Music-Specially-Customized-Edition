@@ -37,13 +37,14 @@ test('album detail: data axis and identity rules', async (t) => {
   });
 
   await t.test('track identity keeps the payload ids; no id decoding', () => {
-    // 播放走既有发布点，catalogId 显式传入
-    assert.match(MOD, /playAmcTrackFromSong/, 'must reuse the existing single publish point');
-    assert.match(MOD, /catalogId: song\.catalogId/, 'catalogId must be carried explicitly');
+    // 播放统一交给 AMC 的专辑链（amc:play-album）：专辑名 + 曲目名 + 强制「你的资料库」范围 + 分区标签。
+    // 不再由渲染层自己拼 trackId/catalogId 交给一条 URL 路线。
+    assert.match(MOD, /amc\.playAlbum/, 'playback must go through the album-level IPC');
+    assert.match(MOD, /track: trackName/, 'single-track play must pass the track name');
+    assert.match(MOD, /scopeLabel: '你的资料库'/, 'the library scope label must be forced');
+    // 不得把 library song id 的 i.* 形态解码成 catalog id
     assert.ok(!/replace\(\/\^i\\\.\//.test(MOD), 'must not decode the i.* form into a catalog id');
     assert.ok(!/parseInt\([^)]*catalogId[^)]*\)/.test(MOD), 'catalogId must not be re-derived numerically');
-    // 缺 catalogId 时必须如实报告，而不是退回按名搜索
-    assert.match(MOD, /缺少 catalog id，无法保证精确播放/, 'missing catalogId must be reported honestly');
   });
 
   await t.test('no A-Z sorting: order follows the payload', () => {

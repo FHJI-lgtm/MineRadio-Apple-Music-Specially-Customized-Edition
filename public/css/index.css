@@ -1876,23 +1876,6 @@ body.music-library-leaving #music-library {
   font-variant-numeric: tabular-nums
 }
 
-/* 横向轨道：两端 48px mask 淡出，滚动条隐藏，不占首屏两行 */
-.mlib-rail {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 0 6px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)
-}
-
-.mlib-rail::-webkit-scrollbar {
-  height: 0
-}
-
 /* 卡片不再是"框"：只承载封面与下方文字，文字直接落在背景上。
    封面 1:1；文字透明白底、水平居中。悬停靠封面抬升与主色辉光表达，不靠底色。 */
 .mlib-album-card {
@@ -2094,11 +2077,6 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 .mlib-grid .mlib-album-card {
   width: auto;
   min-width: 0
-}
-
-/* 轨道里的卡片保持固定宽度 */
-.mlib-rail .mlib-album-card {
-  width: clamp(160px, 22vw, 236px)
 }
 
 .mlib-section-hint {

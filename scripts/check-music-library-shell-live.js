@@ -247,24 +247,18 @@ const PROBE = `(function () {
   let realWall = null;
   for (let attempt = 0; attempt < 40; attempt += 1) {
     realWall = await evaluate(`(function () {
-      var cards = document.querySelectorAll('#mlib-recent-grid .mlib-album-card');
-      var imgs = document.querySelectorAll('#mlib-recent-grid .mlib-art img');
-      var allCards = document.querySelectorAll('#mlib-albums-grid .mlib-album-card');
-      var allImgs = document.querySelectorAll('#mlib-albums-grid .mlib-art img');
+      var cards = document.querySelectorAll('#mlib-albums-grid .mlib-album-card');
+      var imgs = document.querySelectorAll('#mlib-albums-grid .mlib-art img');
       var loaded = 0;
       for (var i = 0; i < imgs.length; i += 1) { if (imgs[i].complete && imgs[i].naturalWidth > 0) loaded += 1; }
-      var loadedAll = 0;
-      for (var j = 0; j < allImgs.length; j += 1) { if (allImgs[j].complete && allImgs[j].naturalWidth > 0) loadedAll += 1; }
       var first = cards.length ? cards[0] : null;
       return {
         cards: cards.length,
         imgs: imgs.length,
         loaded: loaded,
-        albumCards: allCards.length,
-        albumImgs: allImgs.length,
-        albumLoaded: loadedAll,
         albumCount: (document.getElementById('mlib-albums-count') || {}).textContent,
         albumHint: (document.getElementById('mlib-albums-hint') || {}).textContent,
+        albumStateText: (document.getElementById('mlib-albums-state') || {}).textContent,
         scrollTop: (function () { var sc = document.getElementById('music-library-scroll'); return Math.round(sc.scrollTop); })(),
         activeEl: (document.activeElement && (document.activeElement.id || document.activeElement.className || document.activeElement.tagName)) || 'none',
         headTop: Math.round(document.querySelector('.mlib-page-head').getBoundingClientRect().top),
@@ -274,13 +268,10 @@ const PROBE = `(function () {
         })(),
         firstTitle: first ? (first.querySelector('.mlib-album-name') || {}).textContent : '',
         firstSub: first ? (first.querySelector('.mlib-album-sub') || {}).textContent : '',
-        count: (document.getElementById('mlib-recent-count') || {}).textContent,
-        stateVisible: !(document.getElementById('mlib-recent-state') || {}).hidden,
-        stateText: (document.getElementById('mlib-recent-state') || {}).textContent,
         firstCoverSrc: imgs.length ? String(imgs[0].src || '').slice(0, 70) : ''
       };
     })()`);
-    if (realWall && realWall.cards > 0 && realWall.albumCards > 0 && realWall.loaded > 0) break;
+    if (realWall && realWall.cards > 0 && realWall.loaded > 0) break;
     await sleep(700);
   }
   record('真实数据画出专辑卡片', realWall && realWall.cards > 0, 'cards=' + (realWall && realWall.cards));
@@ -288,7 +279,7 @@ const PROBE = `(function () {
     'loaded=' + (realWall && realWall.loaded) + '/' + (realWall && realWall.imgs));
   record('卡片副标题来自接口事实（歌手/年份）', !!(realWall && realWall.firstSub), realWall && realWall.firstSub);
   const textStyle = await evaluate(`(function () {
-    var card = document.querySelector('#mlib-recent-grid .mlib-album-card');
+    var card = document.querySelector('#mlib-albums-grid .mlib-album-card');
     if (!card) return null;
     var meta = card.querySelector('.mlib-album-meta');
     var name = card.querySelector('.mlib-album-name');
@@ -324,12 +315,12 @@ const PROBE = `(function () {
   record('文字区透明', !!(textStyle && /rgba\(0, 0, 0, 0\)|transparent/.test(textStyle.metaBg)), textStyle && textStyle.metaBg);
   record('专辑名水平居中（中线偏差 < 2px）', !!(textStyle && textStyle.nameCenter < 2),
     'offset=' + (textStyle && textStyle.nameCenter) + ' align=' + (textStyle && textStyle.nameAlign));
-  record('专辑区把整个资料库铺进网格', realWall && realWall.albumCards > 40,
-    'albums=' + (realWall && realWall.albumCards) + ' count=' + (realWall && realWall.albumCount));
+  record('专辑区把整个资料库铺进网格', realWall && realWall.cards > 100,
+    'albums=' + (realWall && realWall.cards) + ' count=' + (realWall && realWall.albumCount));
   record('专辑网格是多列布局', realWall && realWall.albumColumns >= 3,
     'columns=' + (realWall && realWall.albumColumns));
-  record('专辑区封面加载', realWall && realWall.albumLoaded > 0,
-    'loaded=' + (realWall && realWall.albumLoaded) + '/' + (realWall && realWall.albumImgs));
+  record('专辑区封面加载', realWall && realWall.loaded > 0,
+    'loaded=' + (realWall && realWall.loaded) + '/' + (realWall && realWall.imgs));
   const headVisible = await evaluate(`(function () {
     var sc = document.getElementById('music-library-scroll');
     var head = document.querySelector('.mlib-page-head');
@@ -347,7 +338,7 @@ const PROBE = `(function () {
       eyebrowTop: Math.round(er.top),
       paddingTop: parseFloat(cs.paddingTop),
       maskSnippet: String(mask).slice(0, 120),
-      railTop: Math.round(document.getElementById('mlib-recent-grid').getBoundingClientRect().top)
+      albumsTop: Math.round(document.getElementById('mlib-albums-grid').getBoundingClientRect().top)
     };
   })()`);
   // mask 的不透明区起点 = --mlib-content-top；页头必须在它下方，否则会被淡掉
@@ -355,10 +346,10 @@ const PROBE = `(function () {
   record('页头完整落在 mask 不透明区内（不被淡出）',
     headVisible.headTop >= maskOpaqueFrom,
     'headTop=' + headVisible.headTop + ' maskOpaqueFrom=' + maskOpaqueFrom);
-  record('页头在内容流最上方', headVisible.headTop < headVisible.railTop,
-    'headTop=' + headVisible.headTop + ' railTop=' + headVisible.railTop);
-  record('首屏没有错误态', !(realWall && realWall.stateVisible && /失败|错误/.test(realWall.stateText || '')),
-    realWall && realWall.stateText);
+  record('页头在内容流最上方', headVisible.headTop < headVisible.albumsTop,
+    'headTop=' + headVisible.headTop + ' albumsTop=' + headVisible.albumsTop);
+  record('首屏没有错误态', !(/失败|错误/.test(realWall && realWall.albumStateText || '')),
+    realWall && realWall.albumStateText);
   if (SHOT) {
     try {
       const shotDir = path.join(ROOT, 'docs', 'assets', 'music-library');
@@ -393,7 +384,7 @@ const PROBE = `(function () {
       // 悬停态证据：用 CDP 强制第 1 张卡片的 :hover，然后截图
       try {
         const cardBox = await evaluate(`(function () {
-          var c = document.querySelector('#mlib-recent-grid .mlib-album-card');
+          var c = document.querySelector('#mlib-albums-grid .mlib-album-card');
           if (!c) return null;
           var r = c.getBoundingClientRect();
           return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
@@ -402,7 +393,7 @@ const PROBE = `(function () {
           await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cardBox.x, y: cardBox.y, button: 'none' });
           await sleep(500);
           const hovered = await evaluate(`(function () {
-            var c = document.querySelector('#mlib-recent-grid .mlib-album-card');
+            var c = document.querySelector('#mlib-albums-grid .mlib-album-card');
             var b = c ? c.querySelector('.mlib-play-btn') : null;
             return b ? { opacity: getComputedStyle(b).opacity, pointer: getComputedStyle(b).pointerEvents } : null;
           })()`);
@@ -505,7 +496,7 @@ const PROBE = `(function () {
 
   console.log('\n--- 专辑悬停播放按钮 ---');
   const playProbe = await evaluate(`(function () {
-    var grids = [document.getElementById('mlib-recent-grid'), document.getElementById('mlib-albums-grid')];
+    var grids = [document.getElementById('mlib-albums-grid'), document.getElementById('mlib-albums-grid')];
     var card = grids[0] ? grids[0].querySelector('.mlib-album-card') : null;
     if (!card) return { error: 'no card' };
     var btn = card.querySelector('[data-mlib-play]');
@@ -548,8 +539,8 @@ const PROBE = `(function () {
       scopeLabelUsed: null
     };
   })()`);
-  const cardHtml = await evaluate("(function(){var c=document.querySelector('#mlib-recent-grid .mlib-album-card');return c?c.outerHTML.slice(0,420):'none';})()");
-  const boundFlag = await evaluate("(function(){var g=document.getElementById('mlib-recent-grid');return g?g.dataset.mlibPlayBound:null;})()");
+  const cardHtml = await evaluate("(function(){var c=document.querySelector('#mlib-albums-grid .mlib-album-card');return c?c.outerHTML.slice(0,420):'none';})()");
+  const boundFlag = await evaluate("(function(){var g=document.getElementById('mlib-albums-grid');return g?g.dataset.mlibPlayBound:null;})()");
   record('每张卡片都有播放按钮', playProbe.hasButton === true && playProbe.buttonCount === playProbe.cardCount,
     'buttons=' + playProbe.buttonCount + ' cards=' + playProbe.cardCount);
   record('按钮在封面内、左下角定位', playProbe.isInsideArt === true && playProbe.atBottomLeft === true,
@@ -560,7 +551,7 @@ const PROBE = `(function () {
     'opacity=' + playProbe.idleOpacity + ' pointer-events=' + playProbe.idlePointer);
   record('按钮带可区分的无障碍标签', /播放专辑/.test(playProbe.ariaLabel || ''), playProbe.ariaLabel);
   const payloadResolve = await evaluate(`(function () {
-    var grid = document.getElementById('mlib-recent-grid');
+    var grid = document.getElementById('mlib-albums-grid');
     var cards = grid.querySelectorAll('.mlib-album-card');
     var out = [];
     for (var i = 0; i < 3; i += 1) {
@@ -575,7 +566,7 @@ const PROBE = `(function () {
   // 注意：不能给 amc 打桩 —— contextBridge 暴露的 window.mineradio 是
   // writable:false / configurable:false，外部无法替换其方法。
   const binding = await evaluate(`(function () {
-    var grid = document.getElementById('mlib-recent-grid');
+    var grid = document.getElementById('mlib-albums-grid');
     var cards = grid.querySelectorAll('.mlib-album-card');
     function resolvedTitle(card) {
       var a = window.__mlibAlbumForCard ? window.__mlibAlbumForCard(card) : null;
@@ -603,7 +594,7 @@ const PROBE = `(function () {
   // 行为证据：点击必须走到播放分支。amc 已就绪时它会立刻给出"交给 Apple Music 播放：<专辑名>"。
   // 这条 toast 同时证明了"用的是卡片自己的专辑名"。
   const clickProof = await evaluate(`(function () {
-    var grid = document.getElementById('mlib-recent-grid');
+    var grid = document.getElementById('mlib-albums-grid');
     var cards = grid.querySelectorAll('.mlib-album-card');
     var toasts = [];
     var realToast = window.showToast;
@@ -685,7 +676,7 @@ const PROBE = `(function () {
       fake(5, 'Random Access Memories', 'Daft Punk', '2013'),
       fake(6, '25', 'Adele', '2015')
     ], 549);
-    var cards = document.querySelectorAll('#mlib-recent-grid .mlib-album-card');
+    var cards = document.querySelectorAll('#mlib-albums-grid .mlib-album-card');
     return { ok: true, cardCount: cards.length, firstTitle: cards.length ? cards[0].querySelector('.mlib-album-name').textContent : '' };
   })()`);
   record('专辑墙经真实渲染路径画出卡片', rendered.ok === true && rendered.cardCount === 6,
@@ -696,7 +687,7 @@ const PROBE = `(function () {
   // "内容没被上下浮层吃掉 + 需要滚动时滚得动"。
   const scrollProbe = await evaluate(`(function () {
     var sc = document.getElementById('music-library-scroll');
-    var card = document.querySelector('#mlib-recent-grid .mlib-album-card');
+    var card = document.querySelector('#mlib-albums-grid .mlib-album-card');
     var bar = document.getElementById('bottom-bar').getBoundingClientRect();
     var cr = card ? card.getBoundingClientRect() : null;
     var before = sc.scrollTop;
@@ -726,7 +717,7 @@ const PROBE = `(function () {
   const visibility = await evaluate(`(function () {
     var sc = document.getElementById('music-library-scroll');
     function measure() {
-      var card = document.querySelector('#mlib-recent-grid .mlib-album-card');
+      var card = document.querySelector('#mlib-albums-grid .mlib-album-card');
       var bar = document.getElementById('bottom-bar').getBoundingClientRect();
       var cr = card ? card.getBoundingClientRect() : null;
       return { cardBottom: cr ? Math.round(cr.bottom) : null, cardTop: cr ? Math.round(cr.top) : null,
@@ -759,7 +750,7 @@ const PROBE = `(function () {
   })()`);
   const geometry = await evaluate(`(function () {
     var sc = document.getElementById('music-library-scroll');
-    var grid = document.getElementById('mlib-recent-grid');
+    var grid = document.getElementById('mlib-albums-grid');
     var cards = grid.querySelectorAll('.mlib-album-card');
     var g = grid.getBoundingClientRect();
     var c0 = cards[0].getBoundingClientRect();
@@ -771,7 +762,7 @@ const PROBE = `(function () {
       paddingL: cs.paddingLeft, paddingR: cs.paddingRight,
       cardW: Math.round(c0.width), cardGap: c4 ? Math.round(c4.left - c0.right) : null,
       columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
-      cardRows: Math.round(document.getElementById('mlib-recent-grid').getBoundingClientRect().height / c0.height)
+      cardRows: Math.round(document.getElementById('mlib-albums-grid').getBoundingClientRect().height / c0.height)
     };
   })()`);
   record('网格横向铺满内容区（左右留白对称）',

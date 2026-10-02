@@ -54,7 +54,6 @@
   // 所以这里拿到的就是全局序，前端只负责"照这个顺序展示"。
   // 任何时候都不要在这个文件里加 sort —— 那会让分页重新变成每页各自排序。
   // ----------------------------------------------------------------
-  var MLIB_RECENT_LIMIT = 40;    // 最近添加：AM 也只列最近的一部分
   var MLIB_ALBUMS_LIMIT = 1000;  // 专辑：整个资料库（实测 549，留足余量）
 
   // 副标题只展示接口确实给了的事实：歌手 + 发行年。
@@ -207,12 +206,6 @@
     return { list: all.slice(0, limit), total: all.length };
   }
 
-  var recentSection = createAlbumSection({
-    gridId: 'mlib-recent-grid',
-    countId: 'mlib-recent-count',
-    stateId: 'mlib-recent-state',
-    limit: MLIB_RECENT_LIMIT
-  });
   var albumsSection = createAlbumSection({
     gridId: 'mlib-albums-grid',
     countId: 'mlib-albums-count',
@@ -226,15 +219,14 @@
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
     var first = !(libraryIndexSnapshot && libraryIndexSnapshot.albums);
-    if (first) { recentSection.begin(); albumsSection.begin(); }
+    if (first) { albumsSection.begin(); }
     return fetchLibraryIndex().then(function (data) {
       var changed = first || libraryIndexChanged(data);
       if (!changed) return data;
-      recentSection.apply(data);
       albumsSection.apply(data);
       return data;
     }).catch(function (err) {
-      if (first) { recentSection.fail(err); albumsSection.fail(err); }
+      if (first) { albumsSection.fail(err); }
       else { setLibraryIndexStale(err); }
       return null;
     });
@@ -243,9 +235,8 @@
   // 已有数据时刷新失败：保留当前列表，只在提示区说明，不把网格清空。
   function setLibraryIndexStale(err) {
     var msg = '索引刷新失败：' + (err && err.message ? err.message : '未知错误') + '（继续显示已有数据）';
-    var s1 = document.getElementById('mlib-recent-state');
     var s2 = document.getElementById('mlib-albums-state');
-    [s1, s2].forEach(function (el) {
+    [s2].forEach(function (el) {
       if (!el) return;
       el.hidden = false;
       el.textContent = msg;
@@ -322,7 +313,7 @@
   // 事件委托挂在两个网格上：卡片是 innerHTML 重建的，逐个绑定会随重渲染失效。
   // 用 closest 取到"这一张卡片"，所以永远只用当前卡片自己的数据。
   function bindAlbumPlayDelegation() {
-    var grids = [document.getElementById('mlib-recent-grid'), document.getElementById('mlib-albums-grid')];
+    var grids = [document.getElementById('mlib-albums-grid')];
     grids.forEach(function (grid) {
       if (!grid || grid.dataset.mlibPlayBound === '1') return;
       grid.dataset.mlibPlayBound = '1';
@@ -506,11 +497,11 @@
   // 它不做任何排序或加工 —— 传进去什么顺序就画什么顺序，和真实数据一致。
   window.__mlibShowAlbumsForPreview = function (albums, total) {
     var list = Array.isArray(albums) ? albums : [];
-    recentSection.render(list, Number(total) || list.length);
-    recentSection.setState('');
+    albumsSection.render(list, Number(total) || list.length);
+    albumsSection.setState('');
     // 关键：不要把它当作"已加载真实数据"。否则真实数据永远不会被请求，
     // 预览就会一直占着网格 —— 这正是第一次验证时封面为空的原因。
-    recentSection.state.loaded = false;
+    albumsSection.state.loaded = false;
   };
 
   if (document.readyState === 'loading') {

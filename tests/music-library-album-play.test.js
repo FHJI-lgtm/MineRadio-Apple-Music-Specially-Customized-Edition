@@ -61,17 +61,17 @@ test('album play button: structure, data binding and event isolation', async (t)
     assert.match(bind, /event\.stopPropagation\(\)/, 'play-button click must stop propagation');
     assert.match(bind, /target\.closest\('\.mlib-art'\)/, 'cover must be a play entry for hover-less devices');
     // 委托挂在网格上（卡片会重渲染，逐个绑定会失效）
-    assert.match(bind, /mlib-recent-grid/);
+    // 「最近添加」区块已按审计结论移除（它与专辑墙完全重复），现在只有专辑墙一个网格。
     assert.match(bind, /mlib-albums-grid/);
+    assert.ok(bind.indexOf('mlib-recent-grid') < 0, 'the removed Recently Added grid must not be referenced');
   });
 
-  await t.test('reuses the existing AMC entry and adds no new search/fallback', () => {
-    assert.match(MODULE, /amc\.playPlaylist/, 'must reuse the existing amc.playPlaylist IPC');
+  await t.test('plays through the album-level AMC entry with the measured scope label', () => {
+    // 专辑级入口由 amc:play-album 提供（preload 暴露 playAlbum）；它带专辑名 + 曲目名 + 自定义范围/分区标签。
+    assert.match(MODULE, /amc\.playAlbum/, 'album play must use the album-level IPC');
+    assert.match(PRELOAD, /playAlbum:/, 'preload must expose the album-level entry');
     assert.match(MODULE, /scopeLabel: AMC_ALBUM_SCOPE_LABEL/, 'must pass the measured library scope label');
     assert.match(MODULE, /AMC_ALBUM_SCOPE_LABEL = '你的资料库'/);
-    // preload 里确实只有这一条播放入口可用，且没有专辑级入口
-    assert.match(PRELOAD, /playPlaylist:/, 'preload must still expose playPlaylist');
-    assert.ok(!/playAlbum/.test(PRELOAD), 'no album-level IPC is invented');
     // 本模块不得新增搜索兜底
     const playFn = MODULE.slice(MODULE.indexOf('function playLibraryAlbum'), MODULE.indexOf('function readCardAlbum'));
     assert.ok(!/searchTracks|\/api\/apple\/album\/detail|fetch\(/.test(playFn),
