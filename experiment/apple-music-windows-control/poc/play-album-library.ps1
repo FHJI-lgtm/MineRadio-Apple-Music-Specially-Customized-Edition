@@ -112,24 +112,32 @@ if ($TrackTitle -and $Commit) {
     try { $nm = [string]$n.Current.Name } catch { continue }
     if (-not $nm) { continue }
     if ((Normalize-AmText $nm).IndexOf($want) -lt 0) { continue }
-    $cur = $n; $clickable = $null
-    for ($depth = 0; $depth -lt 6 -and $cur; $depth++) {
-      try {
-        $obj = $null
-        $okInv = $false; $okSel = $false
-        try { $okInv = $cur.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$obj) } catch { }
-        if (-not $okInv) { try { $obj = $null; $okSel = $cur.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$obj) } catch { } }
-        if ($okInv -or $okSel) { $clickable = $cur; break }
-      } catch { }
+    # ONLY a real list row counts: an editorial description also mentions song titles, and clicking the
+    # nearest clickable ancestor there opens the notes modal instead of playing anything (observed on
+    # the Lover album). So require a ListItem ancestor and click THAT row.
+    $cur = $n; $row = $null
+    for ($depth = 0; $depth -lt 8 -and $cur; $depth++) {
+      try { $ct = [string]$cur.Current.ControlType.ProgrammaticName } catch { $ct = '' }
+      if ($ct -eq 'ControlType.ListItem') { $row = $cur; break }
       try { $cur = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($cur) } catch { $cur = $null }
     }
+    $clickable = $null
+    if ($row) {
+      try {
+        $obj2 = $null
+        $okSel2 = $false
+        try { $okSel2 = $row.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$obj2) } catch { }
+        if ($okSel2) { $clickable = $row }
+        else { $obj3 = $null; if ($row.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$obj3)) { $clickable = $row } }
+      } catch { }
+    }
     if ($dump.Count -lt 40) { $dump += @{ name = (Truncate-AmText $nm 60); clickable = [bool]$clickable } }
-    if ($clickable) { $hits += $clickable }
+    if ($clickable) { $exact = ($nm.Trim() -eq $TrackTitle.Trim()); $hits += @{ el = $clickable; exact = $exact; name = $nm } }
   }
   $o['trackRows'] = @($dump)
   $o['trackRowCount'] = @($dump).Count
   $hit = $null
-  if (@($hits).Count -gt 0) { $hit = $hits[0]; $hitName = [string]$dump[0].name }
+  if (@($hits).Count -gt 0) { $chosen = @($hits | Where-Object { $_.exact })[0]; if (-not $chosen) { $chosen = $hits[0] } ; $hit = $chosen.el; $hitName = [string]$chosen.name ; $o['trackExactMatch'] = [bool]$chosen.exact }
   $o['trackMatched'] = [bool]$hit
   if (-not $hit) {
     # The page exposes no matching row (podcast-style releases): fall back to playing the whole album
