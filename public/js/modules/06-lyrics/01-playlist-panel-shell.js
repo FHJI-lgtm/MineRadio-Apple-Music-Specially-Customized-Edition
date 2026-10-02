@@ -486,6 +486,71 @@ function playlistCatalogProviderArray(provider) {
   if (provider === 'apple') return applePlaylists;
   return [];
 }
+// ---- Apple 歌单曲目数：列表接口不带 trackCount，靠持久化缓存补上，并在拿到真实 total 时回写 ----
+var applePlaylistCountCache = {};
+var APPLE_PLAYLIST_COUNT_TTL_MS = 6 * 60 * 60 * 1000;
+var APPLE_PLAYLIST_COUNT_REFRESH_MAX = 10;
+var applePlaylistCountsLoaded = false;
+var applePlaylistCountRefreshRunning = false;
+function applePlaylistCountKey(pl) {
+  if (!pl) return '';
+  return String(pl.id || '').replace(/^apple:/, '');
+}
+function applePlaylistCountFor(pl) {
+  var key = applePlaylistCountKey(pl);
+  var rec = key ? applePlaylistCountCache[key] : null;
+  var cached = Number(rec && rec.count) || 0;
+  var own = Number(pl && pl.trackCount) || 0;
+  return cached > 0 ? cached : own;
+}
+function applePlaylistCountIsStale(pl) {
+  var key = applePlaylistCountKey(pl);
+  if (!key) return false;
+  var rec = applePlaylistCountCache[key];
+  if (!rec || !(Number(rec.count) > 0)) return true;
+  return (Date.now() - (Number(rec.updatedAt) || 0)) > APPLE_PLAYLIST_COUNT_TTL_MS;
+}
+function applePlaylistCountsPut(patch) {
+  var amc = window.mineradio && window.mineradio.amc;
+  Object.keys(patch || {}).forEach(function (k) {
+    if (!k) return;
+    applePlaylistCountCache[k] = { count: Number(patch[k]) || 0, updatedAt: Date.now() };
+  });
+  if (amc && typeof amc.setPlaylistCounts === 'function') {
+    Promise.resolve(amc.setPlaylistCounts(patch || {})).catch(function () { });
+  }
+}
+function applePlaylistCountsLoad() {
+  var amc = window.mineradio && window.mineradio.amc;
+  if (applePlaylistCountsLoaded || !amc || typeof amc.getPlaylistCounts !== 'function') return;
+  applePlaylistCountsLoaded = true;
+  Promise.resolve(amc.getPlaylistCounts()).then(function (res) {
+    var counts = (res && res.counts) || {};
+    Object.keys(counts).forEach(function (k) { applePlaylistCountCache[k] = counts[k]; });
+    refreshPlaylistCatalogViews();
+  }).catch(function () { });
+}
+function refreshPlaylistCatalogViews() {
+  try { if (typeof renderUserPlaylistsList === 'function') renderUserPlaylistsList({}); } catch (_) { }
+  try { if (window.shelfManager && typeof shelfManager.refreshItems === 'function') shelfManager.refreshItems(); } catch (_) { }
+}
+// 缺值/过期的 Apple 歌单：串行、限次补齐（只读 total，不点播放，不碰播放链）
+function applePlaylistCountsRefreshMissing(rows) {
+  var list = (rows || []).filter(function (pl) { return pl && applePlaylistCountIsStale(pl); }).slice(0, APPLE_PLAYLIST_COUNT_REFRESH_MAX);
+  if (applePlaylistCountRefreshRunning || !list.length) return;
+  applePlaylistCountRefreshRunning = true;
+  var i = 0;
+  var next = function () {
+    if (i >= list.length) { applePlaylistCountRefreshRunning = false; refreshPlaylistCatalogViews(); return; }
+    var key = applePlaylistCountKey(list[i++]);
+    if (!key) { next(); return; }
+    Promise.resolve(apiJson('/api/apple/playlist/tracks?id=' + encodeURIComponent(key) + '&limit=1&offset=0')).then(function (r) {
+      var total = Number(r && (r.total || (r.playlist && r.playlist.trackCount))) || 0;
+      if (total > 0) { var patch = {}; patch[key] = total; applePlaylistCountsPut(patch); }
+    }).catch(function () { }).then(function () { setTimeout(next, 250); });
+  };
+  next();
+}
 function setPlaylistCatalogProviderArray(provider, rows) {
   rows = Array.isArray(rows) ? rows : [];
   if (provider === 'netease') neteasePlaylists = rows;
@@ -493,7 +558,18 @@ function setPlaylistCatalogProviderArray(provider, rows) {
   else if (provider === 'kugou') kugouPlaylists = rows;
   else if (provider === 'qishui') qishuiPlaylists = rows;
   else if (provider === 'spotify') spotifyPlaylists = rows;
-  else if (provider === 'apple') applePlaylists = rows;
+  else if (provider === 'apple') {
+    // 「Apple Music 资料库」(id apple-liked) 是虚拟条目，代表整个资料库而不是一张歌单：
+    // 歌单面板与桌面卡片堆都不显示它（详情面板早已同样排除）。只过滤显示列表，改的是这里一处，
+    // 因为 userPlaylists 由 applePlaylists 拼接而来，两处显示同时生效。
+    applePlaylists = rows.filter(function (pl) {
+      if (!pl) return false;
+      if (pl.virtual === true) return false;
+      return String(pl.id || '').indexOf('apple-liked') === -1;
+    });
+  applePlaylistCountsLoad();
+  applePlaylistCountsRefreshMissing(applePlaylists);
+  }
 }
 // Step 3B follow-up: the virtual "Apple Music 资料库" card carries no real artwork (cover === ''), which
 // rendered as an empty box. Fall back to a self-contained glyph (inline SVG data URL): no new asset file,

@@ -381,6 +381,7 @@ async function loadMorePlaylistPanelDetailTracks(reason) {
   // Once the detail is loaded we KNOW the real total - write it back and refresh the row.
   if (st.playlist && (st.total || 0) > (Number(st.playlist.trackCount) || 0)) {
     st.playlist.trackCount = st.total;
+    if (typeof applePlaylistCountsPut === 'function') { var _p = {}; _p[String(st.playlist.id || '').replace(/^apple:/, '')] = st.total; applePlaylistCountsPut(_p); }
     if (typeof renderUserPlaylistsList === 'function') { try { renderUserPlaylistsList({ preserveScroll: true }); } catch (_) { } }
   }
     st.nextOffset = Math.max(offset + rawTracks.length, Number(r && r.nextOffset) || 0);
@@ -719,7 +720,7 @@ function renderUserPlaylistsList(opts) {
       : '';
     return '<div class="pl-card' + expanded + '" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" data-playlist-provider="' + provider + '" data-playlist-id="' + escHtml(String(pl.id || '')) + '" data-playlist-title="' + escHtml(pl.name || '') + '" data-playlist-url="' + escHtml(pl.appleUrl || '') + '" data-playlist-index="' + sourceIndex + '">' +
       imgTag +
-      '<div style="flex:1;min-width:0"><div class="pl-name">' + escHtml(pl.name) + '<span class="tag-source ' + provider + '" style="margin-left:6px;vertical-align:1px">' + providerLabel + '</span></div><div class="pl-sub">' + pl.trackCount + ' 首 · ' + escHtml(pl.creator || '') + '</div></div>' +
+      '<div style="flex:1;min-width:0"><div class="pl-name">' + escHtml(pl.name) + '<span class="tag-source ' + provider + '" style="margin-left:6px;vertical-align:1px">' + providerLabel + '</span></div><div class="pl-sub">' + applePlaylistCountFor(pl) + ' 首 · ' + escHtml(pl.creator || '') + '</div></div>' +
       amcWholeBtn +
       '</div>';
   }

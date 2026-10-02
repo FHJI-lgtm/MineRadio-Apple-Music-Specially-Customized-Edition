@@ -5004,6 +5004,38 @@ ipcMain.handle('amc:play', async (_event, payload = {}) => {
 // Same transport-only contract as amc:play: the handler passes the payload through and returns the
 // chain's own verdict. It never turns "clicked" into "playing" and never rewrites a stage. A playlist
 // has no expected track, so the result carries verification:'smtc-transition' instead of a title match.
+// ---- Apple playlist track counts ------------------------------------------------------------
+// The web playlist list does not carry trackCount, so the panel row and the shelf card used to show
+// a fake 0 that also reset on every restart. Counts are persisted here and merged (never replaced)
+// so a restart still shows the last known number until a real total arrives from the tracks route.
+const APPLE_PLAYLIST_COUNTS_FILE = path.join(app.getPath('userData'), 'apple-playlist-counts.json');
+function readApplePlaylistCounts() {
+  try {
+    const raw = fs.readFileSync(APPLE_PLAYLIST_COUNTS_FILE, 'utf8');
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, ''));
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (_) { return {}; }
+}
+function writeApplePlaylistCounts(map) {
+  try { fs.mkdirSync(path.dirname(APPLE_PLAYLIST_COUNTS_FILE), { recursive: true }); } catch (_) {}
+  try { fs.writeFileSync(APPLE_PLAYLIST_COUNTS_FILE, JSON.stringify(map, null, 2), 'utf8'); return true; }
+  catch (_) { return false; }
+}
+ipcMain.handle('amc:playlist-counts-get', async () => ({ ok: true, counts: readApplePlaylistCounts() }));
+ipcMain.handle('amc:playlist-counts-set', async (_event, payload = {}) => {
+  const patch = (payload && payload.counts) || {};
+  const map = readApplePlaylistCounts();
+  let merged = 0;
+  for (const key of Object.keys(patch)) {
+    if (!key) continue;
+    const rec = patch[key];
+    const count = Number(rec && typeof rec === 'object' ? rec.count : rec);
+    if (!Number.isFinite(count) || count < 0) continue;
+    map[key] = { count: Math.round(count), updatedAt: Date.now() };
+    merged++;
+  }
+  return { ok: writeApplePlaylistCounts(map), merged: merged };
+});
 ipcMain.handle('amc:play-playlist', async (_event, payload = {}) => {
   const opts = (payload && payload.opts) || {};
   let gate = null;
