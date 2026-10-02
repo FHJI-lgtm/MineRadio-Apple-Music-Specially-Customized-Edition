@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5333,6 +5333,21 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[AppleMusicPlaylistTracks]', err);
       sendJSON(res, { provider: 'apple', error: err.message, tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // Apple Music 资料库 · 专辑轴（最近添加）。
+  // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
+  // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
+  if (pn === '/api/apple/library/albums') {
+    try {
+      const limit = Math.max(1, Math.min(1000, parseInt(url.searchParams.get('limit') || '300', 10) || 300));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+      sendJSON(res, await handleAppleLibraryAlbums({ limit, offset }));
+    } catch (err) {
+      console.error('[AppleMusicLibraryAlbums]', err);
+      sendJSON(res, { provider: 'apple', loggedIn: false, error: err.message, albums: [], total: 0, sortedBy: 'dateAdded', sortDirection: 'desc' }, 500);
     }
     return;
   }

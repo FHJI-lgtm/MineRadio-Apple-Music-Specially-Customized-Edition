@@ -9,6 +9,9 @@ if (emptyHomeStartEl) {
   }, true);
 }
 function shouldShowEmptyHomeCore(ignoreSplash) {
+  // 音乐资料库是 Home 的同级页面，打开期间首页必须让位。
+  // 24 处调用点都收敛到这一个判断里，不需要在每个调用点写特例。
+  if (document.body.classList.contains('music-library-active')) return false;
   if (!ignoreSplash && document.body.classList.contains('splash-active')) return false;
   if (immersiveMode) return false;
   if (homeForcedOpen) return true;

@@ -1690,6 +1690,376 @@ body.startup-fast-skip-revealing #bottom-bar {
   transition-duration: 420ms !important
 }
 
+/* ---------- 音乐资料库 / Music Library（Phase 1：导航 + 空壳） ---------- */
+/* 设计依据 docs/MUSIC_LIBRARY_PAGE_DESIGN.md 0.2 节。
+   #mlib-nav 只有定位、没有自己的视觉身份；尺寸/圆角/玻璃全部继承既有 .icon-btn。 */
+:root {
+  --mlib-nav-left: 24px;                 /* 入口贴视口左边距 */
+  --mlib-safe-top: 126px;           /* 内容停靠起点 = 搜索栏 82px + 呼吸 */
+  --mlib-content-top: var(--mlib-safe-top);   /* 内容第一像素的位置，mask 必须在此处已不透明 */
+  --mlib-safe-bottom: 150px;
+  --mlib-safe-bottom-idle: 150px;   /* 播放器 = 底边距 16 + bar 约 99 + 呼吸；96/132 都会压住最后一行 */
+  --mlib-fade-bottom: 22px;         /* 底部淡出带只在内容终点之下，避免把最后一屏的标题淡掉 */
+  /* 注意：mask 的淡出带以上面两个值为界。改它们会同时改变"停靠安全区"与"淡出位置"，
+     两者必须一起看 —— 之前 bug 就是这个几何没对齐。 */
+  --mlib-edge-feather: 56px;
+  --mlib-gutter: clamp(24px, 3.2vw, 56px);
+}
+
+/* 入口放在搜索框左侧、与搜索框共用中线。
+   搜索框右侧已经被上传按钮和账号胶囊占满，把入口放那边没人找得到；
+   左侧是空的，且与「回到 Home」分居两端，职责更清楚。
+   不参与 #top-right 的自动隐藏（见设计文档 0.2 铁律 1）。 */
+#mlib-nav {
+  position: fixed;
+  z-index: 10;
+  left: var(--mlib-nav-left);
+  top: 31px;                /* 53px 搜索框中线 - 22px 按钮半高 */
+  display: flex;
+  align-items: center;
+  /* #desktop-titlebar 覆盖 0-44px 且是拖拽区，必须显式退出拖拽，
+     否则点击会被窗口拖动吃掉。 */
+  -webkit-app-region: no-drag
+}
+
+/* ≤720px：搜索栏几乎贴到视口左边（left ≈ 14px），入口下移到搜索栏下方，
+   两个入口都保持完全可用。 */
+@media (max-width: 720px) {
+  #mlib-nav {
+    left: 14px;
+    top: 128px
+  }
+}
+
+/* 唯一新增的视觉语言：active 态。其余全部继承 .icon-btn，与 #home-btn 同级同款。 */
+body.music-library-active #music-library-btn {
+  color: #fff;
+  border-color: rgba(0, 245, 212, .62);
+  background: rgba(0, 245, 212, .10);
+  box-shadow: 0 0 20px rgba(0, 245, 212, .16)
+}
+
+/* 资料库打开时首页让位（优先级高于既有 body.splash-active #empty-home 规则） */
+body.music-library-active #empty-home {
+  opacity: 0 !important;
+  pointer-events: none !important
+}
+
+#music-library {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(22px) scale(.994);
+  filter: blur(10px);
+  pointer-events: none;
+  transition: opacity .46s cubic-bezier(.16, 1, .3, 1),
+    transform .58s cubic-bezier(.16, 1, .3, 1),
+    filter .46s cubic-bezier(.16, 1, .3, 1)
+}
+
+body.music-library-active #music-library {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+  pointer-events: auto
+}
+
+body.music-library-leaving #music-library {
+  opacity: 0;
+  transform: translateY(14px) scale(.99);
+  filter: blur(8px);
+  transition-duration: .26s;
+  pointer-events: none
+}
+
+/* 全屏滚动容器：上下留安全区，内容穿过搜索栏/播放器时由 mask 自然淡出 */
+#music-library-scroll {
+  height: 100%;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: var(--mlib-safe-top) var(--mlib-gutter) var(--mlib-safe-bottom);
+  box-sizing: border-box;
+  scroll-padding-top: calc(var(--mlib-safe-top) + 8px);
+  scroll-padding-bottom: calc(var(--mlib-safe-bottom) + 8px);
+  scrollbar-width: none;
+  /* mask 分两段：内容起点/终点之外才是淡出带，内容本身必须落在完全不透明的区间里。
+     顶部：0 → content-top 完成淡出（搜索栏区域）
+     底部：content-bottom → 视口底 完成淡出（播放器区域）
+     静止时内容起点恰好贴着不透明边界，所以页头不会被裁掉，也不会被半透明化。 */
+  -webkit-mask-image: linear-gradient(to bottom,
+      transparent 0,
+      #000 var(--mlib-content-top),
+      #000 calc(100% - var(--mlib-fade-bottom)),
+      transparent calc(100% - var(--mlib-fade-bottom) + var(--mlib-edge-feather)));
+  mask-image: linear-gradient(to bottom,
+      transparent 0,
+      #000 var(--mlib-content-top),
+      #000 calc(100% - var(--mlib-fade-bottom)),
+      transparent calc(100% - var(--mlib-fade-bottom) + var(--mlib-edge-feather)))
+}
+
+#music-library-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0
+}
+
+.mlib-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-bottom: 30px
+}
+
+.mlib-eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .42)
+}
+
+.mlib-title {
+  margin: 0;
+  font-size: clamp(30px, 3.4vw, 44px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: .01em;
+  color: #fff;
+  text-shadow: 0 10px 38px rgba(0, 0, 0, .5)
+}
+
+.mlib-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, .58)
+}
+
+.mlib-source-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--home-accent, #00f5d4);
+  box-shadow: 0 0 10px rgba(0, 245, 212, .65)
+}
+
+/* 分区与「最近添加」专辑轨道（对照 docs/MUSIC_LIBRARY_PAGE_DESIGN.md 7.1） */
+.mlib-section {
+  max-width: 1240px;
+  margin: clamp(34px, 4.2vw, 58px) auto 0
+}
+
+.mlib-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 18px;
+  scroll-margin-top: calc(var(--mlib-safe-top) - 40px)
+}
+
+.mlib-section-title {
+  font-size: clamp(19px, 1.7vw, 24px);
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: #fff
+}
+
+.mlib-section-count {
+  font-size: 12px;
+  color: rgba(255, 255, 255, .42);
+  font-variant-numeric: tabular-nums
+}
+
+/* 横向轨道：两端 48px mask 淡出，滚动条隐藏，不占首屏两行 */
+.mlib-rail {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0 6px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)
+}
+
+.mlib-rail::-webkit-scrollbar {
+  height: 0
+}
+
+/* 卡片不再是"框"：只承载封面与下方文字，文字直接落在背景上。
+   封面 1:1；文字透明白底、水平居中。悬停靠封面抬升与主色辉光表达，不靠底色。 */
+.mlib-album-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(160px, 22vw, 236px);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  scroll-snap-align: start;
+  scroll-margin-top: 96px;
+  scroll-margin-bottom: calc(var(--mlib-safe-bottom) + 16px);
+  transition: transform .22s cubic-bezier(.16, 1, .3, 1)
+}
+
+.mlib-album-card:hover {
+  transform: translateY(-4px)
+}
+
+.mlib-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 1 / 1;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .045);
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .10);
+  transition: box-shadow .22s
+}
+
+.mlib-album-card:hover .mlib-art {
+  box-shadow: 0 24px 62px rgba(0, 0, 0, .48), 0 0 30px rgba(0, 245, 212, .18), inset 0 1px 0 rgba(255, 255, 255, .14)
+}
+
+.mlib-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .38s ease
+}
+
+.mlib-art.is-loaded img {
+  opacity: 1
+}
+
+/* 图片加载前的骨架微光 */
+.mlib-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .055) 50%, transparent 80%);
+  background-size: 220% 100%;
+  animation: mlib-shimmer 1.6s linear infinite
+}
+
+.mlib-art.is-loaded::after {
+  content: none
+}
+
+@keyframes mlib-shimmer {
+  from { background-position: 120% 0 }
+  to { background-position: -120% 0 }
+}
+
+/* 文字区：无底色、水平居中 */
+.mlib-album-meta {
+  padding: 11px 6px 0;
+  text-align: center
+}
+
+.mlib-album-name {
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.35;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .55);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical
+}
+
+.mlib-album-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .60);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .5);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical
+}
+
+/* 网格（对照 Apple Music 的资料库排列）：等宽封面 + 下方居中文案。
+   列数用容器查询而不是视口查询，窗口在 1000-1300 之间抖动时更稳。 */
+.mlib-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--mlib-cols, 5), minmax(0, 1fr));
+  gap: clamp(16px, 1.8vw, 26px) clamp(14px, 1.6vw, 24px);
+  container-type: inline-size
+}
+
+@container (max-width: 1080px) { .mlib-grid { --mlib-cols: 4 } }
+@container (max-width: 860px) { .mlib-grid { --mlib-cols: 3 } }
+@container (max-width: 620px) { .mlib-grid { --mlib-cols: 2 } }
+@container (max-width: 380px) { .mlib-grid { --mlib-cols: 1 } }
+
+/* 网格里的卡片宽度由列宽决定，不再是固定宽度 */
+.mlib-grid .mlib-album-card {
+  width: auto;
+  min-width: 0
+}
+
+/* 轨道里的卡片保持固定宽度 */
+.mlib-rail .mlib-album-card {
+  width: clamp(160px, 22vw, 236px)
+}
+
+.mlib-section-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .40);
+  text-align: center;
+  font-variant-numeric: tabular-nums
+}
+
+/* 状态提示：加载 / 未登录 / 出错 / 空 */
+.mlib-state {
+  max-width: 1240px;
+  margin: 18px auto 0;
+  padding: 22px 24px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, .085);
+  background: linear-gradient(142deg, rgba(18, 21, 26, .55), rgba(8, 9, 13, .66));
+  color: rgba(255, 255, 255, .66);
+  font-size: 13px;
+  line-height: 1.6
+}
+
+.mlib-state[data-tone="warn"] {
+  border-color: rgba(244, 210, 138, .34);
+  color: rgba(255, 242, 189, .86)
+}
+
+.mlib-end-cap {
+  height: 24px
+}
+
+
+
+/* 播放器隐藏时收紧底部安全区 */
+body:not(.controls-visible) #music-library-scroll {
+  --mlib-safe-bottom: var(--mlib-safe-bottom-idle)
+}
+
+@media (max-width: 760px) {
+  :root {
+    --mlib-safe-top: 104px;
+    --mlib-content-top: var(--mlib-safe-top);
+    --mlib-safe-bottom: 132px;
+    --mlib-edge-feather: 44px
+  }
+}
+
 /* ---------- 顶部搜索 (半隐藏) ---------- */
 #search-area {
   --search-offset: 0px;

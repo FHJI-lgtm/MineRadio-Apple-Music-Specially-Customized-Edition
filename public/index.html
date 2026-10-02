@@ -160,6 +160,20 @@
       </div>
     </div>
 
+    <!-- 工作区导航：独立 fixed 锚点，不是 #top-right 的子元素。
+         它没有自己的视觉身份，尺寸/圆角/玻璃全部继承既有的 .icon-btn。 -->
+    <nav id="mlib-nav" aria-label="工作区导航">
+      <button id="music-library-btn" class="icon-btn" type="button" onclick="openMusicLibrary()"
+        title="音乐资料库" aria-label="音乐资料库">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      </button>
+    </nav>
+
     <!-- 音乐 Home：只承载当前 Mineradio 数据，不引入外部仓库的服务端接口。 -->
     <section id="empty-home" aria-label="Mineradio 音乐首页">
       <div class="empty-home-shell">
@@ -278,6 +292,45 @@
         </div>
       </div>
     </section>
+
+    <!-- 音乐资料库：Phase 1 只做空壳，验证导航与全页滚动结构。
+         内容区留空，后续再填 Recently Added / 专辑墙。 -->
+    <div id="music-library" aria-hidden="true" aria-label="音乐资料库">
+      <div id="music-library-scroll">
+        <header class="mlib-page-head">
+          <div class="mlib-eyebrow">MUSIC LIBRARY</div>
+          <h1 class="mlib-title">音乐资料库</h1>
+          <div class="mlib-head-meta">
+            <span class="mlib-source-dot" aria-hidden="true"></span>
+            <span class="mlib-source-label">Apple Music</span>
+          </div>
+        </header>
+        <!-- 最近添加：横向专辑轨道，严格按接口返回顺序（dateAdded 新→旧）直接渲染，前端不排序 -->
+        <section class="mlib-section mlib-section-recent" aria-labelledby="mlib-recent-heading">
+          <div class="mlib-section-head">
+            <h2 class="mlib-section-title" id="mlib-recent-heading">最近添加</h2>
+            <span class="mlib-section-count" id="mlib-recent-count"></span>
+          </div>
+          <div class="mlib-grid" id="mlib-recent-grid" role="list" aria-busy="false"></div>
+        </section>
+
+        <div class="mlib-state" id="mlib-recent-state" role="status" aria-live="polite" hidden></div>
+
+        <!-- 专辑：整个资料库 -->
+        <section class="mlib-section mlib-section-albums" aria-labelledby="mlib-albums-heading">
+          <div class="mlib-section-head">
+            <h2 class="mlib-section-title" id="mlib-albums-heading">专辑</h2>
+            <span class="mlib-section-count" id="mlib-albums-count"></span>
+          </div>
+          <div class="mlib-grid" id="mlib-albums-grid" role="list" aria-busy="false"></div>
+          <div class="mlib-section-hint" id="mlib-albums-hint" hidden></div>
+        </section>
+
+        <div class="mlib-state" id="mlib-albums-state" role="status" aria-live="polite" hidden></div>
+
+        <div class="mlib-end-cap" aria-hidden="true"></div>
+      </div>
+    </div>
 
     <div id="home-platform-recommend-mask" class="modal-mask" role="dialog" aria-modal="true" aria-hidden="true"
       aria-labelledby="home-platform-recommend-title">

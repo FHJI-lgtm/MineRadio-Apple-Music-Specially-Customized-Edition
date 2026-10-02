@@ -84,7 +84,6 @@ async function handleAppleUserPlaylistsWeb(options) {
       const page = await webApi.getLibrary('/playlists', { limit: pageLimit, offset });
       if (!page.ok) { playlistError = { error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status }; break; }
       const json = page.json || {};
-      lastJson = json;
       const items = Array.isArray(json.data) ? json.data : [];
       items.forEach((item) => { const mapped = mapAppleLibraryPlaylist(item); if (mapped) playlists.push(mapped); });
       if (!items.length || !json.next) break;
@@ -238,6 +237,100 @@ async function handleAppleAccountStatusWeb() {
   };
 }
 
+// ---- Apple Music WEB path for library albums (step A) ------------------------------------------------
+// The album axis of the user's Apple Music 资料库. Everything here is a READ of /v1/me/library/albums.
+//
+// ORDERING — this handler owns the meaning of "最近添加", the UI does not:
+//   * the sort key is attributes.dateAdded (when the user ADDED the item to the library), never
+//     releaseDate (when the work was PUBLISHED elsewhere, a different fact about a different subject);
+//   * every page is read BEFORE sorting, so the order is a property of the whole library and not of one
+//     page — sorting per page would produce "each page is newest-first" while the library is not;
+//   * an item whose dateAdded is missing or unparseable SINKS and keeps its original relative order.
+//     It is never back-filled from releaseDate, Date.now() or position: a fabricated timestamp would make
+//     the first screen depend on request order and would be indistinguishable from real data downstream.
+//
+// ID RULE (hard): a library album's id is the LIBRARY id (l.*); its catalogId is copied verbatim from
+// playParams.catalogId and may legitimately be undefined. Nothing is ever inferred or synthesised.
+//
+// COST (honest): the complete library is materialised in order to sort it, so this axis has no
+// page-level laziness. At the observed library size (549 albums -> 6 requests at limit=100) that is the
+// accepted price of a correct global order; callers get a window of the already-sorted, complete list.
+function appleAlbumAddedAt(album) {
+  if (!album) return null;
+  const raw = normalizeText(album.dateAdded);
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+// Newest -> Oldest. Stable, so equal keys and missing keys both keep the library's own order.
+function compareAppleAlbumsByAddedAt(a, b) {
+  const ta = appleAlbumAddedAt(a);
+  const tb = appleAlbumAddedAt(b);
+  if (ta === null && tb === null) return 0;
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  return tb - ta;
+}
+async function handleAppleLibraryAlbums(options) {
+  options = options || {};
+  // 上限 1000：这个轴要能一次铺满整个资料库（实测 549 张）。
+  // 分页读取由 handler 自己完成，调用方只需要给一个足够大的窗口。
+  const limit = Math.max(1, Math.min(1000, Number(options.limit) || 300));
+  const startOffset = Math.max(0, Number(options.offset) || 0);
+  const userToken = webApi.getMediaUserToken();
+  if (!userToken) {
+    return { provider: 'apple', albums: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, sortedBy: 'dateAdded', sortDirection: 'desc', source: 'web', loggedIn: false, error: '', message: '需要先登录 Apple Music 网页账号（media-user-token 未配置）。' };
+  }
+  const collected = [];
+  let offset = 0;
+  let albumError = null;
+  try {
+    // Read the WHOLE library first: the order below is only correct if it is computed over every page.
+    while (true) {
+      const pageLimit = APPLE_LIBRARY_PAGE_LIMIT;
+      // GET only: the web layer is in read-only mode for this phase.
+      const page = await webApi.getLibrary('/albums', { limit: pageLimit, offset });
+      if (!page.ok) { albumError = { error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status }; break; }
+      const json = page.json || {};
+      const items = Array.isArray(json.data) ? json.data : [];
+      items.forEach((item) => { const mapped = webApi.mapLibraryAlbum(item); if (mapped && mapped.libraryId) collected.push(mapped); });
+      if (!items.length || !json.next) break;
+      offset += items.length;
+      // Defensive: never loop forever on a payload that keeps advertising `next` without progress.
+      if (offset > 20000) break;
+    }
+  } catch (err) {
+    albumError = appleErrorDetails(err);
+  }
+  let ordered = collected.slice();
+  try {
+    // Array#sort is stable by spec, so this also pins the two "no usable date" cases to their
+    // original relative order instead of shuffling them.
+    ordered.sort(compareAppleAlbumsByAddedAt);
+  } catch (_) {
+    ordered = collected.slice();   // a broken comparator must degrade to API order, never to a crash
+  }
+  const total = ordered.length;
+  const albums = ordered.slice(startOffset, startOffset + limit);
+  const nextOffset = startOffset + albums.length;
+  return {
+    provider: 'apple',
+    albums,
+    total,
+    offset: startOffset,
+    limit,
+    nextOffset,
+    hasMore: nextOffset < total,
+    // Self-describing: the order is part of the data contract, not a presentation detail.
+    sortedBy: 'dateAdded',
+    sortDirection: 'desc',
+    source: 'web',
+    loggedIn: true,
+    error: albumError && albumError.error || '',
+    message: albumError && albumError.message || '',
+  };
+}
+
 // ---- Apple Music WEB path for catalog album detail (step 3C) -----------------------------------------
 // Scope: CATALOG albums only (the caller supplies a catalog album id). Library albums carry no catalog id
 // (playParams.catalogId === undefined) and are deliberately NOT supported in this step - no id is ever
@@ -308,6 +401,7 @@ async function handleAppleAlbumDetailWeb(albumId, opts) {
 }
 module.exports = {
   ensureCredentialSource,
+  handleAppleLibraryAlbums,
   handleAppleAccountStatusWeb,
   handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracksWeb,
