@@ -159,23 +159,42 @@ if ($TrackTitle -and $Commit) {
         } catch { }
       }
     } catch { }
-    $rectT = $null
-    try { if ($titleTextEl) { $rectT = $titleTextEl.Current.BoundingRectangle } } catch { $rectT = $null }
-    if (-not $rectT -or $rectT.Width -le 0) { try { $rectT = $trackHit.Current.BoundingRectangle } catch { $rectT = $null } }
-    $ptT = Get-AmSafeClickPoint $rectT
+    # Aim strictly in the BLANK area to the right of the explicit-content badge (E), because the user's
+    # report is that the cursor keeps landing on that badge. Geometry is recomputed from the row itself:
+    # badge = short non-button child that is not the track name; title = Text child containing the name.
+    $rowR = $null
+    try { $rowR = $trackHit.Current.BoundingRectangle } catch { $rowR = $null }
+    $titleRect = $null; $badgeRect = $null
+    foreach ($ck in @($rowKids)) {
+      try {
+        $ckName = [string]$ck.Current.Name
+        $ckType = [string]$ck.Current.ControlType.ProgrammaticName
+        if (-not $ckName) { continue }
+        if ($ckType -eq 'ControlType.Text' -and (Normalize-AmText $ckName).IndexOf($want) -ge 0 -and -not $titleRect) { $titleRect = $ck.Current.BoundingRectangle; continue }
+        if ($ckType -ne 'ControlType.Button' -and $ckName.Length -le 4 -and -not $badgeRect) { $badgeRect = $ck.Current.BoundingRectangle }
+      } catch { }
+    }
+    try { if ($badgeRect) { $o['badgeRect'] = ('' + [int]$badgeRect.Left + ',' + [int]$badgeRect.Top + ' ' + [int]$badgeRect.Width + 'x' + [int]$badgeRect.Height) } } catch { }
+    try { if ($titleRect) { $o['titleRect'] = ('' + [int]$titleRect.Left + ',' + [int]$titleRect.Top + ' ' + [int]$titleRect.Width + 'x' + [int]$titleRect.Height) } } catch { }
+    $rectT = $rowR
     $aimY = 0
-    if ($rectT -and $rectT.Width -gt 20) {
-      # Song name when we have it, otherwise the BLANK middle of the row - never the explicit-content
-      # badge (E) that follows the title, and never the favourite star at the row's left edge.
-      $aimX = $(if ($titleTextEl) { $rectT.Left + ($rectT.Width / 2) } else { $rectT.Left + ($rectT.Width * 0.6) })
-      $aimY = $rectT.Top + ($rectT.Height / 2)
+    if ($rowR) {
+      $aimY = $rowR.Top + ($rowR.Height / 2)
+      if ($badgeRect) {
+        $aimX = $badgeRect.Left + $badgeRect.Width + [Math]::Max(80, (($rowR.Left + $rowR.Width) - ($badgeRect.Left + $badgeRect.Width)) * 0.25)
+        $o['aimTarget'] = 'blank-right-of-badge'
+      } elseif ($titleRect) {
+        $aimX = $titleRect.Left + ($titleRect.Width / 2)
+        $o['aimTarget'] = 'title'
+      } else {
+        $aimX = $rowR.Left + ($rowR.Width * 0.6)
+        $o['aimTarget'] = 'blank'
+      }
       $aimRect = New-Object System.Windows.Rect($aimX, $aimY, 2, 2)
       $ptT = Get-AmSafeClickPoint $aimRect
       $o['aimPoint'] = ('' + [int]$ptT.x + ',' + [int]$ptT.y)
-      $o['aimTarget'] = $(if ($titleTextEl) { 'title' } else { 'blank' })
+      if ($badgeRect -and $ptT.x -le ($badgeRect.Left + $badgeRect.Width)) { $o['aimWarn'] = 'left-of-badge-right-edge' }
     }
-    # Safety net: if the point somehow lands on a small non-title child (the E badge reads as a short group),
-    # shift it into the blank middle of the row instead of clicking that child.
     if ($rowKids -and $aimY -gt 0) {
       foreach ($ck in @($rowKids)) {
         try {
