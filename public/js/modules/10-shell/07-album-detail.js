@@ -107,16 +107,18 @@
     return Math.round(r * 255) + ', ' + Math.round(g * 255) + ', ' + Math.round(b * 255);
   }
 
-  function clearTheme() {
-    var modal = maskEl();
+  // 主题取色要能作用到"当前打开的那个弹窗"：专辑与歌单共用这套外观，
+  // 但各自是独立的 DOM 节点 —— 变量必须写在目标弹窗上，否则另一个永远拿不到主色。
+  function clearTheme(target) {
+    var modal = target || maskEl();
     if (!modal) return;
     ['--am-theme-a', '--am-theme-b', '--am-theme-light', '--am-theme-dark', '--am-theme-glow'].forEach(function (k) {
       modal.style.removeProperty(k);
     });
   }
 
-  function applyThemeVars(r, g, b) {
-    var modal = maskEl();
+  function applyThemeVars(r, g, b, target) {
+    var modal = target || maskEl();
     if (!modal) return;
     var v = rgbVars(r, g, b);
     modal.style.setProperty('--am-theme-a', v.a);
@@ -126,8 +128,9 @@
     modal.style.setProperty('--am-theme-glow', v.glow);
   }
 
-  function applyCoverTheme(coverUrl) {
-    clearTheme();
+  function applyCoverTheme(coverUrl, target) {
+    var modal = target || maskEl();
+    clearTheme(modal);
     if (!coverUrl) return;   // CSS 里的深色默认值接管（合理的降级）
     var img = new Image();
     img.crossOrigin = 'anonymous';
@@ -164,17 +167,18 @@
           if (!best || score > best.score) best = { score: score, r: b0.r / b0.n, g: b0.g / b0.n, b: b0.b / b0.n };
         });
         if (best) {
-          applyThemeVars(Math.round(best.r), Math.round(best.g), Math.round(best.b));
+          applyThemeVars(Math.round(best.r), Math.round(best.g), Math.round(best.b), modal);
         } else if (fallbackN) {
           applyThemeVars(
             Math.round(fallbackR / fallbackN),
             Math.round(fallbackG / fallbackN),
-            Math.round(fallbackB / fallbackN)
+            Math.round(fallbackB / fallbackN),
+            modal
           );
         }
       } catch (_) { /* 取色失败 -> CSS 深色默认值 */ }
     };
-    img.onerror = function () { clearTheme(); };   // 封面失败 -> 深色降级
+    img.onerror = function () { clearTheme(modal); };   // 封面失败 -> 深色降级
     img.src = coverUrl;
   }
 
@@ -540,10 +544,215 @@
 
   function init() {
     bindTracks();
+    plInit();
     var mask = maskEl();
     if (mask) {
       mask.addEventListener('click', function (event) {
         if (event.target === mask) window.closeAmAlbumDetail();
+      });
+    }
+  }
+
+  // ============================================================
+  // 歌单详情（与专辑详情同构）
+  //
+  // 数据来自**已存在**的只读接口 /api/apple/playlist/tracks；
+  // 播放复用**已存在**的 amc.playPlaylist（歌单链，按名字 + 资料库作用域定位）。
+  // 这里不新增任何 IPC、不新增样式（复用 .am-album-* 的度量）。
+  // ============================================================
+  var PL_MODAL_ID = 'am-playlist-detail-modal';
+  var plSeq = 0;
+  var plState = { playlist: null, tracks: [], status: 'idle', busy: false };
+
+  function plEl(id) { return document.getElementById(id); }
+  function plMask() { return plEl(PL_MODAL_ID); }
+
+  function plSetStatus(text, tone) {
+    var node = plEl('am-playlist-detail-status');
+    if (!node) return;
+    if (!text) { node.hidden = true; node.textContent = ''; node.removeAttribute('data-tone'); return; }
+    node.hidden = false;
+    node.textContent = text;
+    if (tone) node.setAttribute('data-tone', tone); else node.removeAttribute('data-tone');
+  }
+
+  function plSetBusy(busy) {
+    plState.busy = !!busy;
+    var btn = plEl('am-playlist-detail-play');
+    if (btn) { btn.disabled = !!busy; btn.setAttribute('aria-busy', busy ? 'true' : 'false'); }
+  }
+
+  function plRenderInfo(playlist) {
+    var cover = plEl('am-playlist-detail-cover');
+    if (cover) {
+      cover.innerHTML = playlist.cover
+        ? '<img src="' + esc(playlist.cover) + '" alt="" referrerpolicy="no-referrer">'
+        : '';
+    }
+    var h = plEl('am-playlist-detail-heading');
+    if (h) { h.textContent = playlist.name || '未命名歌单'; h.title = playlist.name || ''; }
+    var creator = plEl('am-playlist-detail-creator');
+    if (creator) creator.textContent = playlist.creator || 'Apple Music';
+    var facts = [];
+    // 曲目数只报**实际读到的行数**，不猜测；Apple 的资料库歌单接口不返回总曲目数。
+    if (plState.tracks.length) facts.push('<span>' + plState.tracks.length + ' 首</span>');
+    var total = fmtTotalDuration(plState.tracks);
+    if (total) facts.push('<span>' + esc(total) + '</span>');
+    var factsEl = plEl('am-playlist-detail-facts');
+    if (factsEl) factsEl.innerHTML = facts.join('');
+  }
+
+  function plRenderTracks(tracks) {
+    var wrap = plEl('am-playlist-detail-tracks');
+    if (!wrap) return;
+    if (!tracks.length) {
+      wrap.innerHTML = '<div class="am-album-empty">这个歌单里没有可显示的曲目。</div>';
+      wrap.setAttribute('aria-busy', 'false');
+      return;
+    }
+    wrap.innerHTML = tracks.map(function (track, i) {
+      var dur = fmtDuration(track.duration);
+      return '<div class="am-album-track" role="button" tabindex="0"' +
+        ' data-am-pl-track-index="' + i + '"' +
+        ' aria-label="' + esc(track.name || '') + '">' +
+        '<div class="am-album-track-no">' + String(i + 1) + '</div>' +
+        '<div class="am-album-track-name" title="' + esc(track.name || '') + '">' + esc(track.name || '未命名曲目') + '</div>' +
+        '<div class="am-album-track-artist">' + esc(track.artist || '') + '</div>' +
+        '<div class="am-album-track-dur">' + esc(dur) + '</div>' +
+        '<button class="am-album-track-more" type="button" data-am-pl-track-more="' + i + '"' +
+        ' title="在 Apple Music 中播放" aria-label="播放 ' + esc(track.name || '') + '">' +
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">' +
+        '<path d="M9 5.5v13l10.5-6.5z"/></svg></button>' +
+        '</div>';
+    }).join('');
+    wrap.setAttribute('aria-busy', 'false');
+  }
+
+  // 歌单播放：沿用 amc.playPlaylist（歌单链）。SMTC 确认才算成功，不把"点了"当"在播"。
+  function plPlay(what) {
+    var playlist = plState.playlist || {};
+    var name = String(playlist.name || '').trim();
+    if (!name) { plSetStatus('这个歌单没有可用的名称', 'warn'); return; }
+    var amc = window.mineradio && window.mineradio.amc;
+    if (!amc || typeof amc.playPlaylist !== 'function') {
+      plSetStatus('Apple Music 播放通道不可用', 'warn');
+      return;
+    }
+    var url = String(playlist.appleUrl || '').trim();
+    var payload = { name: name };
+    if (url) payload.url = url;
+    else payload.scopeLabel = '你的资料库';
+    plSetBusy(true);
+    plSetStatus('正在让 Apple Music 播放' + what + '…', '');
+    return Promise.resolve(amc.playPlaylist(payload)).then(function (res) {
+      plSetBusy(false);
+      var stage = (res && res.stage) || 'NO_RESULT';
+      if (res && res.verified) plSetStatus('✓ Apple Music 已开始播放' + what, 'ok');
+      else if (stage === 'AMBIGUOUS') plSetStatus('资料库里有多个同名歌单，无法确定播哪一个', 'warn');
+      else if (stage === 'PLAYLIST_NOT_FOUND') plSetStatus('Apple Music 资料库里没找到这个歌单', 'warn');
+      else if (stage === 'SCOPE_NOT_VERIFIED') plSetStatus('未能切入 Apple Music「你的资料库」范围，已中止播放（不会去目录里找同名歌单）', 'warn');
+      else if (stage === 'SCOPE_CHIP_NOT_FOUND') plSetStatus('找不到 Apple Music 的「你的资料库」范围按钮，已中止播放', 'warn');
+      else plSetStatus('Apple Music 播放失败：' + stage, 'warn');
+    }).catch(function () {
+      plSetBusy(false);
+      plSetStatus('Apple Music 播放失败（IPC 错误）', 'warn');
+    });
+  }
+
+  function plLoad(playlist) {
+    var id = String(playlist.id || '').trim();
+    var seq = ++plSeq;
+    plState.playlist = playlist;
+    plState.tracks = [];
+    plState.status = 'loading';
+    plSetBusy(false);
+    plSetStatus('');
+    plRenderInfo(playlist);
+    // 关键：主题取色必须指定歌单弹窗，否则变量会被写到专辑弹窗上，
+    // 歌单这边永远只剩 CSS 的深色默认值（渐变就没了）。
+    applyCoverTheme(playlist.cover, plMask());
+    var wrap = plEl('am-playlist-detail-tracks');
+    if (wrap) {
+      wrap.setAttribute('aria-busy', 'true');
+      wrap.innerHTML = '<div class="am-album-skeleton" style="width:62%"></div>' +
+        '<div class="am-album-skeleton" style="width:78%"></div>' +
+        '<div class="am-album-skeleton" style="width:54%"></div>';
+    }
+    if (!id) {
+      plState.status = 'error';
+      if (wrap) { wrap.innerHTML = '<div class="am-album-empty">这个歌单缺少 ID，无法加载曲目。</div>'; wrap.setAttribute('aria-busy', 'false'); }
+      return;
+    }
+    var done = function (tracks) {
+      if (seq !== plSeq) return;              // 旧请求不得覆盖新歌单
+      plState.tracks = tracks;
+      plState.status = tracks.length ? 'ready' : 'empty';
+      plRenderTracks(tracks);
+      plRenderInfo(plState.playlist);
+    };
+    var fail = function (message) {
+      if (seq !== plSeq) return;
+      plState.status = 'error';
+      if (wrap) { wrap.innerHTML = '<div class="am-album-empty">' + esc(message) + '</div>'; wrap.setAttribute('aria-busy', 'false'); }
+    };
+    apiJson('/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&limit=100').then(function (data) {
+      if (seq !== plSeq) return;
+      var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+      if (data && data.error && !tracks.length) { fail(data.message || ('接口返回 ' + data.error)); return; }
+      done(tracks);
+    }).catch(function (err) {
+      fail('读取歌单曲目失败：' + ((err && err.message) || '未知错误'));
+    });
+  }
+
+  window.openAmPlaylistDetail = function (playlist) {
+    if (!playlist) return;
+    var mask = plMask();
+    if (!mask) return;
+    try { if (typeof immersiveMode !== 'undefined' && immersiveMode && typeof setImmersiveMode === 'function') setImmersiveMode(false); } catch (_) { }
+    var scroll = plEl('am-playlist-detail-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    openGsapModal(mask);
+    plLoad(playlist);
+  };
+
+  window.closeAmPlaylistDetail = function () {
+    var mask = plMask();
+    if (mask) closeGsapModal(mask);
+  };
+
+  window.playAmPlaylistFromStart = function () { return plPlay('这个歌单'); };
+
+  function plBindTracks() {
+    var wrap = plEl('am-playlist-detail-tracks');
+    if (!wrap || wrap.dataset.amPlaylistBound === '1') return;
+    wrap.dataset.amPlaylistBound = '1';
+    wrap.addEventListener('click', function (event) {
+      var t = event.target;
+      if (!t || !t.closest) return;
+      var more = t.closest('[data-am-pl-track-more]');
+      var row = more || t.closest('.am-album-track');
+      if (!row || !wrap.contains(row)) return;
+      event.preventDefault();
+      // 逐曲播放同样交给歌单链：Apple 侧进入该歌单后从第一首开始，
+      // 这里不谎称"播的就是这一首"—— 只如实告知入口。
+      plPlay('这个歌单');
+    });
+    wrap.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      var row = event.target && event.target.closest ? event.target.closest('.am-album-track') : null;
+      if (!row) return;
+      event.preventDefault();
+      plPlay('这个歌单');
+    });
+  }
+
+  function plInit() {
+    plBindTracks();
+    var mask = plMask();
+    if (mask) {
+      mask.addEventListener('click', function (event) {
+        if (event.target === mask) window.closeAmPlaylistDetail();
       });
     }
   }

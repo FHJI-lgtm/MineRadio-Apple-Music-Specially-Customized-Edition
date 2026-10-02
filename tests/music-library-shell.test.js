@@ -49,8 +49,10 @@ assert(homeBtnPos > topRightOpen && homeBtnPos < topRightClose,
 // ---------- 2. 入口是纯图标按钮，复用 .icon-btn ----------
 assert(/id="music-library-btn"[^>]*class="icon-btn"|class="icon-btn"[^>]*id="music-library-btn"/.test(html),
   '#music-library-btn must reuse the existing .icon-btn class');
-assert(!/mlib-nav-label/.test(html), 'entry must not render a text label');
 const navBlockHtml = html.slice(navOpen, html.indexOf('</nav>', navOpen));
+assert(!/mlib-nav-label/.test(navBlockHtml), 'entry must not render a text label');
+// 作用域限定在 #mlib-nav 块内：资料库页内的纵向导航菜单**需要**文字标签，
+// 但顶部导航入口本身必须是纯图标（文字只放在 aria-label / title 里）。
 assert(/aria-label="音乐资料库"/.test(navBlockHtml),
   'entry must carry an aria-label (text lives in a11y attrs, not UI)');
 assert(/title="音乐资料库"/.test(navBlockHtml),

@@ -293,8 +293,8 @@
       </div>
     </section>
 
-    <!-- 音乐资料库：Phase 1 只做空壳，验证导航与全页滚动结构。
-         内容区留空，后续再填 Recently Added / 专辑墙。 -->
+    <!-- 音乐资料库：左侧纵向导航（专辑 / 艺人 / 歌单）+ 右侧内容区。
+         导航只切换视图与选中态；数据仍来自本地索引与既有 Apple Music 只读接口。 -->
     <div id="music-library" aria-hidden="true" aria-label="音乐资料库">
       <div id="music-library-scroll">
         <header class="mlib-page-head">
@@ -305,17 +305,84 @@
             <span class="mlib-source-label">Apple Music</span>
           </div>
         </header>
-        <!-- 专辑：整个资料库 -->
-        <section class="mlib-section mlib-section-albums" aria-labelledby="mlib-albums-heading">
+
+        <!-- 导航：独立于三个视图之外，切换视图时**不会被一起隐藏**。
+             父级「专辑」可展开/折叠，三个子项切换右侧内容。 -->
+        <section class="mlib-section mlib-section-nav" id="mlib-nav-section" aria-label="资料库导航">
           <div class="mlib-section-head">
-            <h2 class="mlib-section-title" id="mlib-albums-heading">专辑</h2>
-            <span class="mlib-section-count" id="mlib-albums-count"></span>
+            <button class="mlib-nav-parent" id="mlib-nav-parent-albums" type="button"
+              aria-expanded="true" aria-controls="mlib-nav-children-albums">
+              <span class="mlib-nav-caret" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>
+              </span>
+              <span class="mlib-section-title" id="mlib-nav-heading">专辑</span>
+              <span class="mlib-section-count" id="mlib-nav-view-count"></span>
+            </button>
           </div>
-          <div class="mlib-grid" id="mlib-albums-grid" role="list" aria-busy="false"></div>
-          <div class="mlib-section-hint" id="mlib-albums-hint" hidden></div>
+          <nav class="mlib-nav" id="mlib-nav-menu" aria-label="资料库导航">
+            <div class="mlib-nav-children" id="mlib-nav-children-albums" role="list">
+              <button class="mlib-nav-item is-active" id="mlib-nav-item-albums" type="button"
+                role="listitem" data-mlib-view="albums" aria-current="page">
+                <span class="mlib-nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4" />
+                    <circle cx="8" cy="8" r="2.4" />
+                  </svg>
+                </span>
+                <span class="mlib-nav-label">专辑</span>
+                <span class="mlib-nav-count" id="mlib-nav-count-albums"></span>
+              </button>
+              <button class="mlib-nav-item" id="mlib-nav-item-artists" type="button"
+                role="listitem" data-mlib-view="artists">
+                <span class="mlib-nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="8" cy="5.4" r="2.6" />
+                    <path d="M3.2 13.4c0-2.4 2.1-4 4.8-4s4.8 1.6 4.8 4" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="mlib-nav-label">艺人</span>
+                <span class="mlib-nav-count" id="mlib-nav-count-artists"></span>
+              </button>
+              <button class="mlib-nav-item" id="mlib-nav-item-playlists" type="button"
+                role="listitem" data-mlib-view="playlists">
+                <span class="mlib-nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                    stroke-linecap="round">
+                    <path d="M2.4 4.4h7.2M2.4 8h7.2M2.4 11.6h4.4" />
+                    <circle cx="12" cy="11.2" r="2" />
+                    <path d="M14 11.2V6.2l-2.8.7" />
+                  </svg>
+                </span>
+                <span class="mlib-nav-label">歌单</span>
+                <span class="mlib-nav-count" id="mlib-nav-count-playlists"></span>
+              </button>
+            </div>
+          </nav>
         </section>
 
-        <div class="mlib-state" id="mlib-albums-state" role="status" aria-live="polite" hidden></div>
+        <!-- 三视图：专辑 / 艺人 / 歌单。
+             「专辑」是可折叠的导航父级，展开后在其下方内联显示三个子入口；
+             不额外占用侧边栏，专辑网格保持原有全宽布局。 -->
+        <section class="mlib-section mlib-view" id="mlib-view-albums" data-mlib-view="albums" aria-label="专辑">
+
+
+          <div class="mlib-grid" id="mlib-albums-grid" role="list" aria-busy="false"></div>
+          <div class="mlib-section-hint" id="mlib-albums-hint" hidden></div>
+          <div class="mlib-state" id="mlib-albums-state" role="status" aria-live="polite" hidden></div>
+        </section>
+
+        <!-- 艺人：由本地索引的 artist 字段聚合，不虚构数据 -->
+        <section class="mlib-section mlib-view" id="mlib-view-artists" data-mlib-view="artists" hidden aria-label="艺人">
+          <div class="mlib-grid mlib-grid-artists" id="mlib-artists-grid" role="list" aria-busy="false"></div>
+          <div class="mlib-state" id="mlib-artists-state" role="status" aria-live="polite" hidden></div>
+        </section>
+
+        <!-- 歌单：Apple Music 资料库歌单 -->
+        <section class="mlib-section mlib-view" id="mlib-view-playlists" data-mlib-view="playlists" hidden aria-label="歌单">
+          <div class="mlib-grid mlib-grid-playlists" id="mlib-playlists-grid" role="list" aria-busy="false"></div>
+          <div class="mlib-state" id="mlib-playlists-state" role="status" aria-live="polite" hidden></div>
+        </section>
 
         <div class="mlib-end-cap" aria-hidden="true"></div>
       </div>
@@ -1933,6 +2000,38 @@
         </div>
         <div class="am-album-foot">
           <button class="modal-btn" type="button" onclick="closeAmAlbumDetail()">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apple Music 歌单详情页。与专辑详情页同构（复用 .am-album-* 样式），
+         数据来自已存在的只读接口 /api/apple/playlist/tracks。 -->
+    <div id="am-playlist-detail-modal" class="modal-mask" role="dialog" aria-modal="true"
+      aria-labelledby="am-playlist-detail-heading">
+      <div class="modal am-album-modal">
+        <div class="am-album-scroll" id="am-playlist-detail-scroll">
+          <div class="am-album-info">
+            <div class="am-album-cover-wrap">
+              <div class="am-album-cover" id="am-playlist-detail-cover" aria-hidden="true"></div>
+            </div>
+            <div class="am-album-meta">
+              <div class="am-album-kicker">Apple Music · 资料库歌单</div>
+              <h2 id="am-playlist-detail-heading" class="am-album-title">歌单</h2>
+              <div class="am-album-artist" id="am-playlist-detail-creator"></div>
+              <div class="am-album-facts" id="am-playlist-detail-facts"></div>
+              <button class="am-album-play" id="am-playlist-detail-play" type="button"
+                onclick="playAmPlaylistFromStart()">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13l10.5-6.5z" /></svg>
+                <span id="am-playlist-detail-play-label">播放歌单</span>
+              </button>
+              <div class="am-album-status" id="am-playlist-detail-status" role="status" aria-live="polite" hidden></div>
+            </div>
+          </div>
+
+          <div class="am-album-tracks" id="am-playlist-detail-tracks" aria-busy="false"></div>
+        </div>
+        <div class="am-album-foot">
+          <button class="modal-btn" type="button" onclick="closeAmPlaylistDetail()">关闭</button>
         </div>
       </div>
     </div>

@@ -5341,6 +5341,60 @@ const server = http.createServer(async (req, res) => {
   // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
   // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
   // 资料库专辑曲目（只含库内已保存曲目）。按 library album id 读取，不使用名称搜索。
+  // 资料库艺人：由本地索引的 artist 字段聚合。**不发起任何新请求**，也不虚构数据 ——
+  // 艺人名字/封面/专辑数全部来自已保存歌曲与专辑的真实字段。
+  if (pn === '/api/apple/library/artists') {
+    try {
+      const sync = await syncLibraryIndex({});
+      const songs = readLibrarySongs() || [];
+      const albums = readLibraryAlbums() || [];
+      const byArtist = Object.create(null);
+      function touch(name) {
+        if (!name) return null;
+        if (!byArtist[name]) byArtist[name] = { name: name, songCount: 0, albums: Object.create(null) };
+        return byArtist[name];
+      }
+      songs.forEach(function (song) {
+        const entry = touch(song.artist);
+        if (!entry) return;
+        entry.songCount += 1;
+        if (song.albumName) entry.albums[song.albumName] = true;
+      });
+      // 专辑表的 artist 也要计入（有些专辑在歌曲轴没有对应行）
+      const albumCoverByName = Object.create(null);
+      albums.forEach(function (album) {
+        if (album && album.name && album.cover && !albumCoverByName[album.name]) albumCoverByName[album.name] = album.cover;
+        const entry = touch(album.artist);
+        if (!entry) return;
+        if (album.name) entry.albums[album.name] = true;
+      });
+      const artists = Object.keys(byArtist).map(function (name) {
+        const entry = byArtist[name];
+        const albumNames = Object.keys(entry.albums);
+        // 头像用该艺人第一张有封面的专辑封面（真实数据，不伪造图片）
+        let cover = '';
+        for (let i = 0; i < albumNames.length; i += 1) {
+          if (albumCoverByName[albumNames[i]]) { cover = albumCoverByName[albumNames[i]]; break; }
+        }
+        return { name: name, songCount: entry.songCount, albumCount: albumNames.length, cover: cover, albums: albumNames };
+      }).filter(function (a) { return a.albumCount > 0 || a.songCount > 0; });
+      // 稳定排序：专辑数多的在前，其次歌曲数，最后按名称，避免每次顺序抖动
+      artists.sort(function (a, b) {
+        if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
+        if (b.songCount !== a.songCount) return b.songCount - a.songCount;
+        return a.name.localeCompare(b.name);
+      });
+      sendJSON(res, {
+        ok: true, artists: artists, total: artists.length,
+        fromCache: !!sync.fromCache, indexSongs: songs.length, indexAlbums: albums.length,
+      });
+    } catch (err) {
+      console.error('[AppleMusicLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, artists: [] }, 500);
+    }
+    return;
+  }
+
   // 资料库专辑墙：读**本地索引**，不再每次打开就扫 Apple。
   // 命中缓存且 Apple 无变化时只做一次轻量探测（2 个请求）；有变化才全量对账并重新渲染。
   if (pn === '/api/apple/library/index') {

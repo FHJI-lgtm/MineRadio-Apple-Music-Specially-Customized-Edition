@@ -2099,10 +2099,22 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   --am-theme-glow: 64, 104, 120
 }
 
+/* 歌单详情页与专辑详情页共用外观，但主题变量按弹窗各自声明：
+   变量写在各自节点上，取色时才不会互相覆盖（封面失败时也要有合理的深色降级）。 */
+#am-playlist-detail-modal {
+  --am-theme-a: 30, 42, 52;
+  --am-theme-light: 46, 62, 74;
+  --am-theme-dark: 16, 23, 29;
+  --am-theme-glow: 64, 104, 120
+}
+
 /* Apple Music 式主题色平铺：窗口本身就是主题色的连续背景，不再是黑色圆角容器。
    用 id 提升优先级：通用 .modal 基类以更高优先级设置了 background/max-width/border-radius，
-   只写 .am-album-modal 会被压回去（实测背景被压成黑色渐变、max-width 被压成 380px）。 */
-#am-album-detail-modal .am-album-modal {
+   只写 .am-album-modal 会被压回去（实测背景被压成黑色渐变、max-width 被压成 380px）。
+   专辑详情页与歌单详情页共用这套外观，所以两个 ID 都要列上 —— 只写专辑那次，
+   歌单弹窗就真的被压成了 380px 宽（99 行曲目挤成一竖条）。 */
+#am-album-detail-modal .am-album-modal,
+#am-playlist-detail-modal .am-album-modal {
   position: relative;
   width: min(1080px, calc(100vw - 56px)) !important;
   max-width: min(1080px, calc(100vw - 56px)) !important;
@@ -2542,6 +2554,206 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   height: 24px
 }
 
+/* ---------- 资料库导航：内联可折叠分组（专辑 / 艺人 / 歌单） ----------
+   不新增侧边栏：折叠控件做在「专辑」原有的分区标题上，展开后在标题下方内联显示子入口。
+   专辑网格保持原有全宽布局与度量。 */
+/* 导航区块：独立 .mlib-section，切换视图时不会被隐藏。
+   父级行同时充当"当前视图标题"（显示当前视图名与该视图数量），
+   所以三个视图内部不再有重复的标题行。 */
+.mlib-section-nav {
+  margin-top: clamp(18px, 2.4vw, 30px)
+}
+
+.mlib-nav {
+  margin-bottom: 0
+}
+
+/* 父级标签在视觉上就是原来的分区标题 */
+.mlib-nav-parent > .mlib-section-title {
+  font-weight: 700;
+  color: #fff
+}
+
+/* 数量只在它真的描述当前视图时显示：
+   专辑页显示专辑数（艺人/歌单页显示各自的数会与子项重复） */
+.mlib-nav-parent[data-mlib-active-view="artists"] > .mlib-section-count,
+.mlib-nav-parent[data-mlib-active-view="playlists"] > .mlib-section-count {
+  display: none
+}
+
+/* 父级 = 分区标题行本身。用 button 承载，但视觉上仍是原来的标题排版。 */
+.mlib-nav-parent {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 10px 4px 4px;
+  margin-left: -4px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease
+}
+
+.mlib-nav-parent:hover {
+  background: rgba(255, 255, 255, .06)
+}
+
+.mlib-nav-parent:focus-visible,
+.mlib-nav-item:focus-visible {
+  outline: 2px solid rgba(0, 245, 212, .55);
+  outline-offset: 2px
+}
+
+.mlib-nav-caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  align-self: center;
+  color: rgba(255, 255, 255, .5);
+  transition: transform .22s cubic-bezier(.16, 1, .3, 1)
+}
+
+.mlib-nav-caret svg {
+  width: 14px;
+  height: 14px
+}
+
+/* 展开：箭头朝下；折叠：箭头朝右 */
+.mlib-nav-parent[aria-expanded="true"] .mlib-nav-caret {
+  transform: rotate(90deg)
+}
+
+/* 父级里的数量与分区标题原有计数并列，保持同一视觉层级 */
+.mlib-nav-parent .mlib-section-title {
+  font-size: clamp(19px, 1.7vw, 24px)
+}
+
+
+/* 子菜单：0fr -> 1fr 的高度过渡，不需要测量高度，也不引动画库 */
+.mlib-nav-children {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin: 6px 0 0 6px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, .08);
+  transition: grid-template-rows .24s cubic-bezier(.16, 1, .3, 1),
+    opacity .2s ease,
+    margin-top .24s cubic-bezier(.16, 1, .3, 1);
+  opacity: 1
+}
+
+.mlib-nav-children.is-collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  pointer-events: none
+}
+
+.mlib-nav-children > * {
+  min-height: 0
+}
+
+.mlib-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: rgba(255, 255, 255, .58);
+  font: 500 13.5px inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease
+}
+
+.mlib-nav-item:hover {
+  background: rgba(255, 255, 255, .05);
+  color: rgba(255, 255, 255, .82)
+}
+
+.mlib-nav-item.is-active {
+  background: rgba(255, 255, 255, .085);
+  color: #fff
+}
+
+.mlib-nav-item.is-active .mlib-nav-icon {
+  color: var(--home-accent, #00f5d4)
+}
+
+.mlib-nav-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: rgba(255, 255, 255, .42)
+}
+
+.mlib-nav-icon svg {
+  width: 15px;
+  height: 15px
+}
+
+.mlib-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.mlib-nav-count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .38);
+  font-variant-numeric: tabular-nums
+}
+
+.mlib-nav-item.is-active .mlib-nav-count {
+  color: rgba(255, 255, 255, .62)
+}
+
+/* 视图容器：三个视图都是同级的 .mlib-section，只有显示/隐藏之分 */
+.mlib-view[hidden] {
+  display: none
+}
+
+.mlib-grid-artists {
+  --mlib-cols: 6
+}
+
+.mlib-grid-playlists {
+  --mlib-cols: 5
+}
+
+@media (max-width: 1080px) {
+  .mlib-grid-artists {
+    --mlib-cols: 4
+  }
+}
+
+@media (max-width: 860px) {
+  .mlib-grid-artists {
+    --mlib-cols: 3
+  }
+
+  .mlib-grid-playlists {
+    --mlib-cols: 3
+  }
+}
+
+/* 尊重系统减少动态效果偏好（项目已有同类处理） */
 
 
 /* 播放器隐藏时收紧底部安全区 */
@@ -19024,4 +19236,9 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
   body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
     width: calc(100vw - var(--desktop-safe-left) - var(--desktop-safe-right) - 24px);
   }
+}
+
+/* 视图区块紧跟导航：标题行已并入父级，这里只留一点间距 */
+.mlib-view {
+  margin-top: clamp(14px, 1.8vw, 22px)
 }

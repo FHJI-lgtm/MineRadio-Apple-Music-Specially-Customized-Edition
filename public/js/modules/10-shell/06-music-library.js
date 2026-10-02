@@ -132,8 +132,8 @@
       grid.innerHTML = list.map(albumCardHtml).join('');
       Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
       grid.setAttribute('aria-busy', 'false');
-      var count = pick(config.countId);
-      if (count) count.textContent = total > list.length ? (list.length + ' / ' + total) : (total ? String(total) : '');
+      // 父级计数由 syncNavAlbumCount 统一写入（它显示的是当前视图的数量）。
+      if (typeof config.onCount === 'function') config.onCount(list.length, total);
       var hint = config.hintId ? pick(config.hintId) : null;
       if (hint) {
         if (total > list.length) { hint.hidden = false; hint.textContent = '已显示前 ' + list.length + ' 张，共 ' + total + ' 张'; }
@@ -208,10 +208,10 @@
 
   var albumsSection = createAlbumSection({
     gridId: 'mlib-albums-grid',
-    countId: 'mlib-albums-count',
     stateId: 'mlib-albums-state',
     hintId: 'mlib-albums-hint',
-    limit: MLIB_ALBUMS_LIMIT
+    limit: MLIB_ALBUMS_LIMIT,
+    onCount: function () { syncNavAlbumCount(); }
   });
 
   // 打开资料库页：一次请求拿本地索引（内含"Apple 是否有变动"的探测结果）。
@@ -224,12 +224,52 @@
       var changed = first || libraryIndexChanged(data);
       if (!changed) return data;
       albumsSection.apply(data);
+      syncNavAlbumCount();
       return data;
     }).catch(function (err) {
       if (first) { albumsSection.fail(err); }
       else { setLibraryIndexStale(err); }
       return null;
     });
+  }
+
+  // 数量沿用现有动态数据，不写死。父级行显示**当前视图**的标签与数量；
+  // 子项各自显示自己的数量。计数只在真的拿到数据后写入。
+  var navViewCounts = { albums: '', artists: '', playlists: '' };
+  var MLIB_VIEW_LABELS = { albums: '专辑', artists: '艺人', playlists: '歌单' };
+
+  function applyNavViewLabel() {
+    var heading = document.getElementById('mlib-nav-heading');
+    if (heading) heading.textContent = MLIB_VIEW_LABELS[mlibActiveView] || '专辑';
+    var count = document.getElementById('mlib-nav-view-count');
+    if (count) count.textContent = navViewCounts[mlibActiveView] || '';
+    var parent = document.getElementById('mlib-nav-parent-albums');
+    if (parent) parent.setAttribute('data-mlib-active-view', mlibActiveView);
+    // 视图自己的 aria-label 也跟随（标题已并入父级，不再有独立标题节点）
+    var view = document.getElementById('mlib-view-' + mlibActiveView);
+    if (view) view.setAttribute('aria-label', MLIB_VIEW_LABELS[mlibActiveView] || '专辑');
+  }
+
+  function setNavViewCount(view, text) {
+    navViewCounts[view] = text || '';
+    if (view === mlibActiveView) applyNavViewLabel();
+  }
+
+  // 专辑数量（本地索引）。
+  function syncNavAlbumCount() {
+    var total = (libraryIndexSnapshot && Array.isArray(libraryIndexSnapshot.albums))
+      ? libraryIndexSnapshot.albums.length : 0;
+    var text = total ? String(total) : '';
+    setNavViewCount('albums', text);
+    var itemCount = document.getElementById('mlib-nav-count-albums');
+    if (itemCount) itemCount.textContent = text;
+  }
+
+  // 子菜单里每个入口自带的数量（专辑由 syncNavAlbumCount 写，艺人/歌单在各自视图加载后写）。
+  function setNavItemCount(view, text) {
+    var item = document.getElementById('mlib-nav-count-' + view);
+    if (item) item.textContent = text || '';
+    setNavViewCount(view, text);
   }
 
   // 已有数据时刷新失败：保留当前列表，只在提示区说明，不把网格清空。
@@ -242,6 +282,312 @@
       el.textContent = msg;
       el.setAttribute('data-tone', 'warn');
     });
+  }
+
+  // ----------------------------------------------------------------
+  // 纵向导航：专辑 / 艺人 / 歌单
+  //
+  // 状态管理刻意保持轻量（项目没有路由系统）：
+  //   - 选中项 = 视图名（'albums' | 'artists' | 'playlists'），用 hidden + is-active 落到 DOM；
+  //   - 展开态独立于选中项：折叠/展开不改变当前页面；
+  //   - 两者都持久化到 localStorage，与项目既有偏好持久化风格一致（不需要新存储机制）；
+  //   - 首次进入固定为专辑：只有**用户自己的选择**才写偏好，默认值不写，
+  //     所以"没选过"时永远回到专辑页。
+  // ----------------------------------------------------------------
+  var MLIB_VIEW_KEY = 'mineradio.mlib.view';
+  var MLIB_NAV_OPEN_KEY = 'mineradio.mlib.navOpen';
+  var MLIB_VIEWS = ['albums', 'artists', 'playlists'];
+
+  function readPref(key) {
+    try { return window.localStorage ? window.localStorage.getItem(key) : null; } catch (_) { return null; }
+  }
+  function writePref(key, value) {
+    try { if (window.localStorage) window.localStorage.setItem(key, value); } catch (_) { }
+  }
+  function readActiveView() {
+    var v = readPref(MLIB_VIEW_KEY);
+    return MLIB_VIEWS.indexOf(v) >= 0 ? v : 'albums';
+  }
+
+  var mlibActiveView = readActiveView();
+  // 首次进入默认展开，保证"首次进入时必须能直观地访问专辑页面"。
+  var mlibNavOpen = readPref(MLIB_NAV_OPEN_KEY) !== '0';
+
+  function viewEl(name) { return document.getElementById('mlib-view-' + name); }
+  function navItemEl(name) { return document.getElementById('mlib-nav-item-' + name); }
+
+  function applyNavOpen() {
+    var parent = document.getElementById('mlib-nav-parent-albums');
+    var children = document.getElementById('mlib-nav-children-albums');
+    if (parent) parent.setAttribute('aria-expanded', mlibNavOpen ? 'true' : 'false');
+    if (children) children.classList.toggle('is-collapsed', !mlibNavOpen);
+  }
+
+  // 切换视图：只改 hidden / is-active / aria-current，不动数据。
+  // 已经加载过的视图不重复请求（见 ensureViewData 的 loaded 标记）。
+  function setMlibView(name, opts) {
+    opts = opts || {};
+    // 恢复态（首次渲染）只切换显示，不抓数据 —— 避免一进资料库就请求艺人/歌单。
+    var eager = opts.eager !== false;
+    if (MLIB_VIEWS.indexOf(name) < 0) name = 'albums';
+    mlibActiveView = name;
+    MLIB_VIEWS.forEach(function (v) {
+      var el = viewEl(v);
+      if (el) {
+        var on = v === name;
+        el.hidden = !on;
+        el.classList.toggle('is-active', on);
+      }
+      var item = navItemEl(v);
+      if (item) {
+        var active = v === name;
+        item.classList.toggle('is-active', active);
+        if (active) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      }
+    });
+    applyNavViewLabel();
+    if (opts.persist !== false) writePref(MLIB_VIEW_KEY, name);
+    if (eager) ensureViewData(name);
+  }
+
+  function toggleMlibNav(force) {
+    mlibNavOpen = (typeof force === 'boolean') ? force : !mlibNavOpen;
+    applyNavOpen();
+    writePref(MLIB_NAV_OPEN_KEY, mlibNavOpen ? '1' : '0');
+  }
+
+  // ---- 艺人视图 ----
+  // 数据来自 /api/apple/library/artists（服务端从本地索引聚合，零额外网络）。
+  var artistsState = { loaded: false, loading: false, seq: 0 };
+  function artistCardHtml(artist) {
+    var cover = String(artist.cover || '').trim();
+    var img = cover
+      ? '<img src="' + escHtml(cover) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+      : '';
+    var name = String(artist.name || '未知艺人');
+    var sub = [];
+    if (artist.albumCount) sub.push(artist.albumCount + ' 张专辑');
+    if (artist.songCount) sub.push(artist.songCount + ' 首');
+    return '<article class="mlib-album-card mlib-artist-card" role="listitem" data-mlib-artist="' + escHtml(name) + '">' +
+      '<div class="mlib-art mlib-artist-art' + (cover ? '' : ' is-loaded') + '">' + img + '</div>' +
+      '<div class="mlib-album-meta">' +
+      '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
+      '<div class="mlib-album-sub">' + escHtml(sub.join(' · ')) + '</div>' +
+      '</div></article>';
+  }
+  function setViewState(name, text, tone) {
+    var el = document.getElementById('mlib-' + name + '-state');
+    if (!el) return;
+    if (!text) { el.hidden = true; el.textContent = ''; el.removeAttribute('data-tone'); return; }
+    el.hidden = false;
+    el.textContent = text;
+    if (tone) el.setAttribute('data-tone', tone); else el.removeAttribute('data-tone');
+  }
+  function loadArtistsView() {
+    if (artistsState.loaded || artistsState.loading) return;
+    if (typeof apiJson !== 'function') { setViewState('artists', '页面脚本尚未就绪，稍后重试。', 'warn'); return; }
+    var grid = document.getElementById('mlib-artists-grid');
+    var seq = ++artistsState.seq;
+    artistsState.loading = true;
+    if (grid) grid.setAttribute('aria-busy', 'true');
+    setViewState('artists', '正在整理资料库艺人…');
+    apiJson('/api/apple/library/artists').then(function (data) {
+      if (seq !== artistsState.seq) return;            // 旧请求不得覆盖新视图
+      artistsState.loading = false;
+      var list = (data && Array.isArray(data.artists)) ? data.artists : [];
+      if (grid) {
+        grid.innerHTML = list.map(artistCardHtml).join('');
+        Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
+        grid.setAttribute('aria-busy', 'false');
+      }
+      setNavItemCount('artists', list.length ? String(list.length) : '');
+      artistsState.loaded = true;
+      setViewState('artists', list.length ? '' : '资料库里还没有可用的艺人信息。');
+    }).catch(function (err) {
+      if (seq !== artistsState.seq) return;
+      artistsState.loading = false;
+      if (grid) grid.setAttribute('aria-busy', 'false');
+      setViewState('artists', '读取艺人失败：' + ((err && err.message) || '未知错误'), 'warn');
+    });
+  }
+
+  // ---- 歌单视图 ----
+  // 真实数据来自既有只读接口 /api/apple/user/playlists；不新建、不虚构歌单。
+  var playlistsState = { loaded: false, loading: false, seq: 0 };
+  var playlistPayloads = Object.create(null);
+  function playlistCardHtml(pl) {
+    var cover = String(pl.cover || '').trim();
+    var img = cover
+      ? '<img src="' + escHtml(cover) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+      : '';
+    var name = String(pl.name || '未命名歌单');
+    var sub = String(pl.creator || '').trim() || 'Apple Music';
+    // 歌单对象存在模块内 Map，按 id 取回（与专辑卡片同一套做法，不塞进 HTML 属性）。
+    if (pl && pl.id) playlistPayloads[String(pl.id)] = pl;
+    return '<article class="mlib-album-card" role="listitem" data-mlib-playlist-id="' + escHtml(pl.id || '') + '"' +
+      ' tabindex="0" aria-label="打开歌单：' + escHtml(name) + '">' +
+      '<div class="mlib-art mlib-playlist-art' + (cover ? '' : ' is-loaded') + '">' + img +
+      // 与专辑卡片同一个悬浮播放按钮：同样的类名、同样的悬停显示规则、同样的无 hover 降级。
+      '<button class="mlib-play-btn" type="button" data-mlib-play-playlist="1"' +
+      ' title="播放歌单" aria-label="播放歌单：' + escHtml(name) + '">' + playGlyphSvg() + '</button>' +
+      '</div>' +
+      '<div class="mlib-album-meta">' +
+      '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
+      '<div class="mlib-album-sub">' + escHtml(sub) + '</div>' +
+      '</div></article>';
+  }
+  function loadPlaylistsView() {
+    if (playlistsState.loaded || playlistsState.loading) return;
+    if (typeof apiJson !== 'function') { setViewState('playlists', '页面脚本尚未就绪，稍后重试。', 'warn'); return; }
+    var grid = document.getElementById('mlib-playlists-grid');
+    var seq = ++playlistsState.seq;
+    playlistsState.loading = true;
+    if (grid) grid.setAttribute('aria-busy', 'true');
+    setViewState('playlists', '正在读取 Apple Music 歌单…');
+    apiJson('/api/apple/user/playlists?limit=300').then(function (data) {
+      if (seq !== playlistsState.seq) return;
+      playlistsState.loading = false;
+      // 过滤虚拟条目：Apple Music 资料库卡片（virtual / id=apple-liked）不是真实歌单，
+      // 它的内容是"全部已保存歌曲"，不是歌单 —— 按要求不在这里显示。
+      var list = ((data && Array.isArray(data.playlists)) ? data.playlists : []).filter(function (pl) {
+        if (!pl) return false;
+        if (pl.virtual === true) return false;
+        if (String(pl.id || '') === 'apple-liked') return false;
+        return true;
+      });
+      if (grid) {
+        grid.innerHTML = list.map(playlistCardHtml).join('');
+        Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
+        grid.setAttribute('aria-busy', 'false');
+      }
+      setNavItemCount('playlists', list.length ? String(list.length) : '');
+      playlistsState.loaded = true;
+      if (!list.length) {
+        setViewState('playlists', (data && data.message) || '暂无歌单。', (data && data.error) ? 'warn' : '');
+      } else {
+        setViewState('playlists', '');
+      }
+    }).catch(function (err) {
+      if (seq !== playlistsState.seq) return;
+      playlistsState.loading = false;
+      if (grid) grid.setAttribute('aria-busy', 'false');
+      setViewState('playlists', '读取歌单失败：' + ((err && err.message) || '未知错误'), 'warn');
+    });
+  }
+
+  // 只在该视图真正被打开时取数；已加载过就不重复请求。
+  function ensureViewData(name) {
+    if (name === 'artists') loadArtistsView();
+    else if (name === 'playlists') loadPlaylistsView();
+  }
+
+  // 播放歌单：复用既有的 amc.playPlaylist（歌单链，按名字 + 资料库作用域定位）。
+  // 与专辑卡片的 playLibraryAlbum 同一套语义：只有链路自己报 verified 才算成功。
+  function playLibraryPlaylist(playlist) {
+    var name = String((playlist && playlist.name) || '').trim();
+    if (!name) {
+      if (typeof showToast === 'function') showToast('这个歌单没有可用的名称，无法交给 Apple Music');
+      return;
+    }
+    var amc = window.mineradio && window.mineradio.amc;
+    if (!amc || typeof amc.playPlaylist !== 'function') {
+      if (typeof showToast === 'function') showToast('Apple Music 播放不可用（IPC 未就绪）');
+      return;
+    }
+    var url = String(playlist.appleUrl || '').trim();
+    var payload = { name: name };
+    if (url) payload.url = url;
+    else {
+      payload.scopeLabel = (typeof AMC_PLAYLIST_SCOPE_LABEL === 'string' && AMC_PLAYLIST_SCOPE_LABEL)
+        ? AMC_PLAYLIST_SCOPE_LABEL : '你的资料库';
+    }
+    if (typeof showToast === 'function') showToast('交给 Apple Music 播放：' + name);
+    Promise.resolve(amc.playPlaylist(payload)).then(function (res) {
+      if (typeof showToast !== 'function') return;
+      var stage = (res && res.stage) || 'NO_RESULT';
+      var via = (res && res.playVia) || '';
+      if (res && res.verified) showToast('✓ Apple Music 已开始播放：' + name + (via ? ' · ' + via : ''));
+      else if (stage === 'AMBIGUOUS') showToast('资料库里有多个同名歌单，无法确定播哪一个');
+      else if (stage === 'PLAYLIST_NOT_FOUND') showToast('Apple Music 资料库里没找到：' + name);
+      else if (stage === 'SCOPE_NOT_VERIFIED') showToast('未能切入 Apple Music「你的资料库」范围，已中止播放（不会去目录里找同名歌单）');
+      else if (stage === 'SCOPE_CHIP_NOT_FOUND') showToast('找不到 Apple Music 的「你的资料库」范围按钮，已中止播放');
+      else showToast('Apple Music 播放失败：' + stage);
+    }).catch(function () {
+      if (typeof showToast === 'function') showToast('Apple Music 播放失败（IPC 错误）');
+    });
+  }
+
+  // 打开歌单详情：复用已存在的 window.openAmPlaylistDetail（07-album-detail.js）。
+  function openLibraryPlaylist(id) {
+    var playlist = playlistPayloads[String(id || '')];
+    if (!playlist) return;
+    if (typeof window.openAmPlaylistDetail === 'function') window.openAmPlaylistDetail(playlist);
+  }
+
+  function bindLibraryNav() {
+    var parent = document.getElementById('mlib-nav-parent-albums');
+    if (parent && parent.dataset.mlibNavBound !== '1') {
+      parent.dataset.mlibNavBound = '1';
+      // 整行点击 = 展开/折叠。父级不是页面入口，所以不存在"误切页面"的问题；
+      // 子菜单入口都是独立的 button，不会冒泡到这里。
+      parent.addEventListener('click', function () { toggleMlibNav(); });
+    }
+    var children = document.getElementById('mlib-nav-children-albums');
+    if (children && children.dataset.mlibNavBound !== '1') {
+      children.dataset.mlibNavBound = '1';
+      children.addEventListener('click', function (event) {
+        var btn = event.target && event.target.closest ? event.target.closest('[data-mlib-view]') : null;
+        if (!btn) return;
+        // 子菜单点击不应连带触发父级的展开/折叠
+        event.stopPropagation();
+        setMlibView(btn.getAttribute('data-mlib-view'));
+      });
+    }
+    var artistsGrid = document.getElementById('mlib-artists-grid');
+    if (artistsGrid && artistsGrid.dataset.mlibNavBound !== '1') {
+      artistsGrid.dataset.mlibNavBound = '1';
+      // 艺人卡片暂时只读展示：项目没有 Apple 艺人详情数据源，
+      // 不伪造艺人页，也不把点击接到别的入口上。
+      artistsGrid.addEventListener('click', function () { });
+    }
+    // 歌单卡片 -> 歌单详情页（与专辑详情同构）。事件委托，卡片重渲染后依然有效。
+    var playlistsGrid = document.getElementById('mlib-playlists-grid');
+    if (playlistsGrid && playlistsGrid.dataset.mlibPlBound !== '1') {
+      playlistsGrid.dataset.mlibPlBound = '1';
+      // 挂在捕获阶段：播放按钮与"点卡片主体"是两个不同动作，不能一次点击同时触发。
+      playlistsGrid.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        var card = target.closest('[data-mlib-playlist-id]');
+        if (!card || !playlistsGrid.contains(card)) return;
+        var id = card.getAttribute('data-mlib-playlist-id');
+        if (target.closest('[data-mlib-play-playlist]')) {
+          event.preventDefault();
+          event.stopPropagation();
+          playLibraryPlaylist(playlistPayloads[String(id || '')]);
+          return;
+        }
+        openLibraryPlaylist(id);
+      }, true);
+      playlistsGrid.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        var target = event.target;
+        if (!target || !target.closest) return;
+        // 播放按钮自己有独立语义，不在这里抢
+        if (target.closest('[data-mlib-play-playlist]')) return;
+        var card = target.closest('[data-mlib-playlist-id]');
+        if (!card) return;
+        event.preventDefault();
+        openLibraryPlaylist(card.getAttribute('data-mlib-playlist-id'));
+      });
+    }
+  }
+
+  // 打开资料库时恢复上次的选中项与展开态（首次进入 = 专辑 + 展开）。
+  function restoreLibraryNav() {
+    applyNavOpen();
+    setMlibView(mlibActiveView, { persist: false, eager: false });
   }
 
   // ----------------------------------------------------------------
@@ -397,16 +743,21 @@
   function pointerInSideGutter(event) {
     // 用真实内容元素的边界判定，而不是自己算：(--mlib-gutter 是自定义属性，getPropertyValue
     // 返回的是未解析的 clamp(...) 字符串，parseFloat 得 0；自己算不如直接量。)
+    // 三个视图都是同级 .mlib-section，取所有可见 section 的并集作为"内容列"。
     var sections = document.querySelectorAll('#music-library .mlib-section');
     if (!sections.length) return false;   // 还没有内容时不接管这个手势
-    var first = sections[0].getBoundingClientRect();
-    var last = sections[sections.length - 1].getBoundingClientRect();
-    var colLeft = first.left;
-    var colRight = last.right;
+    var colLeft = Infinity, colRight = -Infinity;
+    Array.prototype.forEach.call(sections, function (node) {
+      if (node.hidden) return;
+      var r = node.getBoundingClientRect();
+      if (!r.width) return;
+      if (r.left < colLeft) colLeft = r.left;
+      if (r.right > colRight) colRight = r.right;
+    });
     if (!(colRight > colLeft)) return false;
     var x = event.clientX;
     var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-    // 严格在内容列之外：列内（卡片、文字、任何区块）一律不触发。
+    // 严格在内容列之外：列内（卡片、文字、导航、任何区块）一律不触发。
     return (x > 0 && x < colLeft) || (x > colRight && x < vw);
   }
 
@@ -508,9 +859,13 @@
     document.addEventListener('DOMContentLoaded', function () {
       syncMlibNavState();
       bindHomeReturn();
+      bindLibraryNav();
+      restoreLibraryNav();
     });
   } else {
     syncMlibNavState();
     bindHomeReturn();
+    bindLibraryNav();
+    restoreLibraryNav();
   }
 })();
