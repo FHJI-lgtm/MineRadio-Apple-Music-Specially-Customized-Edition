@@ -1960,6 +1960,93 @@ body.music-library-leaving #music-library {
   to { background-position: -120% 0 }
 }
 
+/* 封面悬停播放按钮
+   复用既有图标按钮的玻璃语汇（圆角 / 边框 / 背景 / 阴影 / 模糊），但独立成一个类：
+   不改动共享的 icon-btn 类本身，避免影响首页与其它页面。
+   定位相对 .mlib-art，不参与网格布局 —— 所以绝不会撑开卡片或让封面跳动。 */
+.mlib-play-btn {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .38);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(4px) scale(.94);
+  pointer-events: none;
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: opacity .16s ease, transform .16s cubic-bezier(.16, 1, .3, 1),
+    background .18s, border-color .18s, box-shadow .18s
+}
+
+.mlib-play-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+  stroke: none;
+  /* 播放三角在视觉上重心偏左，右移 1px 更居中 */
+  margin-left: 2px
+}
+
+.mlib-play-btn:hover {
+  background: rgba(0, 245, 212, .16);
+  border-color: rgba(0, 245, 212, .52);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .46), 0 0 24px rgba(0, 245, 212, .18), inset 0 1px 0 rgba(255, 255, 255, .22)
+}
+
+.mlib-play-btn:focus-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  outline: 2px solid rgba(0, 245, 212, .72);
+  outline-offset: 2px
+}
+
+/* 有 hover 的设备：悬停这张卡片时淡入。显隐基于卡片自身的 :hover，不是页面全局鼠标状态。 */
+html.mlib-has-hover .mlib-album-card:hover .mlib-play-btn,
+html.mlib-has-hover .mlib-album-card:focus-within .mlib-play-btn {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto
+}
+
+/* 极轻微反馈，只动画 filter —— 不碰尺寸/位置，网格不会抖 */
+html.mlib-has-hover .mlib-album-card:hover .mlib-art img {
+  filter: brightness(1.04)
+}
+
+html.mlib-has-hover .mlib-album-card:hover .mlib-art img,
+html.mlib-has-hover .mlib-album-card:hover .mlib-play-btn {
+  transition: opacity .16s ease, transform .16s cubic-bezier(.16, 1, .3, 1), filter .18s ease,
+    background .18s, border-color .18s, box-shadow .18s
+}
+
+/* 无 hover 的设备（触屏）：不显示圆形按钮 —— 否则 40 张封面各压一个角标，
+   正好违反"不得覆盖关键封面内容"。改为整张封面可点即播放（见委托里的 .mlib-art 分支），
+   并保留按下反馈。桌面端布局完全不受影响。 */
+html:not(.mlib-has-hover) .mlib-album-card .mlib-art {
+  cursor: pointer
+}
+
+html:not(.mlib-has-hover) .mlib-album-card .mlib-art:active {
+  filter: brightness(.94)
+}
+
+html:not(.mlib-has-hover) .mlib-play-btn {
+  display: none
+}
+
 /* 文字区：无底色、水平居中 */
 .mlib-album-meta {
   padding: 11px 6px 0;
@@ -2020,6 +2107,439 @@ body.music-library-leaving #music-library {
   color: rgba(255, 255, 255, .40);
   text-align: center;
   font-variant-numeric: tabular-nums
+}
+
+/* ---------- Apple Music 资料库专辑详情页 ---------- */
+/* 主题色只作用于这个窗口：#am-album-detail-modal 上的 --am-theme-* 由 JS 按封面写入，
+   关闭后随窗口一起消失，不污染资料库页面。 */
+/* 深色降级默认值：封面取色失败或还没回来时，窗口仍是一块合理的深色主题背景，
+   不会出现空白或纯黑方框。JS 取色成功后会覆盖这几个变量。 */
+#am-album-detail-modal {
+  --am-theme-a: 30, 42, 52;
+  --am-theme-light: 46, 62, 74;
+  --am-theme-dark: 16, 23, 29;
+  --am-theme-glow: 64, 104, 120
+}
+
+/* Apple Music 式主题色平铺：窗口本身就是主题色的连续背景，不再是黑色圆角容器。
+   用 id 提升优先级：通用 .modal 基类以更高优先级设置了 background/max-width/border-radius，
+   只写 .am-album-modal 会被压回去（实测背景被压成黑色渐变、max-width 被压成 380px）。 */
+#am-album-detail-modal .am-album-modal {
+  position: relative;
+  width: min(1080px, calc(100vw - 56px)) !important;
+  max-width: min(1080px, calc(100vw - 56px)) !important;
+  max-height: min(88vh, 900px) !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 !important;
+  border-radius: 26px !important;
+  border: 1px solid rgba(255, 255, 255, .14);
+  /* 连续主题色：同一色相的亮/暗两端，避免出现黑色大色块 */
+  background: linear-gradient(168deg,
+    rgb(var(--am-theme-light, 26, 34, 40)) 0%,
+    rgb(var(--am-theme-a, 20, 28, 34)) 46%,
+    rgb(var(--am-theme-dark, 12, 16, 20)) 100%) !important;
+  box-shadow: 0 34px 100px rgba(0, 0, 0, .52), inset 0 1px 0 rgba(255, 255, 255, .12)
+}
+
+/* 封面取色背景：柔和扩散 + 模糊，再叠深色遮罩保证可读 */
+.am-album-modal::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  z-index: 0;
+  pointer-events: none;
+  /* 大面积铺色：两团高饱和柔光叠在主题色底上，再由下方 ::after 压暗保证可读 */
+  background:
+    radial-gradient(78% 62% at 18% 6%, rgb(var(--am-theme-glow, 60, 130, 140) / 95%), transparent 72%),
+    radial-gradient(70% 58% at 86% 92%, rgb(var(--am-theme-a, 20, 28, 34) / 85%), transparent 74%);
+  filter: blur(44px) saturate(1.3);
+  opacity: 1
+}
+
+.am-album-modal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* 只做可读性压暗：上轻下重，整体保持主题色通透，不形成黑色面板 */
+  background: linear-gradient(180deg,
+    rgba(0, 0, 0, .10) 0%,
+    rgba(0, 0, 0, .26) 55%,
+    rgba(0, 0, 0, .40) 100%);
+  backdrop-filter: blur(26px) saturate(1.15)
+}
+
+/* 唯一滚动容器：信息区与歌曲列表共用，窗口控制区不随内容滚动 */
+.am-album-scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px 26px 8px;
+  scrollbar-width: none
+}
+
+.am-album-scroll::-webkit-scrollbar {
+  width: 0
+}
+
+.am-album-info {
+  display: grid;
+  grid-template-columns: minmax(200px, 268px) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start
+}
+
+.am-album-cover-wrap {
+  position: relative
+}
+
+.am-album-cover {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .05);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .10)
+}
+
+.am-album-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover
+}
+
+.am-album-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px
+}
+
+.am-album-kicker {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .66)
+}
+
+.am-album-title {
+  margin: 2px 0 0;
+  font-size: clamp(24px, 2.6vw, 36px);
+  font-weight: 720;
+  line-height: 1.18;
+  color: #fff;
+  /* 长标题换行，但不挤压右侧控件 */
+  overflow-wrap: anywhere;
+  text-shadow: 0 10px 34px rgba(0, 0, 0, .5)
+}
+
+.am-album-artist {
+  font-size: 14px;
+  color: rgba(255, 255, 255, .86)
+}
+
+.am-album-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.62;
+  color: rgba(255, 255, 255, .66);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical
+}
+
+.am-album-desc.expanded {
+  -webkit-line-clamp: unset;
+  display: block;
+  overflow: visible
+}
+
+.am-album-desc-toggle {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(0, 245, 212, .92);
+  font: 600 12px inherit;
+  cursor: pointer
+}
+
+.am-album-desc-toggle:hover {
+  color: #fff
+}
+
+.am-album-facts {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .70)
+}
+
+.am-album-facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px
+}
+
+.am-album-facts span + span::before {
+  content: '·';
+  margin-right: 10px;
+  color: rgba(255, 255, 255, .28)
+}
+
+.am-album-play {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 22px 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .94);
+  color: #14161a;
+  font: 700 14px inherit;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .3);
+  transition: background .18s, border-color .18s, transform .16s
+}
+
+.am-album-play svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor
+}
+
+.am-album-play:hover:not(:disabled) {
+  background: #fff;
+  transform: translateY(-1px)
+}
+
+.am-album-play:disabled {
+  opacity: .55;
+  cursor: default
+}
+
+.am-album-status {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .6)
+}
+
+.am-album-status[data-tone="warn"] {
+  color: rgba(255, 209, 138, .92)
+}
+
+.am-album-status[data-tone="ok"] {
+  color: rgba(0, 245, 212, .92)
+}
+
+/* 歌曲列表：连续行，不是一歌一卡 */
+.am-album-tracks {
+  margin-top: 26px
+}
+
+/* 连续行 + 细分隔线：每首歌没有独立卡片背景 */
+.am-album-track + .am-album-track::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, .10)
+}
+
+.am-album-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, .42fr) 56px 34px;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background .16s
+}
+
+.am-album-track:hover {
+  background: rgba(255, 255, 255, .10)
+}
+
+.am-album-track[data-playing="true"] {
+  background: rgba(0, 0, 0, .16)
+}
+
+.am-album-track[data-playing="true"] .am-album-track-name {
+  color: rgb(var(--am-theme-a, 0, 245, 212))
+}
+
+/* 左侧 2px 播放指示条 */
+.am-album-track[data-playing="true"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  border-radius: 2px;
+  background: rgb(var(--am-theme-a, 0, 245, 212))
+}
+
+.am-album-track-no {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, .60);
+  font-variant-numeric: tabular-nums;
+  text-align: right
+}
+
+.am-album-track-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.am-album-track-artist,
+.am-album-track-dur {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, .70);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.am-album-track-dur {
+  text-align: right;
+  font-variant-numeric: tabular-nums
+}
+
+/* 更多操作：默认隐藏，行悬停/聚焦时淡入。用 opacity 而不是 display，
+   所以行的尺寸与文字位置永远不跳。 */
+.am-album-track-more {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .30);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease, background .18s, border-color .18s
+}
+
+.am-album-track:hover .am-album-track-more,
+.am-album-track:focus-within .am-album-track-more,
+.am-album-track-more:focus-visible {
+  opacity: 1;
+  pointer-events: auto
+}
+
+.am-album-track-more:hover {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(255, 255, 255, .30)
+}
+
+/* 无 hover 设备：悬停不是唯一入口 —— 常驻显示更多操作 */
+@media (hover: none) {
+  .am-album-track-more {
+    opacity: .9;
+    pointer-events: auto
+  }
+}
+
+.am-album-empty,
+.am-album-error {
+  margin-top: 18px;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(0, 0, 0, .16);
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, .62)
+}
+
+.am-album-error {
+  border-color: rgba(255, 138, 138, .28);
+  color: rgba(255, 190, 190, .9)
+}
+
+.am-album-retry {
+  margin-top: 10px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font: 600 12px inherit;
+  cursor: pointer
+}
+
+.am-album-foot {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 22px 16px;
+  /* 不再用深色底条：只留一条细分隔线，保持主题色连续 */
+  border-top: 1px solid rgba(255, 255, 255, .12);
+  background: transparent
+}
+
+/* 关闭按钮在主题色底上提高对比 */
+#am-album-detail-modal .modal-btn {
+  border-color: rgba(255, 255, 255, .26);
+  background: rgba(0, 0, 0, .18)
+}
+
+#am-album-detail-modal .modal-btn:hover {
+  background: rgba(0, 0, 0, .30)
+}
+
+.am-album-skeleton {
+  height: 14px;
+  margin: 10px 0;
+  border-radius: 7px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, .05) 20%, rgba(255, 255, 255, .10) 50%, rgba(255, 255, 255, .05) 80%);
+  background-size: 220% 100%;
+  animation: mlib-shimmer 1.6s linear infinite
+}
+
+@media (max-width: 760px) {
+  .am-album-info {
+    grid-template-columns: 1fr
+  }
+
+  .am-album-track {
+    grid-template-columns: 28px minmax(0, 1fr) 48px 34px
+  }
+
+  .am-album-track-artist {
+    display: none
+  }
 }
 
 /* 状态提示：加载 / 未登录 / 出错 / 空 */

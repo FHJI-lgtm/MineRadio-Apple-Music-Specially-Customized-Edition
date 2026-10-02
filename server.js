@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, ensureWebReadCredentialSource } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5340,6 +5340,114 @@ const server = http.createServer(async (req, res) => {
   // Apple Music 资料库 · 专辑轴（最近添加）。
   // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
   // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
+  // 资料库专辑曲目（只含库内已保存曲目）。按 library album id 读取，不使用名称搜索。
+  // 资料库专辑墙：读**本地索引**，不再每次打开就扫 Apple。
+  // 命中缓存且 Apple 无变化时只做一次轻量探测（2 个请求）；有变化才全量对账并重新渲染。
+  if (pn === '/api/apple/library/index') {
+    try {
+      const sync = await syncLibraryIndex({});
+      // 顺序：dateAdded 新→旧。缓存按 API 页顺序存放，这里按日期显式排序，
+      // 保证"最近添加"区块与专辑墙的顺序与 Apple 一致（缺失日期者沉底、保持相对顺序）。
+      const albums = readLibraryAlbums().slice().sort(function (a, b) {
+        const ta = a && a.dateAdded ? Date.parse(a.dateAdded) : NaN;
+        const tb = b && b.dateAdded ? Date.parse(b.dateAdded) : NaN;
+        const va = isFinite(ta) ? ta : null;
+        const vb = isFinite(tb) ? tb : null;
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        return vb - va;
+      });
+      sendJSON(res, {
+        ok: sync.ok !== false,
+        fromCache: !!sync.fromCache,
+        probed: !!sync.probed,
+        changed: !!sync.changed,
+        probeFailed: !!sync.probeFailed,
+        ageMs: typeof sync.ageMs === 'number' ? sync.ageMs : null,
+        error: sync.error || '',
+        index: libraryIndexState(),
+        albums: albums.map(function (a) {
+          return { provider: 'apple', id: a.libraryAlbumId, libraryId: a.libraryAlbumId, albumId: a.libraryAlbumId,
+            name: a.name, artist: a.artist, cover: a.cover, releaseDate: a.releaseDate,
+            trackCount: a.appleTrackCount, dateAdded: a.dateAdded, genreNames: a.genre ? [a.genre] : [] };
+        })
+      });
+    } catch (err) {
+      console.error('[AppleMusicLibraryIndexAlbums]', err);
+      sendJSON(res, { ok: false, error: err.message, albums: [] }, 500);
+    }
+    return;
+  }
+
+  // 资料库索引：同步（轻量探测 + 按需全量对账）并返回本地索引状态。
+  // force=1 强制全量；否则冷却期内直接返回缓存。
+  if (pn === '/api/apple/library/songs') {
+    try {
+      const force = url.searchParams.get('force') === '1';
+      const sync = await syncLibraryIndex({ force: force });
+      const songs = readLibrarySongs();
+      sendJSON(res, {
+        ok: sync.ok !== false,
+        fromCache: !!sync.fromCache, probed: !!sync.probed, changed: !!sync.changed,
+        probeFailed: !!sync.probeFailed, ageMs: typeof sync.ageMs === 'number' ? sync.ageMs : null,
+        error: sync.error || '', raw: sync.raw || null, meta: sync.meta || null,
+        index: libraryIndexState(),
+        songs: songs.map(function (r) {
+          return { id: r.librarySongId, name: r.name, artist: r.artist, albumName: r.albumName,
+            trackNumber: r.trackNumber, discNumber: r.discNumber, duration: r.duration,
+            catalogId: r.catalogId, hasPlayParams: r.hasPlayParams };
+        })
+      });
+    } catch (err) {
+      console.error('[AppleMusicLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+  // 专辑文案（简介/版权）：只回文案，不回任何曲目。
+  if (pn === '/api/apple/library/album/notes') {
+    try {
+      const id = url.searchParams.get('id') || '';
+      const notes = await albumNotesFor(id);
+      sendJSON(res, { ok: true, libraryAlbumId: id, albumNotes: notes });
+    } catch (err) {
+      sendJSON(res, { ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  // 专辑曲目重建：从本地索引取候选，再走 Catalog 校验归属。
+  // 只返回资料库中真实保存且通过身份校验的曲目；Catalog 不参与补全。
+  // 已对全部 549 张专辑抽样验证（80 张实测 verified 73 + 名称差异 6 + 无候选 1），
+  // 故不再限制白名单。
+  if (pn === '/api/apple/library/album/rebuilt') {
+    try {
+      const id = url.searchParams.get('id') || '';
+      const name = url.searchParams.get('name') || '';
+      const artist = url.searchParams.get('artist') || '';
+      const rebuilt = await rebuildAlbumTracks({ id: id, name: name, artist: artist });
+      sendJSON(res, rebuilt);
+    } catch (err) {
+      console.error('[AppleMusicLibraryAlbumRebuilt]', err);
+      sendJSON(res, { ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/apple/library/album/tracks') {
+    try {
+      const id = url.searchParams.get('id') || url.searchParams.get('albumId') || '';
+      const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '100', 10) || 100));
+      const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+      sendJSON(res, await handleAppleLibraryAlbumTracksWeb(id, { limit, offset }));
+    } catch (err) {
+      console.error('[AppleMusicLibraryAlbumTracks]', err);
+      sendJSON(res, { provider: 'apple', libraryAlbumId: '', songs: [], total: 0, error: err.message }, 500);
+    }
+    return;
+  }
+
   if (pn === '/api/apple/library/albums') {
     try {
       const limit = Math.max(1, Math.min(1000, parseInt(url.searchParams.get('limit') || '300', 10) || 300));

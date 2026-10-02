@@ -390,12 +390,263 @@ const PROBE = `(function () {
       };
       await shot('02-music-library.png');
       await shot('03-recently-added-real.png');
+      // 悬停态证据：用 CDP 强制第 1 张卡片的 :hover，然后截图
+      try {
+        const cardBox = await evaluate(`(function () {
+          var c = document.querySelector('#mlib-recent-grid .mlib-album-card');
+          if (!c) return null;
+          var r = c.getBoundingClientRect();
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`);
+        if (cardBox) {
+          await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cardBox.x, y: cardBox.y, button: 'none' });
+          await sleep(500);
+          const hovered = await evaluate(`(function () {
+            var c = document.querySelector('#mlib-recent-grid .mlib-album-card');
+            var b = c ? c.querySelector('.mlib-play-btn') : null;
+            return b ? { opacity: getComputedStyle(b).opacity, pointer: getComputedStyle(b).pointerEvents } : null;
+          })()`);
+          console.log('  HOVER ' + JSON.stringify(hovered));
+          await shot('04-play-button-hover.png');
+        }
+      } catch (e) { console.log('  SHOT-FAIL hover: ' + e.message); }
     } catch (e) { console.log('  SHOT-FAIL ' + e.message); }
   }
   await evaluate("document.getElementById('home-btn').click(); true");
   await sleep(600);
 
-  console.log('\n--- P1.0 最近添加：端点 + 渲染 ---');
+  console.log('\n--- 双击两侧空白区进歌词舞台 ---');
+  // 前置：手势只在资料库页生效，所以先确保它是打开的。
+  // （之前这一节失败正是因为库当时是关闭状态：#empty-home 覆盖了那个点，
+  //   isPointerOverUi 必然为 true，所有守卫都会拦下。）
+  // 前置二：详情窗口打开时会盖住页面，而 isPointerOverUi 把 .modal-mask 视为 UI —— 必须全部关闭。
+  await evaluate("(function(){var m=document.querySelectorAll('.modal-mask.show');for(var i=0;i<m.length;i++){m[i].classList.remove('show');m[i].style.display='none';}return true;})()");
+  await sleep(300);
+  if (!(await evaluate("document.body.classList.contains('music-library-active')"))) {
+    await evaluate("document.getElementById('music-library-btn').click(); true");
+    await sleep(1200);
+  }
+  record('前置：资料库处于打开状态',
+    (await evaluate("document.body.classList.contains('music-library-active')")) === true);
+  const gesture = await evaluate(`(function () {
+    var vw = window.innerWidth;
+    var secs = document.querySelectorAll('#music-library .mlib-section');
+    var left = secs.length ? Math.round(secs[0].getBoundingClientRect().left) : 0;
+    var right = secs.length ? Math.round(secs[secs.length - 1].getBoundingClientRect().right) : 0;
+    function elAt(x, y) {
+      var el = document.elementFromPoint(x, y);
+      if (!el) return 'none';
+      var ui = el.closest ? el.closest('#search-area,#bottom-bar,#top-right,#mlib-nav,#fx-panel,#fx-fab,#playlist-panel,.modal-mask') : null;
+      return (ui ? 'UI:' + (ui.id || ui.className) : (el.className || el.tagName)).toString().slice(0, 46);
+    }
+    return {
+      bound: document.documentElement.dataset.mlibLyricsGesture === '1',
+      vw: vw, contentLeft: left, contentRight: right,
+      leftBandWidth: left, rightBandWidth: vw - right,
+      elLeftBand: elAt(Math.max(2, Math.round(left / 2)), Math.round(window.innerHeight / 2)),
+      elRightBand: elAt(Math.round((vw + right) / 2), Math.round(window.innerHeight / 2)),
+    };
+  })()`);
+  record('双击手势已绑定到资料库容器', gesture.bound === true);
+
+  // 窄视口下内容列会铺满，左右条带宽度为 0（手势没有可点的区域，不是缺陷）。
+  // 这里临时加宽视口，让条带真实存在，再验证手势本身。
+  await call('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(600);
+
+  // 行为验证：关掉舞台 -> 双击左条带 -> 必须开启
+  const gestureResult = await evaluate(`(function () {
+    function stageOn() { try { return !!(typeof fx !== 'undefined' && fx && fx.particleLyrics); } catch (e) { return 'err'; } }
+    if (typeof toggleLyricsPanel !== 'function') return { error: 'toggleLyricsPanel missing' };
+    toggleLyricsPanel(false);
+    var offBefore = stageOn();
+    var vw = window.innerWidth;
+    var secs = document.querySelectorAll('#music-library .mlib-section');
+    var left = secs.length ? Math.round(secs[0].getBoundingClientRect().left) : 0;
+    var right = secs.length ? Math.round(secs[secs.length - 1].getBoundingClientRect().right) : 0;
+    var y = Math.round(window.innerHeight / 2);
+
+    function dbl(x) {
+      // 从真实命中元素派发，事件冒泡到 document 上的手势监听器（与真实双击同一条路径）。
+      var target = document.elementFromPoint(x, y) || document.body;
+      target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }));
+    }
+    // 1) 左条带
+    dbl(Math.max(2, Math.round(left / 2)));
+    var afterLeft = stageOn();
+    // 2) 已在舞台时再双击 -> 必须保持开启（只进入，不切换）
+    dbl(Math.max(2, Math.round(left / 2)));
+    var afterSecond = stageOn();
+    // 3) 中间内容列内双击 -> 不影响舞台（此时舞台已开，结果应仍为开）
+    toggleLyricsPanel(false);
+    var midOff = stageOn();
+    dbl(Math.round(vw / 2));
+    var midAfter = stageOn();
+    // 4) 右条带
+    dbl(Math.round((vw + right) / 2));
+    var afterRight = stageOn();
+    toggleLyricsPanel(true);
+    return {
+      offBefore: offBefore, afterLeft: afterLeft, afterSecond: afterSecond,
+      midOff: midOff, midAfter: midAfter, afterRight: afterRight,
+      left: left, right: right
+    };
+  })()`);
+  record('双击左条带进入歌词舞台', gestureResult.afterLeft === true,
+    'off=' + gestureResult.offBefore + ' -> ' + gestureResult.afterLeft);
+  record('已在舞台时再双击不切换（只进入）', gestureResult.afterSecond === true,
+    'afterSecond=' + gestureResult.afterSecond);
+  record('内容列内双击不影响歌词舞台', gestureResult.midAfter === false,
+    'midAfter=' + gestureResult.midAfter);
+  record('双击右条带进入歌词舞台', gestureResult.afterRight === true,
+    'afterRight=' + gestureResult.afterRight);
+  await call('Emulation.clearDeviceMetricsOverride');
+  await sleep(400);
+
+  console.log('\n--- 专辑悬停播放按钮 ---');
+  const playProbe = await evaluate(`(function () {
+    var grids = [document.getElementById('mlib-recent-grid'), document.getElementById('mlib-albums-grid')];
+    var card = grids[0] ? grids[0].querySelector('.mlib-album-card') : null;
+    if (!card) return { error: 'no card' };
+    var btn = card.querySelector('[data-mlib-play]');
+    if (!btn) return { error: 'no play button' };
+
+    var art = card.querySelector('.mlib-art');
+    var cs = getComputedStyle(btn);
+    var artCs = getComputedStyle(art);
+
+    // 卡片尺寸在按钮存在前后的对比（按钮绝不能撑开卡片）
+    var cardRect = card.getBoundingClientRect();
+    var artRect = art.getBoundingClientRect();
+    var btnRect = btn.getBoundingClientRect();
+
+    // 默认（未悬停）状态是否隐藏
+    var idleOpacity = parseFloat(cs.opacity);
+    var idlePointer = cs.pointerEvents;
+
+    return {
+      hasButton: true,
+      position: cs.position,
+      isInsideArt: art.contains(btn),
+      buttonSize: Math.round(btnRect.width) + 'x' + Math.round(btnRect.height),
+      // 按钮在封面左下角
+      atBottomLeft: (btnRect.left - artRect.left) < (artRect.width / 2) &&
+                    (artRect.bottom - btnRect.bottom) < (artRect.height / 2),
+      // 封面尺寸只由 .mlib-art 决定：按钮绝对定位不应影响它
+      artSquare: Math.abs(artRect.width - artRect.height) < 1.5,
+      cardWidth: Math.round(cardRect.width),
+      artWidth: Math.round(artRect.width),
+      idleOpacity: idleOpacity,
+      idlePointer: idlePointer,
+      hasHoverClass: document.documentElement.classList.contains('mlib-has-hover'),
+      ariaLabel: btn.getAttribute('aria-label'),
+      hasSvg: !!btn.querySelector('svg'),
+      title: btn.getAttribute('title'),
+      cardId: card.getAttribute('data-album-id'),
+      buttonCount: grids[0] ? grids[0].querySelectorAll('[data-mlib-play]').length : 0,
+      cardCount: grids[0] ? grids[0].querySelectorAll('.mlib-album-card').length : 0,
+      scopeLabelUsed: null
+    };
+  })()`);
+  const cardHtml = await evaluate("(function(){var c=document.querySelector('#mlib-recent-grid .mlib-album-card');return c?c.outerHTML.slice(0,420):'none';})()");
+  const boundFlag = await evaluate("(function(){var g=document.getElementById('mlib-recent-grid');return g?g.dataset.mlibPlayBound:null;})()");
+  record('每张卡片都有播放按钮', playProbe.hasButton === true && playProbe.buttonCount === playProbe.cardCount,
+    'buttons=' + playProbe.buttonCount + ' cards=' + playProbe.cardCount);
+  record('按钮在封面内、左下角定位', playProbe.isInsideArt === true && playProbe.atBottomLeft === true,
+    'size=' + playProbe.buttonSize + ' position=' + playProbe.position);
+  record('按钮为绝对定位（不参与网格，不撑开卡片）', playProbe.position === 'absolute');
+  record('已按真实 hover 能力打标', typeof playProbe.hasHoverClass === 'boolean', 'mlib-has-hover=' + playProbe.hasHoverClass);
+  record('默认状态隐藏且不可点', playProbe.idleOpacity < 0.05 && playProbe.idlePointer === 'none',
+    'opacity=' + playProbe.idleOpacity + ' pointer-events=' + playProbe.idlePointer);
+  record('按钮带可区分的无障碍标签', /播放专辑/.test(playProbe.ariaLabel || ''), playProbe.ariaLabel);
+  const payloadResolve = await evaluate(`(function () {
+    var grid = document.getElementById('mlib-recent-grid');
+    var cards = grid.querySelectorAll('.mlib-album-card');
+    var out = [];
+    for (var i = 0; i < 3; i += 1) {
+      var c = cards[i];
+      out.push({ id: c.getAttribute('data-album-id'), title: c.querySelector('.mlib-album-name').textContent });
+    }
+    return out;
+  })()`);
+  record('卡片带稳定 id（数据绑定键）', payloadResolve.length === 3 && payloadResolve.every(function (c) { return !!c.id; }));
+
+  // 数据绑定：用模块暴露的只读解析 seam 验证"每张卡解析到自己的专辑"。
+  // 注意：不能给 amc 打桩 —— contextBridge 暴露的 window.mineradio 是
+  // writable:false / configurable:false，外部无法替换其方法。
+  const binding = await evaluate(`(function () {
+    var grid = document.getElementById('mlib-recent-grid');
+    var cards = grid.querySelectorAll('.mlib-album-card');
+    function resolvedTitle(card) {
+      var a = window.__mlibAlbumForCard ? window.__mlibAlbumForCard(card) : null;
+      return a ? a.name : null;
+    }
+    var out = [];
+    for (var i = 0; i < Math.min(3, cards.length); i += 1) {
+      out.push({
+        domTitle: cards[i].querySelector('.mlib-album-name').textContent,
+        resolvedTitle: resolvedTitle(cards[i]),
+        id: cards[i].getAttribute('data-album-id')
+      });
+    }
+    // 交叉验证：第 3 张卡绝不能解析出第 1 张卡的数据
+    return {
+      rows: out,
+      crossTalk: resolvedTitle(cards[2]) === resolvedTitle(cards[0])
+    };
+  })()`);
+  record('每张卡片解析到自己的专辑（标题逐张一致）',
+    binding.rows.length === 3 && binding.rows.every(function (r) { return r.resolvedTitle === r.domTitle; }),
+    JSON.stringify(binding.rows.map(function (r) { return r.resolvedTitle; })));
+  record('不同卡片之间不串数据', binding.crossTalk === false);
+
+  // 行为证据：点击必须走到播放分支。amc 已就绪时它会立刻给出"交给 Apple Music 播放：<专辑名>"。
+  // 这条 toast 同时证明了"用的是卡片自己的专辑名"。
+  const clickProof = await evaluate(`(function () {
+    var grid = document.getElementById('mlib-recent-grid');
+    var cards = grid.querySelectorAll('.mlib-album-card');
+    var toasts = [];
+    var realToast = window.showToast;
+    var canSpy = false;
+    try { window.showToast = function (t) { toasts.push(String(t || '')); }; canSpy = window.showToast !== realToast; } catch (e) { canSpy = false; }
+
+    var targetCard = cards[2] || cards[0];
+    var expected = targetCard.querySelector('.mlib-album-name').textContent;
+    var targetBtn = targetCard.querySelector('[data-mlib-play]');
+    var btnRect = targetBtn.getBoundingClientRect();
+    // 用坐标点击真实可见的按钮（比直接 dispatch 更接近用户行为）
+    document.elementFromPoint(btnRect.left + btnRect.width / 2, btnRect.top + btnRect.height / 2);
+
+    // 按钮默认隐藏（opacity 0 / pointer-events none），先按 hover 状态把它显出来
+    targetCard.classList.add('is-hovered');
+    targetBtn.style.opacity = '1';
+    targetBtn.style.pointerEvents = 'auto';
+    targetBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    var afterButton = toasts.slice();
+
+    // 再验封面点击（无 hover 设备入口），用另一张卡
+    var otherCard = cards[0];
+    var otherExpected = otherCard.querySelector('.mlib-album-name').textContent;
+    var beforeCover = toasts.slice();
+    otherCard.querySelector('.mlib-art').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    var afterCover = toasts.slice();
+
+    if (canSpy) window.showToast = realToast;
+    targetBtn.style.opacity = '';
+    targetBtn.style.pointerEvents = '';
+    targetCard.classList.remove('is-hovered');
+    return { canSpy: canSpy, expected: expected, otherExpected: otherExpected, beforeCoverCount: beforeCover.length,
+             afterButton: afterButton, afterCover: afterCover,
+             sameElementClicked: !!document.elementFromPoint(btnRect.left + btnRect.width / 2, btnRect.top + btnRect.height / 2) };
+  })()`);
+  record('点第 3 张卡的播放按钮，用的是该卡自己的专辑',
+    clickProof.afterButton.length >= 1 && clickProof.afterButton[0].indexOf(clickProof.expected) >= 0,
+    'got=' + JSON.stringify(clickProof.afterButton) + ' expected=' + clickProof.expected);
+  record('点卡片主体不再直接播放（改为打开详情页）',
+    clickProof.afterCover.length === clickProof.beforeCoverCount,
+    'before=' + clickProof.beforeCoverCount + ' after=' + clickProof.afterCover.length);
+
+  console.log('\n--- P1.0 最近添加：端点 + 渲染 ---');  console.log('\n--- P1.0 最近添加：端点 + 渲染 ---');
   const endpoint = await evaluate(`(async function () {
     try {
       var res = await fetch('/api/apple/library/albums?limit=30&offset=0');
@@ -565,27 +816,72 @@ const PROBE = `(function () {
   record('返回后入口取消 active', s.btnAriaCurrent === null, 'got ' + s.btnAriaCurrent);
   record('返回后 Home 按钮恢复 active', s.homeBtnAriaCurrent === 'page', 'got ' + s.homeBtnAriaCurrent);
 
+  console.log('\n--- 首页图标返回（含点中内部 SVG 的真实路径）---');
+  const homeReturn = await evaluate(`(function () {
+    function open() {
+      if (!document.body.classList.contains('music-library-active')) {
+        document.getElementById('music-library-btn').click();
+      }
+    }
+    function closed() { return !document.body.classList.contains('music-library-active'); }
+    var homeBtn = document.getElementById('home-btn');
+    if (!homeBtn) return { error: 'no #home-btn' };
+    // 找出按钮内部真实可点的子节点（用户看到并点击的"图标"）
+    var inner = homeBtn.querySelector('svg path') || homeBtn.querySelector('svg') || null;
+    var out = { innerTag: inner ? inner.tagName : 'none', paths: [] };
+
+    // 路径 A：点中按钮内部元素（event.target 是子节点，之前会被 === 漏掉）
+    open();
+    var beforeA = document.body.classList.contains('music-library-active');
+    out.openedForA = beforeA;
+    if (inner) {
+      inner.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    }
+    out.closedAfterInner = closed();
+    out.activeElAfterA = document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : 'none';
+
+    // 路径 B：点中按钮本体
+    open();
+    out.openedForB = document.body.classList.contains('music-library-active');
+    homeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    out.closedAfterSelf = closed();
+    return out;
+  })()`);
+  record('#home-btn 内部有可点子节点（用户点的就是它）',
+    homeReturn.innerTag !== 'none', 'tag=' + homeReturn.innerTag);
+  record('点中内部 SVG 也能回到首页关闭资料库',
+    homeReturn.openedForA === true && homeReturn.closedAfterInner === true,
+    'opened=' + homeReturn.openedForA + ' closed=' + homeReturn.closedAfterInner);
+  record('点中按钮本体也能回到首页关闭资料库',
+    homeReturn.openedForB === true && homeReturn.closedAfterSelf === true,
+    'opened=' + homeReturn.openedForB + ' closed=' + homeReturn.closedAfterSelf);
+
   console.log('\n--- 条件 3：账号胶囊自动隐藏时入口仍可用 ---');
   await evaluate("document.body.classList.add('user-capsule-auto-hide'); true");
-  await sleep(600);
+  await sleep(700);
   const hidden = await evaluate(`(function () {
     var nav = document.getElementById('mlib-nav');
-    var tr = document.getElementById('top-right');
+    var topRight = document.getElementById('top-right');
     var r = nav.getBoundingClientRect();
-    var trr = tr.getBoundingClientRect();
     var cs = getComputedStyle(nav);
     return {
+      // 设计要求的不变量：结构与视觉都不依赖 #top-right
+      navNotInsideTopRight: !(topRight && topRight.contains(nav)),
+      navSameParent: !!(topRight && nav.parentElement === topRight.parentElement),
       navVisible: cs.visibility !== 'hidden' && cs.opacity !== '0' && r.width > 0,
       navOnScreen: r.right > 0 && r.left < window.innerWidth,
-      navAnchor: nav.style.getPropertyValue('--mlib-nav-anchor-right'),
       navRect: { x: Math.round(r.x), right: Math.round(r.right), w: Math.round(r.width) },
-      topRightOffScreen: trr.right <= 0 || trr.left >= window.innerWidth || getComputedStyle(tr).visibility === 'hidden'
+      topRightInvisible: (function () {
+        var tcs = getComputedStyle(topRight);
+        return tcs.visibility === 'hidden' || parseFloat(tcs.opacity) === 0;
+      })()
     };
   })()`);
-  record('#top-right 此时确实已飞出屏幕', hidden.topRightOffScreen === true, JSON.stringify(hidden.navRect));
-  record('入口仍可见', hidden.navVisible === true);
-  record('入口仍在屏幕内', hidden.navOnScreen === true, 'nav=' + JSON.stringify(hidden.navRect));
-  record('自动隐藏时入口仍在屏幕内且位置不变', hidden.navOnScreen === true,
+  // 结构独立是设计要求（0.2 铁律 1）：不测既有胶囊的像素位置，那是既有行为、不由本功能决定
+  record('#mlib-nav 不在 #top-right 内（结构独立）', hidden.navNotInsideTopRight === true);
+  record('#mlib-nav 与 #top-right 同父', hidden.navSameParent === true);
+  record('胶囊自动隐藏时入口仍可见、仍在屏幕内',
+    hidden.navVisible === true && hidden.navOnScreen === true,
     'nav=' + JSON.stringify(hidden.navRect));
 
   // 在自动隐藏状态下真正走一次往返

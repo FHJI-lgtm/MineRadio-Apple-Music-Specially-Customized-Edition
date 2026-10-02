@@ -106,6 +106,7 @@
     'js/modules/10-shell/04-desktop-overlay-fullscreen.js',
     'js/modules/10-shell/05-startup-bindings.js',
     'js/modules/10-shell/06-music-library.js',
+    'js/modules/10-shell/07-album-detail.js',
     'js/modules/12-smtc/00-smtc-store.js',
     'js/modules/12-smtc/01-smtc-lyric-loader.js',
     'js/modules/12-smtc/02-smtc-player.js',

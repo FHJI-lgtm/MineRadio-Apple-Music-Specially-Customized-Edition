@@ -1913,6 +1913,41 @@
       </div>
     </div>
 
+    <!-- Apple Music 资料库专辑详情页。独立于 #track-detail-modal（那是单曲模板）。
+         通过 .modal-mask / .modal / openGsapModal / closeGsapModal 复用既有窗口生命周期。 -->
+    <div id="am-album-detail-modal" class="modal-mask" role="dialog" aria-modal="true"
+      aria-labelledby="am-album-detail-heading">
+      <div class="modal am-album-modal">
+        <div class="am-album-scroll" id="am-album-detail-scroll">
+          <div class="am-album-info">
+            <div class="am-album-cover-wrap">
+              <div class="am-album-cover" id="am-album-detail-cover" aria-hidden="true"></div>
+            </div>
+            <div class="am-album-meta">
+              <div class="am-album-kicker">Apple Music · 资料库专辑</div>
+              <h2 id="am-album-detail-heading" class="am-album-title">专辑</h2>
+              <div class="am-album-artist" id="am-album-detail-artist"></div>
+              <p class="am-album-desc" id="am-album-detail-desc" hidden></p>
+              <button class="am-album-desc-toggle" id="am-album-detail-desc-toggle" type="button" hidden
+                onclick="toggleAmAlbumDescription()">展开简介</button>
+              <div class="am-album-facts" id="am-album-detail-facts"></div>
+              <button class="am-album-play" id="am-album-detail-play" type="button"
+                onclick="playAmAlbumFromStart()">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13l10.5-6.5z" /></svg>
+                <span id="am-album-detail-play-label">播放专辑</span>
+              </button>
+              <div class="am-album-status" id="am-album-detail-status" role="status" aria-live="polite" hidden></div>
+            </div>
+          </div>
+
+          <div class="am-album-tracks" id="am-album-detail-tracks" aria-busy="false"></div>
+        </div>
+        <div class="am-album-foot">
+          <button class="modal-btn" type="button" onclick="closeAmAlbumDetail()">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div id="update-modal" class="modal-mask">
       <div class="modal update-modal">
         <div class="update-panel-inner">

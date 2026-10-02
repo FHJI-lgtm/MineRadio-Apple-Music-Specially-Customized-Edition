@@ -1,4 +1,13 @@
 // ============================================================
+const {
+  createAppleMusicLibraryCacheService,
+  reconstructAlbumTracks,
+  enrichAlbumNotes,
+} = require('./apple-music-library-cache');
+
+// 资料库索引服务（本地缓存 + 增量同步）。本文件只做「读取 Apple + 校验归属」的薄适配，
+// 缓存与增量逻辑都在 apple-music-library-cache.js 里，可被资料库页 / 专辑详情 / 统计共用。
+const libraryCache = createAppleMusicLibraryCacheService({});
 // Apple Music WEB read handlers (library reads only)
 //
 // Boundary (deliberate): this module is the ONLY place that consumes the Apple Music WEB credential.
@@ -399,7 +408,109 @@ async function handleAppleAlbumDetailWeb(albumId, opts) {
     hasMore: !!tracksRel.next,
   };
 }
+// ---- Apple Music WEB path for library ALBUM tracks (album detail page) ------------------------------
+// Reads /v1/me/library/albums/<libraryId>/tracks. This axis did NOT exist before: the library-albums
+// payload carries no catalog id (playParams.catalogId is undefined for library albums - measured), so
+// the catalog-only handleAppleAlbumDetailWeb cannot be used as the track source. Reads only.
+//
+// ID RULE (hard, unchanged): tracks keep the id the payload carries. Library songs are `i.*`; a catalog
+// id is copied verbatim from attributes.playParams.catalogId and is never inferred from the id form.
+// The library album id is passed through verbatim - it is the caller's selection identity.
+async function handleAppleLibraryAlbumTracksWeb(albumId, opts) {
+  opts = opts || {};
+  const id = normalizeText(albumId);
+  const limit = Math.max(1, Math.min(APPLE_LIBRARY_PAGE_LIMIT, Number(opts.limit) || 100));
+  const startOffset = Math.max(0, Number(opts.offset) || 0);
+  if (!id) {
+    return { provider: 'apple', libraryAlbumId: '', songs: [], total: 0, offset: 0, limit, nextOffset: 0, hasMore: false, error: 'MISSING_ALBUM_ID', message: '' };
+  }
+  const userToken = webApi.getMediaUserToken();
+  if (!userToken) {
+    return { provider: 'apple', libraryAlbumId: id, songs: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, error: '', message: '需要先登录 Apple Music 网页账号（media-user-token 未配置）。' };
+  }
+  const storefront = DEFAULT_APPLE_STOREFRONT;
+  let json = null;
+  try {
+    const page = await webApi.getLibrary('/albums/' + encodeURIComponent(id) + '/tracks', { limit, offset: startOffset });
+    if (!page.ok) {
+      return { provider: 'apple', libraryAlbumId: id, songs: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false, source: 'web', error: page.code, message: 'Apple Music Web 返回 HTTP ' + page.status };
+    }
+    json = page.json || {};
+  } catch (err) {
+    const detail = appleErrorDetails(err);
+    return Object.assign({ provider: 'apple', libraryAlbumId: id, songs: [], total: 0, offset: startOffset, limit, nextOffset: startOffset, hasMore: false }, detail);
+  }
+  const items = Array.isArray(json.data) ? json.data : [];
+  const songs = items.map((item, index) => {
+    const mapped = mapAppleTrack(item, startOffset + index, 'library-album:' + id, { storefront });
+    if (!mapped) return null;
+    const pp = (item && item.attributes && item.attributes.playParams) || {};
+    if (pp.catalogId !== undefined && pp.catalogId !== null && String(pp.catalogId) !== '') mapped.catalogId = String(pp.catalogId);
+    return mapped;
+  }).filter(Boolean);
+  const total = Math.max(songs.length + startOffset, Number(json.meta && json.meta.total) || (songs.length + startOffset));
+  const nextOffset = startOffset + songs.length;
+  return {
+    provider: 'apple',
+    libraryAlbumId: id,
+    songs: songs,
+    total: total,
+    offset: startOffset,
+    limit: limit,
+    nextOffset: nextOffset,
+    // Honest pagination: derived from what the payload actually carries, never fabricated.
+    hasMore: !!json.next && nextOffset < total,
+    source: 'web',
+    error: '',
+    message: '',
+  };
+}
+
+// ---- 资料库索引：对外的薄适配 -------------------------------------------------
+// 缓存/增量/校验都在 apple-music-library-cache.js；这里只把服务结果转成接口形态，
+// 让 server.js 不必感知服务内部结构。
+
+// 同步资料库索引（探测 + 按需全量对账），并返回索引状态。
+async function syncLibraryIndex(opts) {
+  const res = await libraryCache.sync(opts || {});
+  return Object.assign({}, res, { cachePath: libraryCache.cachePath });
+}
+
+// 本地读取（不碰网络）：全部歌曲 / 全部专辑 / 单张专辑 / 按专辑名取候选歌曲。
+function readLibrarySongs() { return libraryCache.getSongs(); }
+function readLibraryAlbums() { return libraryCache.getAlbums(); }
+function readLibraryAlbum(libraryAlbumId) { return libraryCache.getAlbumById(libraryAlbumId); }
+function readSongsByAlbumName(albumName) { return libraryCache.getSongsByAlbumName(albumName); }
+function libraryIndexState() { return libraryCache.getState(); }
+
+// 专辑文案（简介/版权）：用「库内专辑 id -> catalog 专辑 id」映射取，只回文案不发曲目。
+// 映射由重建时的成功校验写入，因此首次打开该专辑后即可用；之后一直命中本地记忆。
+async function albumNotesFor(libraryAlbumId) {
+  return enrichAlbumNotes(libraryAlbumId, (id) => libraryCache.getAlbumCatalog(id));
+}
+
+// 专辑曲目重建：从本地索引取候选，再走 Catalog 校验归属。
+// 只返回资料库中真实保存、且通过身份校验的曲目。
+async function rebuildAlbumTracks(libraryAlbum) {
+  const songs = libraryCache.getSongs();
+  const res = await reconstructAlbumTracks(libraryAlbum, songs);
+  return Object.assign({}, res, {
+    fromCache: true,
+    cacheAgeMs: libraryCache.getState().ageMs,
+    librarySongCount: songs.length,
+  });
+}
+
 module.exports = {
+  albumNotesFor,
+  syncLibraryIndex,
+  readLibrarySongs,
+  readLibraryAlbums,
+  readLibraryAlbum,
+  readSongsByAlbumName,
+  libraryIndexState,
+  rebuildAlbumTracks,
+  handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,
   handleAppleLibraryAlbums,
   handleAppleAccountStatusWeb,
