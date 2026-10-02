@@ -53,7 +53,7 @@ else {
   if ($pick -eq 0) { $pick = 1; $pickedName = [string]$cards[0].name; $disambiguation = 'first-fallback' }
 }
 $final = $probe
-if ($Commit -and $pick -ge 1) {
+if ($Commit -and $pick -ge 1 -and -not $TrackTitle) {
   $commitArgs = @{ Name = $Name; ScopeLabel = $ScopeLabel; SearchWaitMs = $SearchWaitMs; CardIndex = $pick; Commit = $true; SmtcTimeoutMs = $SmtcTimeoutMs }
   if ($Url) { $commitArgs['Url'] = $Url }
   # The frozen engine minimizes Apple Music right after a successful play click, which makes the album
@@ -75,7 +75,30 @@ $o['probeStage'] = [string]$probe.stage
 # so we open the album page first and click the matching ROW inside the opened page. ---
 if ($TrackTitle -and $Commit) {
   Start-Sleep -Milliseconds 2200
+  # P2: open the album page WITHOUT playing anything - the card click navigates only (measured: SMTC stays
+  # unchanged), so the requested track can be clicked straight away instead of hearing track 1 first.
   $app2 = Ensure-AmRunning
+  [void](Invoke-AmSearch (Get-AmRoot $app2.hwnd).root $Name $app2.hwnd $SearchWaitMs)
+  Start-Sleep -Milliseconds 800
+  $chip2 = Find-AmScopeChip (Get-AmRoot $app2.hwnd).root $ScopeLabel
+  if ($chip2) { [void](Invoke-AmScopeChipSelect $chip2) }
+  Start-Sleep -Milliseconds 800
+  $candRes = Get-AmPlaylistCardCandidates (Get-AmRoot $app2.hwnd).root $Name
+  $cardList = @($candRes.candidates)
+  $cardPick = $null
+  if ($SectionLabel) {
+    foreach ($cc in $cardList) { foreach ($anc in @($cc.ancestors)) { if ($anc -and ([string]$anc).IndexOf($SectionLabel) -ge 0) { $cardPick = $cc; break } } ; if ($cardPick) { break } }
+  }
+  if (-not $cardPick -and $cardList.Count -gt 0) { $cardPick = $cardList[0] }
+  $o['pageCardCount'] = $cardList.Count
+  $o['pageCardClicked'] = $false
+  if ($cardPick) {
+    try { $cardRect = $cardPick.element.Current.BoundingRectangle } catch { $cardRect = $null }
+    $cardPt = Get-AmSafeClickPoint $cardRect
+    $cardClick = Invoke-AmRowPlay $app2.hwnd $cardPick.element $cardPt.x $cardPt.y
+    $o['pageCardClicked'] = [bool]$cardClick.ok
+    Start-Sleep -Milliseconds 1800
+  }
   $rootT = (Get-AmRoot $app2.hwnd).root
   $want = Normalize-AmText $TrackTitle
   # Get-AmListItems returns nameless items for this page (same as the search results page), so scan the
@@ -108,7 +131,15 @@ if ($TrackTitle -and $Commit) {
   $hit = $null
   if (@($hits).Count -gt 0) { $hit = $hits[0]; $hitName = [string]$dump[0].name }
   $o['trackMatched'] = [bool]$hit
-  if (-not $hit) { $o['stage'] = 'TRACK_ROW_NOT_FOUND'; $o['ok'] = $false }
+  if (-not $hit) {
+    # The page exposes no matching row (podcast-style releases): fall back to playing the whole album
+    # so the click still produces sound. The stage stays honest - the exact track could not be located.
+    $fbIndex = $(if ($pick -ge 1) { $pick } else { 1 })
+    $fb = Invoke-AmPlayPlaylist -Name $Name -ScopeLabel $ScopeLabel -SearchWaitMs $SearchWaitMs -CardIndex $fbIndex -Commit -SmtcTimeoutMs $SmtcTimeoutMs
+    $o['fallbackStage'] = [string]$fb.stage
+    $o['stage'] = 'TRACK_ROW_NOT_FOUND'
+    $o['ok'] = $false
+  }
   else {
     try { [void](Realize-AmRow $hit 2500 120 $app2.hwnd) } catch { }
     $rectT = $null; try { $rectT = $hit.Current.BoundingRectangle } catch { }
