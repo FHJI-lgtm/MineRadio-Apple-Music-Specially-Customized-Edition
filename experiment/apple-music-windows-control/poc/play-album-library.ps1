@@ -71,88 +71,82 @@ $o['pickedSection'] = $pickedSection
 $o['disambiguation'] = $disambiguation
 $o['probeStage'] = [string]$probe.stage
 
-# --- track mode: the engine cannot find a SONG by title (its card matcher is exact-name only),
-# so we open the album page first and click the matching ROW inside the opened page. ---
+# --- track mode: open the album page that actually CONTAINS the requested track ---------------
+# A name search can return several identical-looking album cards (in this library After Hours
+# appears twice with different tracklists), so walk the album-section candidates until the row is
+# found. Cards are opened by a plain click (measured: that navigates without starting playback).
 if ($TrackTitle -and $Commit) {
-  Start-Sleep -Milliseconds 2200
-  # P2: open the album page WITHOUT playing anything - the card click navigates only (measured: SMTC stays
-  # unchanged), so the requested track can be clicked straight away instead of hearing track 1 first.
   $app2 = Ensure-AmRunning
-  [void](Invoke-AmSearch (Get-AmRoot $app2.hwnd).root $Name $app2.hwnd $SearchWaitMs)
-  Start-Sleep -Milliseconds 800
-  $chip2 = Find-AmScopeChip (Get-AmRoot $app2.hwnd).root $ScopeLabel
-  if ($chip2) { [void](Invoke-AmScopeChipSelect $chip2) }
-  Start-Sleep -Milliseconds 800
-  $candRes = Get-AmPlaylistCardCandidates (Get-AmRoot $app2.hwnd).root $Name
-  $cardList = @($candRes.candidates)
-  $cardPick = $null
-  if ($SectionLabel) {
-    foreach ($cc in $cardList) { foreach ($anc in @($cc.ancestors)) { if ($anc -and ([string]$anc).IndexOf($SectionLabel) -ge 0) { $cardPick = $cc; break } } ; if ($cardPick) { break } }
-  }
-  if (-not $cardPick -and $cardList.Count -gt 0) { $cardPick = $cardList[0] }
-  $o['pageCardCount'] = $cardList.Count
-  $o['pageCardClicked'] = $false
-  if ($cardPick) {
-    try { $cardRect = $cardPick.element.Current.BoundingRectangle } catch { $cardRect = $null }
-    $cardPt = Get-AmSafeClickPoint $cardRect
-    $cardClick = Invoke-AmRowPlay $app2.hwnd $cardPick.element $cardPt.x $cardPt.y
-    $o['pageCardClicked'] = [bool]$cardClick.ok
+  $o['trackAttempts'] = @()
+  $trackHit = $null; $trackHitName = ''; $trackExact = $false
+  $secCount = 0
+  for ($ci = 1; $ci -le 4; $ci++) {
+    [void](Invoke-AmSearch (Get-AmRoot $app2.hwnd).root $Name $app2.hwnd $SearchWaitMs)
+    Start-Sleep -Milliseconds 800
+    $chipL = Find-AmScopeChip (Get-AmRoot $app2.hwnd).root $ScopeLabel
+    if ($chipL) { [void](Invoke-AmScopeChipSelect $chipL) }
+    Start-Sleep -Milliseconds 800
+    $candRes = Get-AmPlaylistCardCandidates (Get-AmRoot $app2.hwnd).root $Name
+    $cardList = @($candRes.candidates)
+    $secCards = @()
+    foreach ($cc in $cardList) {
+      foreach ($anc in @($cc.ancestors)) { if ($anc -and $SectionLabel -and ([string]$anc).IndexOf($SectionLabel) -ge 0) { $secCards += $cc; break } }
+    }
+    if (@($secCards).Count -eq 0) { $secCards = $cardList }
+    $secCount = @($secCards).Count
+    if ($ci -gt $secCount) { break }
+    $pickCard = $secCards[$ci - 1]
+    try { $cRect = $pickCard.element.Current.BoundingRectangle } catch { $cRect = $null }
+    $cPt = Get-AmSafeClickPoint $cRect
+    [void](Invoke-AmRowPlay $app2.hwnd $pickCard.element $cPt.x $cPt.y)
     Start-Sleep -Milliseconds 1800
-  }
-  $rootT = (Get-AmRoot $app2.hwnd).root
-  $want = Normalize-AmText $TrackTitle
-  # Get-AmListItems returns nameless items for this page (same as the search results page), so scan the
-  # WHOLE tree for nodes whose name contains the track title and walk up to the nearest clickable ancestor
-  # (the same pattern the frozen playlist engine uses for cards).
-  $dump = @(); $hits = @()
-  $all = $null
-  try { $all = $rootT.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) } catch { $all = @() }
-  foreach ($n in @($all)) {
-    $nm = ''
-    try { $nm = [string]$n.Current.Name } catch { continue }
-    if (-not $nm) { continue }
-    if ((Normalize-AmText $nm).IndexOf($want) -lt 0) { continue }
-    # ONLY a real list row counts: an editorial description also mentions song titles, and clicking the
-    # nearest clickable ancestor there opens the notes modal instead of playing anything (observed on
-    # the Lover album). So require a ListItem ancestor and click THAT row.
-    $cur = $n; $row = $null
-    for ($depth = 0; $depth -lt 8 -and $cur; $depth++) {
-      try { $ct = [string]$cur.Current.ControlType.ProgrammaticName } catch { $ct = '' }
-      if ($ct -eq 'ControlType.ListItem') { $row = $cur; break }
-      try { $cur = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($cur) } catch { $cur = $null }
-    }
-    $clickable = $null
-    if ($row) {
+    $rootT = (Get-AmRoot $app2.hwnd).root
+    $want = Normalize-AmText $TrackTitle
+    $dump = @(); $hits = @()
+    try { $all = $rootT.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) } catch { $all = @() }
+    foreach ($n in @($all)) {
+      $nm = ''
+      try { $nm = [string]$n.Current.Name } catch { continue }
+      if (-not $nm) { continue }
+      if ((Normalize-AmText $nm).IndexOf($want) -lt 0) { continue }
+      $cur = $n; $row = $null
+      for ($depth = 0; $depth -lt 8 -and $cur; $depth++) {
+        try { $ct = [string]$cur.Current.ControlType.ProgrammaticName } catch { $ct = '' }
+        if ($ct -eq 'ControlType.ListItem') { $row = $cur; break }
+        try { $cur = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($cur) } catch { $cur = $null }
+      }
+      if (-not $row) { continue }
+      $clickable = $null
       try {
-        $obj2 = $null
-        $okSel2 = $false
+        $obj2 = $null; $okSel2 = $false
         try { $okSel2 = $row.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$obj2) } catch { }
-        if ($okSel2) { $clickable = $row }
-        else { $obj3 = $null; if ($row.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$obj3)) { $clickable = $row } }
+        if ($okSel2) { $clickable = $row } else { $obj3 = $null; if ($row.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$obj3)) { $clickable = $row } }
       } catch { }
+      if ($clickable) { $exact = ($nm.Trim() -eq $TrackTitle.Trim()); $hits += @{ el = $clickable; exact = $exact; name = $nm } }
     }
-    if ($dump.Count -lt 40) { $dump += @{ name = (Truncate-AmText $nm 60); clickable = [bool]$clickable } }
-    if ($clickable) { $exact = ($nm.Trim() -eq $TrackTitle.Trim()); $hits += @{ el = $clickable; exact = $exact; name = $nm } }
+    $o['trackAttempts'] += @{ card = $ci; name = (Truncate-AmText ([string]$pickCard.name) 40); rows = @($dump).Count; hits = @($hits).Count }
+    if (@($hits).Count -gt 0) {
+      $chosen = @($hits | Where-Object { $_.exact })[0]
+      if (-not $chosen) { $chosen = $hits[0] }
+      $trackHit = $chosen.el; $trackHitName = [string]$chosen.name; $trackExact = [bool]$chosen.exact
+      break
+    }
   }
-  $o['trackRows'] = @($dump)
-  $o['trackRowCount'] = @($dump).Count
-  $hit = $null
-  if (@($hits).Count -gt 0) { $chosen = @($hits | Where-Object { $_.exact })[0]; if (-not $chosen) { $chosen = $hits[0] } ; $hit = $chosen.el; $hitName = [string]$chosen.name ; $o['trackExactMatch'] = [bool]$chosen.exact }
-  $o['trackMatched'] = [bool]$hit
-  if (-not $hit) {
-    # The page exposes no matching row (podcast-style releases): fall back to playing the whole album
-    # so the click still produces sound. The stage stays honest - the exact track could not be located.
+  $o['trackCardCandidates'] = $secCount
+  $o['trackMatched'] = [bool]$trackHit
+  $o['trackMatchedName'] = $trackHitName
+  $o['trackExactMatch'] = $trackExact
+  if (-not $trackHit) {
     $fbIndex = $(if ($pick -ge 1) { $pick } else { 1 })
     $fb = Invoke-AmPlayPlaylist -Name $Name -ScopeLabel $ScopeLabel -SearchWaitMs $SearchWaitMs -CardIndex $fbIndex -Commit -SmtcTimeoutMs $SmtcTimeoutMs
     $o['fallbackStage'] = [string]$fb.stage
     $o['stage'] = 'TRACK_ROW_NOT_FOUND'
     $o['ok'] = $false
-  }
-  else {
-    try { [void](Realize-AmRow $hit 2500 120 $app2.hwnd) } catch { }
-    $rectT = $null; try { $rectT = $hit.Current.BoundingRectangle } catch { }
+  } else {
+    try { [void](Realize-AmRow $trackHit 2500 120 $app2.hwnd) } catch { }
+    $rectT = $null; try { $rectT = $trackHit.Current.BoundingRectangle } catch { }
     $ptT = Get-AmSafeClickPoint $rectT
-    $clickT = Invoke-AmRowPlay $app2.hwnd $hit $ptT.x $ptT.y
+    $clickT = Invoke-AmRowPlay $app2.hwnd $trackHit $ptT.x $ptT.y
     $o['trackClicked'] = [bool]$clickT.ok
     $deadlineT = (Get-Date).AddMilliseconds($SmtcTimeoutMs)
     $okT = $false
@@ -161,8 +155,7 @@ if ($TrackTitle -and $Commit) {
       $sT = Get-AmSmtcState
       if ($sT.ok -and (Normalize-AmText ([string]$sT.title)).IndexOf($want) -ge 0) { $o['smtcTitle'] = [string]$sT.title; $okT = $true; break }
     }
-    if ($okT) { $o['stage'] = 'PLAYBACK_STARTED'; $o['ok'] = $true }
-    else { $o['stage'] = 'TRACK_CLICKED_UNVERIFIED'; $o['ok'] = $false }
+    if ($okT) { $o['stage'] = 'PLAYBACK_STARTED'; $o['ok'] = $true } else { $o['stage'] = 'TRACK_CLICKED_UNVERIFIED'; $o['ok'] = $false }
   }
 }
 $o | ConvertTo-Json -Compress -Depth 6 | Write-Output
