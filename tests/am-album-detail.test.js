@@ -222,13 +222,20 @@ test('album detail: window lifecycle and isolation', async (t) => {
   });
 
   await t.test('Apple Music 式主题色平铺：窗口本体就是主题色，不是黑色容器', () => {
-    const modalBlock = CSS.slice(CSS.indexOf('#am-album-detail-modal .am-album-modal {'), CSS.indexOf('.am-album-modal::before'));
+    // 专辑与歌单两个弹窗共用同一套外观，所以这条规则的选择器是逗号列表 ——
+    // 从规则起点取到 ::before 之前，两个 ID 都覆盖到。
+    const modalRule = CSS.indexOf('#am-album-detail-modal .am-album-modal,');
+    const modalStart = modalRule >= 0 ? modalRule : CSS.indexOf('#am-album-detail-modal .am-album-modal {');
+    const modalBlock = CSS.slice(modalStart, CSS.indexOf('.am-album-modal::before'));
+    assert.ok(modalRule >= 0, 'the shared rule must list the playlist modal too');
     assert.match(modalBlock, /background: linear-gradient/, 'window must carry the themed gradient');
     assert.match(modalBlock, /--am-theme-light/, 'gradient must use the derived light end');
     assert.match(modalBlock, /--am-theme-dark/, 'gradient must use the derived dark end');
     assert.ok(!/background:\s*linear-gradient\(180deg, rgba\(24, 23, 26/.test(modalBlock), 'must not fall back to the base black panel');
     // 深色降级默认值必须存在（封面失败时仍是一块合理背景）
     assert.match(CSS, /#am-album-detail-modal \{[\s\S]{0,220}--am-theme-dark: 16, 23, 29/, 'dark fallback vars must be declared');
+    // 歌单弹窗必须有自己的深色降级（封面失败/无封面时不能是透明）
+    assert.match(CSS, /#am-playlist-detail-modal \{[\s\S]{0,240}--am-theme-dark: 16, 23, 29/, 'playlist modal needs its own dark fallback vars');
   });
 
   await t.test('歌曲行是连续行 + 细分隔线，不是独立卡片', () => {
