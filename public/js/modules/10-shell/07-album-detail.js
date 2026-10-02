@@ -424,28 +424,27 @@
   }
 
   function playSongAt(index) {
-    // 音乐库模式下曲目行也走**资料库专辑链**：先强制切到「你的资料库」，再按「专辑」分区消歧播放整张专辑。
-    // 不再走单曲通道（playAmcTrackFromSong）：音乐库播放只有一条语义 —— 让 Apple Music 播放这张专辑。
+    // 曲目行 = 播这一首：搜索曲目名 -> 强制切「你的资料库」-> 认「歌曲」分区并取第一个候选 -> 点播放 -> SMTC 判定。
+    // 专辑按钮仍走 playAmAlbumFromStart：那是播整张专辑，从第 1 首开始，语义不同。
     if (state.playBusy) return;
     var album = state.album || {};
     var song = (state.songs && state.songs[index]) || null;
-    var name = String(album.name || '').trim();
-    if (!name) { setStatus('这张专辑没有可用的名称', 'warn'); return; }
+    var trackName = String((song && song.name) || '').trim();
+    if (!trackName) { setStatus('这首曲目没有可用的名称', 'warn'); return; }
     var amc = window.mineradio && window.mineradio.amc;
     if (!amc || typeof amc.playAlbum !== 'function') { setStatus('Apple Music 播放通道不可用', 'warn'); return; }
     setPlayBusy(true);
-    setStatus('正在让 Apple Music 播放这张专辑…', '');
-    Promise.resolve(amc.playAlbum({ name: name, scopeLabel: '你的资料库', sectionLabel: '专辑' })).then(function (res) {
+    setStatus('正在让 Apple Music 播放：' + trackName + '…', '');
+    Promise.resolve(amc.playAlbum({ name: String(album.name || ''), track: trackName, scopeLabel: '你的资料库', sectionLabel: '专辑' })).then(function (res) {
       setPlayBusy(false);
       var stage = (res && res.stage) || 'NO_RESULT';
-      var picked = (res && res.pickedName) ? res.pickedName : name;
-      if (res && res.verified) {
-        setStatus('✓ Apple Music 已开始播放这张专辑' + (song && song.name ? '（曲目行「' + song.name + '」在音乐库模式下按整张专辑播放）' : ''), 'ok');
-      } else if (stage === 'AMBIGUOUS') setStatus('资料库里有多个同名专辑，无法确定播哪一个', 'warn');
-      else if (stage === 'PLAYLIST_NOT_FOUND') setStatus('Apple Music 资料库里没找到：' + name, 'warn');
+      if (res && res.verified) setStatus('✓ Apple Music 已开始播放：' + trackName, 'ok');
+      else if (stage === 'PLAYLIST_NOT_FOUND') setStatus('Apple Music 资料库里没找到：' + trackName, 'warn');
       else if (stage === 'SCOPE_CHIP_NOT_FOUND') setStatus('找不到 Apple Music 的「你的资料库」范围按钮，已中止播放', 'warn');
-      else if (stage === 'SCOPE_SWITCH_FAILED') setStatus('未能切入 Apple Music「你的资料库」范围，已中止播放（不会去目录里找同名专辑）', 'warn');
-      else setStatus('Apple Music 播放失败：' + stage + (picked && picked !== name ? '（选中：' + picked + '）' : ''), 'warn');
+      else if (stage === 'SCOPE_SWITCH_FAILED') setStatus('未能切入 Apple Music「你的资料库」范围，已中止播放', 'warn');
+      else if (stage === 'TRACK_ROW_NOT_FOUND') setStatus('这首歌在 Apple Music 页面里没能被 UI 定位到，已改为播放整张专辑', 'warn');
+      else if (stage === 'TRACK_CLICKED_UNVERIFIED') setStatus('已点中该曲目行，但 SMTC 未确认切歌（可能仍停在别的曲目）', 'warn');
+      else setStatus('Apple Music 播放失败：' + stage, 'warn');
     }).catch(function () { setPlayBusy(false); setStatus('Apple Music 播放失败（IPC 错误）', 'warn'); });
   }
 

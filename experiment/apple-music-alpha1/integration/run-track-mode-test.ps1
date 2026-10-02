@@ -1,0 +1,6 @@
+$label = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\scope-label.txt', [System.Text.Encoding]::UTF8)
+$albumSection = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\album-section-label.txt', [System.Text.Encoding]::UTF8)
+$album = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\album-name.txt', [System.Text.Encoding]::UTF8)
+$track = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\track-name.txt', [System.Text.Encoding]::UTF8)
+& 'F:\mineradio-apple-music\experiment\apple-music-windows-control\poc\play-album-library.ps1' -Name $album.Trim() -ScopeLabel $label.Trim() -SectionLabel $albumSection.Trim() -TrackTitle $track.Trim() -Commit | Out-File -FilePath 'F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\track-mode-result.json' -Encoding utf8
+Get-Content 'F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\track-mode-result.json' -Raw -Encoding UTF8

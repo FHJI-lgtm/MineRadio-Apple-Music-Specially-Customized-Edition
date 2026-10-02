@@ -525,6 +525,7 @@ async function playAlbumInLibrary(payload = {}, opts = {}) {
     '-Name', name, '-ScopeLabel', scopeLabel, '-SectionLabel', sectionLabel,
     '-Commit', '-SmtcTimeoutMs', String(opts.smtcTimeoutMs || 8000)];
   if (payload.url) args.push('-Url', String(payload.url));
+  if (payload.track) args.push('-TrackTitle', String(payload.track));
   const powershell = opts.powershell || 'powershell.exe';
   const run = await new Promise((resolve) => {
     let out = '', err = '';
