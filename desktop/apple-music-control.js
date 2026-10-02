@@ -551,6 +551,17 @@ async function playAlbumInLibrary(payload = {}, opts = {}) {
     scopeVerified: !!raw.scopeVerified, scopeBefore: raw.scopeBefore || '', scopeAfter: raw.scopeAfter || '',
     candidateCount: raw.candidateCount, pickedIndex: raw.pickedIndex, pickedName: raw.pickedName || '',
     pickedSection: raw.pickedSection || '', disambiguation: raw.disambiguation || '',
+    // Track mode fields must survive the mapping, otherwise the caller cannot see where the chain aimed
+    // or why it failed (they were silently dropped here, which made an in-app probe look like an old build).
+    track: raw.title && raw.artist ? raw.title : (raw.matchedName || ''),
+    trackAttempts: raw.trackAttempts || [],
+    trackCardCandidates: raw.trackCardCandidates, trackMatched: !!raw.trackMatched,
+    trackMatchedName: raw.trackMatchedName || '', trackExactMatch: !!raw.trackExactMatch,
+    trackClicked: !!raw.trackClicked, trackDoubleClicked: !!raw.trackDoubleClicked,
+    aimTarget: raw.aimTarget || '', aimPoint: raw.aimPoint || '', aimWarn: raw.aimWarn || '',
+    aimAdjustedToBlank: !!raw.aimAdjustedToBlank,
+    badgeRect: raw.badgeRect || '', titleRect: raw.titleRect || '',
+    smtcTitle: raw.smtcTitle || '', fallbackStage: raw.fallbackStage || '',
     detail: raw.detail || '', exitCode: run.exitCode,
   });
 }

@@ -215,7 +215,12 @@ if ($TrackTitle -and $Commit) {
         } catch { }
       }
     }
-    $clickT = Invoke-AmRowPlay $app2.hwnd $trackHit $ptT.x $ptT.y
+    # Invoke-AmRowPlay recomputes the click point from $Element when one is given (frozen am-uia.ps1:522-529),
+    # discarding the caller's coordinates - that is why the cursor kept landing on the E badge. Passing $null
+    # keeps its foreground call and its built-in double click while honouring OUR measured point.
+    $clickT = Invoke-AmRowPlay $app2.hwnd $null $ptT.x $ptT.y
+    $o['clickUsedPoint'] = ('' + [int]$clickT.x + ',' + [int]$clickT.y)
+    $o['clickRecomputed'] = [bool]$clickT.recomputed
     $o['trackClicked'] = [bool]$clickT.ok
     # Song rows need a real DOUBLE click (measured: the page's play button needs one click, a row needs two).
     # Two clicks at the same point ~120 ms apart is what Apple Music's row gesture expects.
