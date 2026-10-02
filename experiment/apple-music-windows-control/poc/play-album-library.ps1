@@ -163,12 +163,38 @@ if ($TrackTitle -and $Commit) {
     try { if ($titleTextEl) { $rectT = $titleTextEl.Current.BoundingRectangle } } catch { $rectT = $null }
     if (-not $rectT -or $rectT.Width -le 0) { try { $rectT = $trackHit.Current.BoundingRectangle } catch { $rectT = $null } }
     $ptT = Get-AmSafeClickPoint $rectT
+    $aimY = 0
     if ($rectT -and $rectT.Width -gt 20) {
-      $aimX = $rectT.Left + ($rectT.Width / 2)
+      # Song name when we have it, otherwise the BLANK middle of the row - never the explicit-content
+      # badge (E) that follows the title, and never the favourite star at the row's left edge.
+      $aimX = $(if ($titleTextEl) { $rectT.Left + ($rectT.Width / 2) } else { $rectT.Left + ($rectT.Width * 0.6) })
       $aimY = $rectT.Top + ($rectT.Height / 2)
       $aimRect = New-Object System.Windows.Rect($aimX, $aimY, 2, 2)
       $ptT = Get-AmSafeClickPoint $aimRect
       $o['aimPoint'] = ('' + [int]$ptT.x + ',' + [int]$ptT.y)
+      $o['aimTarget'] = $(if ($titleTextEl) { 'title' } else { 'blank' })
+    }
+    # Safety net: if the point somehow lands on a small non-title child (the E badge reads as a short group),
+    # shift it into the blank middle of the row instead of clicking that child.
+    if ($rowKids -and $aimY -gt 0) {
+      foreach ($ck in @($rowKids)) {
+        try {
+          $ckName = [string]$ck.Current.Name
+          $ckType = [string]$ck.Current.ControlType.ProgrammaticName
+          if (-not $ckName) { continue }
+          if ($ckType -eq 'ControlType.Button') { continue }
+          if ((Normalize-AmText $ckName).IndexOf($want) -ge 0) { continue }
+          if ($ckName.Length -le 4) {
+            $ckRect = $ck.Current.BoundingRectangle
+            if ($ptT.x -ge $ckRect.Left -and $ptT.x -le ($ckRect.Left + $ckRect.Width) -and $ptT.y -ge $ckRect.Top -and $ptT.y -le ($ckRect.Top + $ckRect.Height)) {
+              $blankRect = New-Object System.Windows.Rect(($rectT.Left + ($rectT.Width * 0.6)), $aimY, 2, 2)
+              $ptT = Get-AmSafeClickPoint $blankRect
+              $o['aimAdjustedToBlank'] = $true
+              $o['aimPoint'] = ('' + [int]$ptT.x + ',' + [int]$ptT.y)
+            }
+          }
+        } catch { }
+      }
     }
     $clickT = Invoke-AmRowPlay $app2.hwnd $trackHit $ptT.x $ptT.y
     $o['trackClicked'] = [bool]$clickT.ok
