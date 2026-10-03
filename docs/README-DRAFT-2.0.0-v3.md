@@ -10,40 +10,27 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 ---
 
-## 📸 界面一览
+## ✨ 项目特色
 
-| | |
-|---|---|
-| <img src="docs/assets/readme/music-library-albums.webp" width="420" alt="音乐资料库"> | <img src="docs/assets/readme/playlist-detail.webp" width="420" alt="歌单详情"> |
-| **音乐资料库**：专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
-| <img src="docs/assets/readme/album-detail.webp" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
-| **专辑详情**：曲目列表 + 播放专辑 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
-| <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | |
-| **歌词舞台**：双语歌词 + 粒子视觉（叠加在资料库之上） | |
-
-> 截图来自 v2.0.0 实际界面。
-
+* 浏览音乐资料库中的**专辑、艺人与歌单**，查看专辑作品与艺人详情。
+* 展示艺人头像、流派及可获取的简介信息，把音乐资料与现有播放交互连接起来。
+* 歌单详情支持 **播放歌单** 与 **随机播放**（直接驱动 Apple Music 自己的播放按钮）。
+* 获取并显示与当前播放歌曲匹配的歌词，支持多个歌词数据源的匹配与回退。
+* 为歌词舞台与音乐视觉提供歌曲及时间信息。
+* 基于专辑封面与音频数据呈现动态粒子视觉，延续 MineRadio 原有的视觉舞台设计与交互体验。
+* 通过 Windows **SMTC** 获取系统媒体会话信息，结合系统媒体控制与现有桌面交互实现播放状态展示及控制。
+* **Apple Music 隐身模式**：被控制的 Apple Music 窗口视觉隐藏（Alpha=1 + 鼠标穿透），不再占据桌面。
 ---
 
-## 🎮 功能一览
+## 🚀 核心功能
 
-### 🎵 Apple Music 资料库
-* 浏览资料库中的**专辑、艺人与歌单**，查看专辑作品与艺人详情（头像 / 流派 / 简介，来源见技术章节）。
-* 歌单详情支持 **播放歌单** 与 **随机播放**（直接驱动 Apple Music 自己的播放按钮）。
+* **Apple Music 资料库**：歌单 / 艺人 / 专辑 / 喜爱歌曲浏览；歌单详情支持**播放歌单**与**随机播放**。
+* **Apple Music 播放控制**：单曲 / 专辑 / 歌单 / 随机播放；以 SMTC 真实状态判定是否真的切歌，播放后自动最小化。
+* **Apple Music 隐身模式**（默认开启）：被控窗口视觉隐藏 + 鼠标穿透，带看门狗与播放门控。
+* **实时歌词**：多源匹配与回退（QQ / 酷狗 / 网易云 + Apple Music Web 私有歌词），支持双语。
+* **沉浸式视觉舞台**：原生音频捕获 → FFT 频谱 → 粒子 / beat 视觉；专辑封面补齐。
+* **桌面集成**：SMTC 媒体会话、桌面模式、3D 歌单架、壁纸引擎兼容等原有能力保持。
 
-### ▶️ Apple Music 播放控制（v2.0.0 新增）
-* 单曲 / 专辑 / 歌单 / 随机播放；**以 SMTC 真实状态判定是否真的切歌**，播放后自动把 Apple Music 交还桌面。
-* **Apple Music 窗口可在受控状态下隐藏**（隐身模式，默认开启）：平时 Apple Music 不显示在桌面上；
-  执行播放控制期间窗口状态会被**临时调整**以便完成点击，结束后**恢复隐身**。技术细节见「Apple Music 接入原理」。
-
-### 🎤 实时歌词
-* 多源匹配与回退（QQ / 酷狗 / 网易云 + Apple Music Web 私有歌词），支持双语。
-
-### 🌌 沉浸式视觉舞台
-* 原生音频捕获 → FFT 频谱 → 粒子 / beat 视觉；专辑封面补齐。
-
-### 🖥️ Windows 桌面集成
-* SMTC 媒体会话、桌面模式、3D 歌单架、壁纸引擎兼容等原有能力保持。
 ## 💾 下载与安装
 
 从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载**当前版本 v2.0.0**：
@@ -79,30 +66,31 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 ## 目录
 
-- [🎮 功能一览](#功能一览)
-- [💾 下载与安装](#下载与安装)
-- [⚠️ 已知限制](#已知限制)
-- [🧭 音乐源能力现状（避免混淆）](#音乐源能力现状避免混淆)
-- [🚧 项目状态](#项目状态)
+- [✨ 项目特色](#-项目特色)
 - [项目来源与二次开发声明](#项目来源与二次开发声明)
 - [Apple Music 接入原理](#apple-music-接入原理)
 - [SMTC Bridge](#smtc-bridge)
 - [Native Audio Capture](#native-audio-capture)
 - [FFT 音频分析](#fft-音频分析)
-- [Visualizer / 粒子视觉](#visualizer-粒子视觉)
+- [Visualizer / 粒子视觉](#visualizer--粒子视觉)
 - [专辑封面](#专辑封面)
 - [播放控制](#播放控制)
-- [多源歌词（QQ → 酷狗 → 网易云）](#多源歌词qq-酷狗-网易云)
+- [多源歌词（QQ → 酷狗 → 网易云）](#多源歌词qq--酷狗--网易云)
 - [双语歌词](#双语歌词)
 - [Windows 环境要求](#windows-环境要求)
-- [Electron / Node.js 要求](#electron-nodejs-要求)
+- [Electron / Node.js 要求](#electron--nodejs-要求)
 - [构建方法](#构建方法)
+- [📌 项目状态](#-项目状态)
+- [⚠️ 说明](#-说明)
 - [第三方音乐平台说明](#第三方音乐平台说明)
 - [致谢](#致谢)
+- [下载与安装](#下载与安装)
+- [已知限制](#-已知限制)
 - [用户数据与隐私](#用户数据与隐私)
 - [License](#license)
 
 ---
+
 ## 项目来源与二次开发声明
 
 
@@ -168,16 +156,6 @@ SMTC 再次读取 → 只有「真的切歌了」才算成功（verified）
 /api/apple/library/album/tracks  专辑曲目
 /api/apple/library/artists       艺人列表
 /api/apple/library/artist/detail 艺人详情（头像 / 流派 / 简介）
-```
-
-**艺人字段的数据来源各不相同（重要）**：
-
-| 字段 | 来源 |
-|---|---|
-| 头像 | Apple Music 封面优先；缺失时用国内源兜底（网易云 / QQ 头像） |
-| 流派 | Apple Music 的 `genreNames` |
-| **简介** | **外部补充数据源**（Wikipedia / 网易云；返回结果带 `source` 字段标明出处）—— **不是 Apple Music 提供** |
-| 歌单 / 专辑 / 曲目 | Apple Music Web 接口（`media-user-token`） |
 ```
 
 * 数据通过 **Apple Music Web 接口**取得：请求使用 **Bearer + `media-user-token`**（网页登录凭证）；
@@ -319,9 +297,29 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 无需 `npm install` 也可以直接运行已打包版本；源码构建需要 Node.js 18+ 与 npm。
 
 
-## 构建方法
+## 安装与运行
 
-> 源码运行/预打包说明：见上文「💾 下载与安装」；下面只讲构建。
+
+### 预打包版本
+
+从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载当前版本 **v2.0.0**（文件名见上节「💾 下载与安装」）。
+
+### 源码运行
+
+```bash
+npm install
+npm start
+```
+
+### 使用
+
+1. 打开 Apple Music for Windows 并播放一首歌
+2. MineRadio-Apple-Music-Specially-Customized-Edition 自动检测 SMTC 会话：状态胶囊显示歌名/歌手/进度/歌词来源
+3. 歌词/封面/粒子视觉随歌曲自动同步
+4. 右上角控制按钮可暂停/播放/切歌
+
+
+## 构建方法
 
 
 ### Electron 应用
@@ -362,25 +360,18 @@ MineRadio-Apple-Music-Specially-Customized-Edition 不是网易云音乐、QQ �
 
 ## 用户数据与隐私
 
-**凭证**
-* Apple Music Web 登录凭证（`media-user-token`）保存在本机用户数据目录的 `.apple-music-lyrics-credential.json`；
-  旧时代（开发者账号）的 `.apple-music-credentials.json` / `.apple-music-token.json` 已退役，退出登录时清除（只删不读）。
-* **携带该凭证的请求目前只有 Apple 自己的接口**：`https://music.apple.com` 与 `https://amp-api.music.apple.com`
-  （代码核验：凭证的唯一消费方是 `apple-music-web-lyrics.js`，全部指向上述域名）。
+* **凭证存放位置**：Apple Music Web 登录凭证（`media-user-token`）保存在本机用户数据目录的 `.apple-music-lyrics-credential.json`；
+  历史遗留的 `.apple-music-credentials.json` / `.apple-music-token.json`（开发者账号时代）**已退役**，退出登录时会被清除（只删不读）。
+* **哪些请求会携带凭证**：访问 Apple Music Web 接口（资料库查询、封面/简介、Apple Music Web 私有歌词）时，凭证随请求发送**给 Apple 的服务器**；
+  这是访问你自己资料库的必要条件。MineRadio **不会把该凭证发送给自建服务器或任何第三方**。
+* **哪些数据会离开本机**：使用多源歌词时，会向对应第三方歌词服务发送**歌曲名 / 艺人 / 时长**等查询参数；除此之外，MineRadio 不主动上传你的本地数据。
+* **音频**：音频捕获仅用于实时视觉，不落盘、不转发。
+* **发布产物**：安装包与便携版不包含任何账号或令牌数据。
 
-**会离开本机的数据（如实列出）**
-* 使用**多源歌词**时：向对应第三方歌词服务发送歌曲名 / 艺人 / 时长等查询参数。
-* 使用**在线音乐源**（QQ / 酷狗 / 汽水 / 网易云 / Spotify 等）时：向对应服务发送搜索、详情等请求参数。
-* **播放记录上报能力**：仓库中存在「最近播放上报」相关接口（如汽水侧），若启用会把播放记录发送给对应服务。
-* **更新检查**：访问 GitHub API / Releases 获取版本信息，并可能读取定位服务（天气小组件使用 `ip-api.com` / Open-Meteo）。
-* **音频捕获**：仅用于实时视觉，不落盘、不转发。
-* 发布产物（安装包 / 便携版）不包含任何账号或令牌数据。
+*注：本节的表述以仓库当前代码路径为准；若你发现与实现的任何出入，请开 issue 指正。*
 
-**核验范围说明（避免过度承诺）**
-* 本节结论来自对仓库代码路径的检索（凭证消费方、第三方请求、上报接口）；
-  **未**逐一审计全部网络调用、代理配置、日志与异常处理路径。
-* 如有第三方代理 / 中间人 / 自定义服务被启用，凭证的接收方会相应变化 —— 这类配置由使用者自行掌握。
-* 发现与实现不符，欢迎开 issue 指正。
+---
+
 ## License
 
 本分支沿用上游 MineRadio 的许可证（**GPL-3.0**，见仓库根目录 [LICENSE](LICENSE)），并保留上游版权声明。

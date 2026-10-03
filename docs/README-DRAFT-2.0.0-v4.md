@@ -14,11 +14,11 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 | | |
 |---|---|
-| <img src="docs/assets/readme/music-library-albums.webp" width="420" alt="音乐资料库"> | <img src="docs/assets/readme/playlist-detail.webp" width="420" alt="歌单详情"> |
+| <img src="docs/assets/readme/music-library-albums.webp" width="420" alt="音乐资料库"> | <img src="docs/assets/readme/playlist-detail.png" width="420" alt="歌单详情"> |
 | **音乐资料库**：专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
-| <img src="docs/assets/readme/album-detail.webp" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
+| <img src="docs/assets/readme/album-detail.png" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
 | **专辑详情**：曲目列表 + 播放专辑 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
-| <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | |
+| <img src="docs/assets/readme/lyrics-stage.png" width="420" alt="歌词舞台"> | |
 | **歌词舞台**：双语歌词 + 粒子视觉（叠加在资料库之上） | |
 
 > 截图来自 v2.0.0 实际界面。
