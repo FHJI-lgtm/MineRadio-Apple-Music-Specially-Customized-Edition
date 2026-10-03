@@ -1,0 +1,2 @@
+$label = [System.IO.File]::ReadAllText('F:\mineradio-apple-music\experiment\apple-music-alpha1\integration\scope-label.txt', [System.Text.Encoding]::UTF8)
+& 'F:\mineradio-apple-music\experiment\apple-music-windows-control\poc\play-song-library.ps1' -Title 'Blinding Lights' -Artist 'Abel Tesfaye' -ScopeLabel $label.Trim() -Commit -DumpItems

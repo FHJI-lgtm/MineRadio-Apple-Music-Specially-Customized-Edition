@@ -1,0 +1,24 @@
+{
+  "playlist": "My Playlist",
+  "libraryPlaylistId": "p.YJXV7dvIerGlQ2X",
+  "candidates": [
+    {
+      "ordinal": 171,
+      "title": "You're Somebody Else",
+      "artist": "flora cash",
+      "librarySongId": "i.xrXv7aPfMJNkWEQ"
+    },
+    {
+      "ordinal": 271,
+      "title": "In the Studio (feat. Junglebae)",
+      "artist": "Trobi",
+      "librarySongId": "i.aJGY2WYU3KVO0lg"
+    },
+    {
+      "ordinal": 370,
+      "title": "SPIN",
+      "artist": "Kroi",
+      "librarySongId": "i.9oJNEa6IP7xzLlM"
+    }
+  ]
+}

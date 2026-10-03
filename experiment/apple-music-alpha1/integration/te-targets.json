@@ -1,0 +1,34 @@
+{
+  "playlists": [
+    {
+      "name": "Apple Music 资料库",
+      "id": "apple-liked",
+      "appleUrl": "",
+      "applePlayParamsId": ""
+    },
+    {
+      "name": "音乐回忆 2025",
+      "id": "p.2P6Wg5KCVWOK3m2",
+      "appleUrl": "",
+      "applePlayParamsId": "p.2P6Wg5KCVWOK3m2"
+    },
+    {
+      "name": "喜爱歌曲",
+      "id": "p.0YU0g1DPaJ",
+      "appleUrl": "",
+      "applePlayParamsId": "p.0YU0g1DPaJ"
+    },
+    {
+      "name": "My Playlist2",
+      "id": "p.MoGJ98ktvP9kMed",
+      "appleUrl": "",
+      "applePlayParamsId": "p.MoGJ98ktvP9kMed"
+    },
+    {
+      "name": "My Playlist",
+      "id": "p.YJXV7dvIerGlQ2X",
+      "appleUrl": "",
+      "applePlayParamsId": "p.YJXV7dvIerGlQ2X"
+    }
+  ]
+}

@@ -74,6 +74,13 @@ public/index.*.html
 # Apple Music Web lyrics PoC raw dumps (可含官方歌词原文, 永不提交)
 .poc-qa/
 
+# Apple 封装 COM 逆向的大型本地工作区（含 100MB 级 ETW trace / CSV / 编译产物，总计约 1GB）。
+# 保留在磁盘上供查阅，但绝不入库：GitHub 单文件上限 100MB，且历史一旦写入无法回收。
+experiment/apple-music-packaged-com/
+
+# DSH 会话运行时记忆（本地状态，非项目产物）
+.dsh/
+
 # Screenshots and transient verification artifacts
 .playwright-cli/
 output/

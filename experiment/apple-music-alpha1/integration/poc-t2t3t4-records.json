@@ -1,0 +1,62 @@
+[
+  {
+    "id": "T2",
+    "url": "https://music.apple.com/cn/song/1603171530",
+    "titleArg": "How Do I Make You Love Me?",
+    "chainOk": true,
+    "chainStage": "OK",
+    "navMethod": "AppleMusic.exe /url",
+    "matchedRow": "音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟",
+    "elapsedMs": 4733,
+    "before": {
+      "status": "Paused",
+      "title": "How Do I Make You Love Me?"
+    },
+    "after": {
+      "artist": "Abel Tesfaye — Dawn FM",
+      "status": "Playing",
+      "title": "How Do I Make You Love Me?"
+    },
+    "raw": "{\"navMethod\":\"AppleMusic.exe /url\",\"appLaunched\":false,\"contentTitleVisible\":true,\"realizeSteps\":{\"scrollSteps\":0,\"setFocus\":false,\"scrollIntoView\":false,\"escalated\":false,\"realize\":false},\"candidatesDetail\":[{\"selectionItem\":true,\"name\":\"音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟\",\"invoke\":true,\"rank\":13,\"titleScore\":1,\"artistHit\":false}],\"smtc\":{\"artist\":\"Abel Tesfaye — Dawn FM\",\"hasSession\":tru"
+  },
+  {
+    "id": "T3",
+    "url": "musics://music.apple.com/cn/song/how-do-i-make-you-love-me/1603171530",
+    "titleArg": "How Do I Make You Love Me?",
+    "chainOk": true,
+    "chainStage": "OK",
+    "navMethod": "AppleMusic.exe /url",
+    "matchedRow": "音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟",
+    "elapsedMs": 3590,
+    "before": {
+      "status": "Playing",
+      "title": "How Do I Make You Love Me?"
+    },
+    "after": {
+      "artist": "Abel Tesfaye — Dawn FM",
+      "status": "Playing",
+      "title": "How Do I Make You Love Me?"
+    },
+    "raw": "{\"navMethod\":\"AppleMusic.exe /url\",\"appLaunched\":false,\"contentTitleVisible\":true,\"realizeSteps\":{\"scrollSteps\":0,\"setFocus\":false,\"scrollIntoView\":false,\"escalated\":false,\"realize\":false},\"candidatesDetail\":[{\"selectionItem\":true,\"name\":\"音轨 3 How Do I Make You Love Me? 3 分钟，34 秒钟\",\"invoke\":true,\"rank\":13,\"titleScore\":1,\"artistHit\":false}],\"smtc\":{\"artist\":\"Abel Tesfaye — Dawn FM\",\"hasSession\":tru"
+  },
+  {
+    "id": "T4",
+    "url": "music.apple.com/us/album/shape-of-you/1193701079?i=1193701392",
+    "titleArg": "Shape of You",
+    "chainOk": false,
+    "chainStage": "URL_NAVIGATION_FAILED",
+    "navMethod": "AppleMusic.exe /url",
+    "matchedRow": "",
+    "elapsedMs": 40423,
+    "before": {
+      "status": "Playing",
+      "title": "How Do I Make You Love Me?"
+    },
+    "after": {
+      "artist": "Abel Tesfaye — Dawn FM",
+      "status": "Playing",
+      "title": "How Do I Make You Love Me?"
+    },
+    "raw": "{\"navMethod\":\"AppleMusic.exe /url\",\"appLaunched\":false,\"contentTitleVisible\":false,\"candidatesDetail\":[],\"smtc\":{\"artist\":\"\",\"hasSession\":false,\"sawPlayingWrong\":false,\"pos\":\"\",\"wrongTitles\":[],\"posMs\":0,\"sawPlaying\":false,\"statuses\":[],\"status\":\"\",\"title\":\"\",\"firstWrongMs\":null},\"candidateCount\":0,\"title\":\"Shape of You\",\"stage\":\"URL_NAVIGATION_FAILED\",\"ambiguous\":false,\"ok\":false,\"mode\":\"deeplink"
+  }
+]
