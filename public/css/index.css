@@ -2733,6 +2733,41 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   --mlib-cols: 6
 }
 
+/* 艺人头像：统一圆形裁切。拿不到「艺人代表图像」时用名称首字母占位，
+   绝不用专辑封面冒充（专辑封面在 .mlib-art 里是方的，这里强制成圆）。 */
+.mlib-artist-art {
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden
+}
+
+.mlib-artist-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block
+}
+
+.mlib-artist-initial {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  /* 尺寸随卡片宽度变化，不写死 */
+  font-size: clamp(26px, 3.4vw, 54px);
+  color: rgba(255, 255, 255, .82);
+  background: linear-gradient(160deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .05));
+  text-transform: uppercase;
+  user-select: none
+}
+
+/* 艺人卡片不做悬停抬升之外的封面缩放（圆形头像缩放会溢出圆框） */
+html.mlib-has-hover .mlib-artist-card:hover .mlib-artist-art img {
+  transform: none
+}
+
 .mlib-grid-playlists {
   --mlib-cols: 5
 }

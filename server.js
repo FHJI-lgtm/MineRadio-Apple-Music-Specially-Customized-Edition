@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5341,52 +5341,91 @@ const server = http.createServer(async (req, res) => {
   // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
   // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
   // 资料库专辑曲目（只含库内已保存曲目）。按 library album id 读取，不使用名称搜索。
-  // 资料库艺人：由本地索引的 artist 字段聚合。**不发起任何新请求**，也不虚构数据 ——
-  // 艺人名字/封面/专辑数全部来自已保存歌曲与专辑的真实字段。
+  // 资料库艺人：按**库里原始的完整艺人串**归组（与 Apple Music 的呈现一致 ——
+  // "Abel Tesfaye & Madonna" 是独立一条，而不是被拆成 Abel 一人）。
+  //
+  // 头像与 artist id 来自 catalog 解析：y 显示名保留原始串，请求层面按 catalog artist ID 去重。
+  // 首次会完整解析并写入本地缓存（可能耗时），之后命中缓存。
+  // 解析不出头像时 image 为空，由渲染层用名称首字母占位 —— 绝不用专辑封面冒充。
   if (pn === '/api/apple/library/artists') {
     try {
+      const force = url.searchParams.get('resolve') === '1' || url.searchParams.get('force') === '1';
       const sync = await syncLibraryIndex({});
       const songs = readLibrarySongs() || [];
       const albums = readLibraryAlbums() || [];
-      const byArtist = Object.create(null);
-      function touch(name) {
-        if (!name) return null;
-        if (!byArtist[name]) byArtist[name] = { name: name, songCount: 0, albums: Object.create(null) };
-        return byArtist[name];
+
+      // 1) 按原始艺人串归组，收集每组的 catalog song id 与专辑名
+      const groups = Object.create(null);
+      const order = [];
+      function touch(credit) {
+        const key = String(credit || '').trim();
+        if (!key) return null;
+        if (!groups[key]) {
+          groups[key] = { credit: key, songCount: 0, catalogSongIds: [], albums: Object.create(null) };
+          order.push(key);
+        }
+        return groups[key];
       }
       songs.forEach(function (song) {
-        const entry = touch(song.artist);
-        if (!entry) return;
-        entry.songCount += 1;
-        if (song.albumName) entry.albums[song.albumName] = true;
+        const g = touch(song.artist);
+        if (!g) return;
+        g.songCount += 1;
+        const cid = String(song.catalogId || '').trim();
+        if (cid && g.catalogSongIds.indexOf(cid) < 0) g.catalogSongIds.push(cid);
+        if (song.albumName) g.albums[song.albumName] = true;
       });
-      // 专辑表的 artist 也要计入（有些专辑在歌曲轴没有对应行）
-      const albumCoverByName = Object.create(null);
+      // 专辑表的 artist 也计入（有些专辑在歌曲轴没有对应行）
       albums.forEach(function (album) {
-        if (album && album.name && album.cover && !albumCoverByName[album.name]) albumCoverByName[album.name] = album.cover;
-        const entry = touch(album.artist);
-        if (!entry) return;
-        if (album.name) entry.albums[album.name] = true;
+        if (!album) return;
+        const g = touch(album.artist);
+        if (!g) return;
+        if (album.name) g.albums[album.name] = true;
       });
-      const artists = Object.keys(byArtist).map(function (name) {
-        const entry = byArtist[name];
-        const albumNames = Object.keys(entry.albums);
-        // 头像用该艺人第一张有封面的专辑封面（真实数据，不伪造图片）
-        let cover = '';
-        for (let i = 0; i < albumNames.length; i += 1) {
-          if (albumCoverByName[albumNames[i]]) { cover = albumCoverByName[albumNames[i]]; break; }
-        }
-        return { name: name, songCount: entry.songCount, albumCount: albumNames.length, cover: cover, albums: albumNames };
-      }).filter(function (a) { return a.albumCount > 0 || a.songCount > 0; });
-      // 稳定排序：专辑数多的在前，其次歌曲数，最后按名称，避免每次顺序抖动
+
+      // 2) 交给缓存服务解析（去重 + 缓存 + 负缓存）
+      const payload = order.map(function (credit) {
+        const g = groups[credit];
+        // 一组里取第一个有 catalogId 的歌作为解析入口即可（同串必然指向同一批艺人）
+        return { credit: credit, catalogSongId: g.catalogSongIds[0] || '' };
+      });
+      const resolved = await resolveLibraryArtists(payload);
+      const byCredit = Object.create(null);
+      (resolved.groups || []).forEach(function (x) { byCredit[x.credit] = x; });
+
+      const artists = order.map(function (credit) {
+        const g = groups[credit];
+        const r = byCredit[credit] || {};
+        return {
+          name: credit,
+          artistIds: Array.isArray(r.artistIds) ? r.artistIds : [],
+          image: r.image || '',
+          imageRule: r.imageRule || '',
+          genres: Array.isArray(r.genres) ? r.genres : [],
+          resolved: r.resolved === true,
+          songCount: g.songCount,
+          albumCount: Object.keys(g.albums).length,
+          albums: Object.keys(g.albums),
+        };
+      });
+      // 稳定排序：专辑数多在前，其次歌曲数，最后按名称
       artists.sort(function (a, b) {
         if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
         if (b.songCount !== a.songCount) return b.songCount - a.songCount;
         return a.name.localeCompare(b.name);
       });
+      const pending = artists.filter(function (a) { return a.resolved && !a.image; }).length + artists.filter(function (a) { return !a.resolved; }).length;
       sendJSON(res, {
-        ok: true, artists: artists, total: artists.length,
-        fromCache: !!sync.fromCache, indexSongs: songs.length, indexAlbums: albums.length,
+        ok: true,
+        artists: artists,
+        total: artists.length,
+        withImage: artists.filter(function (a) { return !!a.image; }).length,
+        pendingImage: pending,
+        forced: force,
+        fromCache: !!sync.fromCache,
+        indexSongs: songs.length,
+        indexAlbums: albums.length,
+        resolveStats: resolved.stats,
+        artistCache: resolved.cache,
       });
     } catch (err) {
       console.error('[AppleMusicLibraryArtists]', err);

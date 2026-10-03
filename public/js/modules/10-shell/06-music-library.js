@@ -361,21 +361,30 @@
   // 数据来自 /api/apple/library/artists（服务端从本地索引聚合，零额外网络）。
   var artistsState = { loaded: false, loading: false, seq: 0 };
   function artistCardHtml(artist) {
-    var cover = String(artist.cover || '').trim();
-    var img = cover
-      ? '<img src="' + escHtml(cover) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
-      : '';
     var name = String(artist.name || '未知艺人');
+    // 头像：只接受后端判为「艺人代表图像」的 URL。
+    // 拿不到就用名称首字母占位 —— **绝不用专辑封面冒充头像**（这是已确认的规则）。
+    var img = artist.image
+      ? '<img src="' + escHtml(artist.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+      : '';
+    var initial = name.replace(/\s+/g, ' ').trim().charAt(0).toUpperCase() || '?';
     var sub = [];
     if (artist.albumCount) sub.push(artist.albumCount + ' 张专辑');
     if (artist.songCount) sub.push(artist.songCount + ' 首');
+    // 合作关系用小字标注（不建主次分类 —— 目前数据无法可靠区分）
+    if (Array.isArray(artist.artistIds) && artist.artistIds.length > 1) {
+      sub.push(artist.artistIds.length + ' 位合作');
+    }
     return '<article class="mlib-album-card mlib-artist-card" role="listitem" data-mlib-artist="' + escHtml(name) + '">' +
-      '<div class="mlib-art mlib-artist-art' + (cover ? '' : ' is-loaded') + '">' + img + '</div>' +
+      '<div class="mlib-art mlib-artist-art' + (img ? '' : ' is-loaded') + '">' +
+      (img || '<span class="mlib-artist-initial" aria-hidden="true">' + escHtml(initial) + '</span>') +
+      '</div>' +
       '<div class="mlib-album-meta">' +
       '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
       '<div class="mlib-album-sub">' + escHtml(sub.join(' · ')) + '</div>' +
       '</div></article>';
   }
+
   function setViewState(name, text, tone) {
     var el = document.getElementById('mlib-' + name + '-state');
     if (!el) return;
@@ -391,8 +400,21 @@
     var seq = ++artistsState.seq;
     artistsState.loading = true;
     if (grid) grid.setAttribute('aria-busy', 'true');
-    setViewState('artists', '正在整理资料库艺人…');
-    apiJson('/api/apple/library/artists').then(function (data) {
+    // 首次是**完整解析**：要把资料库里出现过的艺人全部向 Apple 解析一次并写入本地缓存，
+    // 后续打开只读缓存。signed 进度与"可能耗时"要如实告知，不要静默转圈。
+    setViewState('artists', '正在获取艺人信息，这可能需要一些时间（首次会从 Apple 完整解析并缓存，之后打开会很快）…');
+
+    // 看门狗：第一次解析确实可能持续数分钟。超过阈值就把"还在进行"如实说出来，
+    // 但不取消请求、也不谎报失败。
+    var stillWorking = false;
+    var watchdog = setTimeout(function () {
+      if (seq !== artistsState.seq || !artistsState.loading) return;
+      stillWorking = true;
+      setViewState('artists', '仍在获取艺人信息…首次解析需要逐首向 Apple 查询，请稍候（完成前不会写入不完整的结果）');
+    }, 45000);
+
+    apiJson('/api/apple/library/artists?resolve=1').then(function (data) {
+      clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;            // 旧请求不得覆盖新视图
       artistsState.loading = false;
       var list = (data && Array.isArray(data.artists)) ? data.artists : [];
@@ -403,8 +425,17 @@
       }
       setNavItemCount('artists', list.length ? String(list.length) : '');
       artistsState.loaded = true;
-      setViewState('artists', list.length ? '' : '资料库里还没有可用的艺人信息。');
+      if (!list.length) {
+        setViewState('artists', (data && data.message) || '资料库里还没有可用的艺人信息。');
+        return;
+      }
+      // 如实汇报覆盖率：解析成功但没拿到合格头像的，会显示首字母占位。
+      var noImage = Number(data && data.pendingImage) || 0;
+      setViewState('artists', noImage > 0
+        ? ('共 ' + list.length + ' 位；其中 ' + noImage + ' 位暂无合格的艺人代表图像，已用名称首字母占位。')
+        : '', '');
     }).catch(function (err) {
+      clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;
       artistsState.loading = false;
       if (grid) grid.setAttribute('aria-busy', 'false');

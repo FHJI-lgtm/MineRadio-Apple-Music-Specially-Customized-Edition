@@ -159,6 +159,72 @@ function getLibrary(pathname, query, options) {
 // attributes.playParams.catalogId and is NEVER inferred; when the payload has none it stays
 // undefined. `id`/`albumId` are the LIBRARY id, so both identities remain distinguishable.
 // ------------------------------------------------------------
+// Web player bearer 里带着**实际生效的 storefront**（来自 music.apple.com 的 geo 重定向）。
+// 这是唯一权威来源：既不要写死，也不要把"用来查数据的 storefront"当成艺人身份的一部分。
+// 取不到时返回空串，由调用方决定降级（项目已有 CATALOG_LOOKUP_STOREFRONTS 链）。
+async function getWebPlayerStorefront(forceRefresh) {
+  try {
+    const webLyrics = require('../apple-music-web-lyrics');
+    if (!webLyrics || typeof webLyrics.getWebPlayerBearer !== 'function') return '';
+    const res = await webLyrics.getWebPlayerBearer(!!forceRefresh);
+    const sf = res && typeof res === 'object' ? res.storefront : '';
+    return String(sf == null ? '' : sf).trim().toLowerCase();
+  } catch (_) {
+    return '';
+  }
+}
+
+// ------------------------------------------------------------
+// 艺人代表图像判据（只读，纯函数）
+//
+// 要区分的是「艺人代表图像」与「作品封面」，不是「真人照片」与「非真人照片」——
+// 所以官方插画（例如企划形象的二次元立绘）**允许**作为代表图像。
+//
+// 实测依据（docs/assets/artist-image-sample/contact-sheet.png，15 张抽样）：
+//   Features*/mzl.*                     -> 5/5 真人肖像
+//   AMCArtistImages* + ami-identity     -> 官方形象（含插画），合格
+//   cover.jpg / *_cover.*               -> 作品封面
+//   Music*/pr_source.png                -> 纯文字 Logo（**不是**肖像）
+//   Music*/<编号>.jpg (COCX-37647 等)    -> 作品封面
+//   Music*/cover.jpg                    -> 作品封面
+// 所以 Music* 一律不作为头像（首版），宁可降级到首字母占位。
+// ------------------------------------------------------------
+const ARTIST_IMAGE_RULES = {
+  // 高置信：Features 资源下的 mzl.* 命名
+  FEATURES_MZL: 'features-mzl',
+  // 高置信：AMCArtistImages 且带 ami-identity 指纹
+  AMC_IDENTITY: 'amc-identity',
+};
+
+function classifyArtistArtwork(artwork) {
+  const url = String((artwork && artwork.url) || '');
+  if (!url) return { kind: 'none', reason: 'no-artwork' };
+  // 只看资源路径与文件名，不解析 id
+  const tail = url.replace(/^https?:\/\/[^/]+\/image\/thumb\//, '');
+  const parts = tail.split('/');
+  const bucket = parts[0] || '';
+  const file = parts[parts.length - 2] || '';
+  if (/^Features\d+$/i.test(bucket) && /^mzl\./i.test(file)) {
+    return { kind: 'artist', rule: ARTIST_IMAGE_RULES.FEATURES_MZL, bucket: bucket };
+  }
+  if (/^AMCArtistImages\d+$/i.test(bucket) && /ami-identity/i.test(file)) {
+    return { kind: 'artist', rule: ARTIST_IMAGE_RULES.AMC_IDENTITY, bucket: bucket };
+  }
+  if (/^AMCArtistImages\d+$/i.test(bucket)) {
+    // 是艺人图库资源但缺 ami-identity 指纹 —— 首版保守不采用
+    return { kind: 'unsure', rule: 'amc-no-identity', bucket: bucket };
+  }
+  if (/^Features\d+$/i.test(bucket)) {
+    // Features 下但不是 mzl.* —— 首版保守不采用
+    return { kind: 'unsure', rule: 'features-not-mzl', bucket: bucket };
+  }
+  if (/^Music\d+$/i.test(bucket)) {
+    // 实测这里混着作品封面与纯文字 Logo，一律降级
+    return { kind: 'release-artwork', rule: 'music-bucket', bucket: bucket };
+  }
+  return { kind: 'unsure', rule: 'unknown-bucket', bucket: bucket };
+}
+
 function artworkUrl(artwork, size) {
   if (!artwork || typeof artwork !== 'object') return '';
   const url = String(artwork.url || '').trim();
@@ -198,6 +264,9 @@ module.exports = {
   setReadOnly,
   getMediaUserToken,
   getBearer,
+  getWebPlayerStorefront,
+  classifyArtistArtwork,
+  ARTIST_IMAGE_RULES,
   request,
   getCatalog,
   getLibrary,

@@ -254,10 +254,17 @@ const PROBE = `(function () {
   await evaluate("document.getElementById('music-library-btn').click(); true");
   // 新增：资料库现在是多视图（专辑/艺人/歌单），选中项会持久化。
   // 验证脚本必须显式停在专辑页，否则上一次运行留下的视图会让"专辑网格"断言测不到东西。
-  // 先切回专辑（并留足时间），再清偏好：避免"清偏好"与"视图恢复"抢时序。
-  await evaluate("(function(){var it=document.getElementById('mlib-nav-item-albums');if(it)it.click();return true;})()");
-  await sleep(1500);
+  // 新增：艺人视图现在会发起**首次完整解析**（可能持续数分钟）。上次运行若停在艺人页，
+  // 这次一打开就会在后台跑解析，把下面的重置顶掉 —— 所以必须先把偏好清掉再切视图。
   await evaluate("(function(){try{localStorage.removeItem('mineradio.mlib.view');localStorage.removeItem('mineradio.mlib.navOpen');}catch(e){}return true;})()");
+  await sleep(300);
+  // 切回专辑；若艺人视图正在加载，它不会阻止这里切换（视图切换只改 hidden）
+  for (let i = 0; i < 10; i += 1) {
+    await evaluate("(function(){var it=document.getElementById('mlib-nav-item-albums');if(it)it.click();return true;})()");
+    await sleep(600);
+    const ok = await evaluate("(function(){var v=document.getElementById('mlib-view-albums');return !!v && !v.hidden;})()");
+    if (ok) break;
+  }
   await sleep(800);
   // 等专辑网格真的渲染出来：视图是 hidden 的，切换与加载之间有一个窗口，
   // 不等的话后面的几何/手势断言会撞上"还没画出来"的瞬间（表现为随机失败）。

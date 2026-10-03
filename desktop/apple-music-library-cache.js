@@ -27,6 +27,10 @@ const webApi = require('./apple-music-web-api');
 
 const CACHE_SCHEMA_VERSION = 1;
 const CACHE_FILE_NAME = 'apple-music-library-cache.json';
+// 艺人轴单独落盘：体量与索引同量级，且解析结果可长期复用，不与索引的 raw 混在一起。
+const ARTIST_CACHE_FILE_NAME = 'apple-music-artist-cache.json';
+// 判据变更或结构变更时递增，旧缓存按空处理（会重新解析，不会读到错误的头像规则）。
+const ARTIST_CACHE_SCHEMA_VERSION = 1;
 
 const LIBRARY_SONGS_PAGE = 100;      // Apple 每页上限
 const LIBRARY_SONGS_MAX_PAGES = 60;  // 安全上限：100*60 = 6000 首
@@ -212,6 +216,14 @@ function createAppleMusicLibraryCacheService(options) {
     loaded: false,
     dirty: false,
   };
+  // 艺人轴内存态：songCatalogId -> [artistId]；artistId -> 详情对象（不存在时为 null，即负缓存）
+  const artistState = {
+    loaded: false,
+    songToArtists: new Map(),
+    artists: new Map(),
+    persistedAt: 0,
+  };
+
   // derived 用 Map 存（JSON 不适合），持久化时转换。
   const derivedMaps = {
     songsById: new Map(),
@@ -476,6 +488,311 @@ function createAppleMusicLibraryCacheService(options) {
     persist();
   }
 
+  // ------------------------------------------------------------
+  // 艺人轴：songCatalogId -> catalog artist id -> 艺人详情
+  //
+  // 规则（已与需求方确认）：
+  //   - 艺人实体以 **catalog artist ID** 为准，绝不按 artistName 字符串分组、
+  //     也绝不拆逗号/&/顿号来猜艺人（这些符号会出现在组合名与厂牌名里）。
+  //   - 合作曲目关联到几位真实 artist ID，就在几位艺人的统计里各计一次。
+  //   - 头像只采用高置信判据（见 web-api 的 classifyArtistArtwork）；
+  //     拿不到时由渲染层用名称首字母占位，**不用作品封面冒充**。
+  //   - 负缓存：查过但没有的（无 catalogId / 无艺人关联 / 无合格头像）都要记下来，
+  //     否则每次打开艺人页都会重试。
+  // ------------------------------------------------------------
+  function artistCachePathFor(basePath) {
+    if (!basePath) return '';
+    return path.join(path.dirname(basePath), ARTIST_CACHE_FILE_NAME);
+  }
+
+  function loadArtistsFromDisk() {
+    if (artistState.loaded) return true;
+    artistState.loaded = true;
+    const p = artistCachePathFor(cachePath);
+    if (!p) return false;
+    try {
+      if (!fs.existsSync(p)) return false;
+      const payload = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (!payload || payload.schemaVersion !== ARTIST_CACHE_SCHEMA_VERSION) return false;
+      artistState.songToArtists = new Map(Array.isArray(payload.songToArtists) ? payload.songToArtists : []);
+      artistState.artists = new Map(Array.isArray(payload.artists) ? payload.artists : []);
+      artistState.persistedAt = Number(payload.savedAt) || 0;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function persistArtists() {
+    const p = artistCachePathFor(cachePath);
+    if (!p) return false;
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      const payload = {
+        schemaVersion: ARTIST_CACHE_SCHEMA_VERSION,
+        savedAt: Date.now(),
+        songToArtists: Array.from(artistState.songToArtists.entries()),
+        artists: Array.from(artistState.artists.entries()),
+      };
+      fs.writeFileSync(p, JSON.stringify(payload), 'utf8');
+      artistState.persistedAt = payload.savedAt;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 解析单个 catalog song -> artist ids（命中缓存直接返回，含负缓存）
+  async function resolveSongArtists(catalogSongId) {
+    const id = normalizeText(catalogSongId);
+    if (!id) return [];
+    loadArtistsFromDisk();
+    if (artistState.songToArtists.has(id)) return artistState.songToArtists.get(id) || [];
+    const storefronts = await resolveArtistStorefronts();
+    let ids = null;
+    for (let i = 0; i < storefronts.length; i += 1) {
+      let page = null;
+      try {
+        page = await webApi.getCatalog(storefronts[i], '/songs/' + encodeURIComponent(id), { include: 'artists' });
+      } catch (_) { page = null; }
+      if (page && page.ok && page.json) {
+        const entry = (page.json.data || [])[0] || null;
+        const refs = (entry && entry.relationships && entry.relationships.artists
+          && entry.relationships.artists.data) || [];
+        if (refs.length) { ids = refs.map(function (a) { return normalizeText(a.id); }).filter(Boolean); break; }
+      }
+      await sleepMs(60);
+    }
+    // 解析不到也记下来（负缓存），避免每次重试
+    const list = ids || [];
+    artistState.songToArtists.set(id, list);
+    return list;
+  }
+
+  // 解析单个 artist -> 详情（名称/流派/头像）。缓存命中直接返回，null 表示查过但没有。
+  async function resolveArtistDetail(artistId) {
+    const id = normalizeText(artistId);
+    if (!id) return null;
+    loadArtistsFromDisk();
+    if (artistState.artists.has(id)) return artistState.artists.get(id) || null;
+    const storefronts = await resolveArtistStorefronts();
+    let detail = null;
+    for (let i = 0; i < storefronts.length; i += 1) {
+      let page = null;
+      try {
+        page = await webApi.getCatalog(storefronts[i], '/artists/' + encodeURIComponent(id));
+      } catch (_) { page = null; }
+      if (page && page.ok && page.json) {
+        const entry = (page.json.data || [])[0] || null;
+        const at = (entry && entry.attributes) || {};
+        if (at.name || at.artwork) {
+          const verdict = webApi.classifyArtistArtwork(at.artwork);
+          detail = {
+            artistId: id,
+            name: normalizeText(at.name),
+            genres: Array.isArray(at.genreNames) ? at.genreNames.slice(0, 3) : [],
+            // 只有高置信判据才给头像；其余留空，由渲染层用首字母占位
+            image: verdict.kind === 'artist' && at.artwork ? webApi.artworkUrl(at.artwork, 600) : '',
+            imageRule: verdict.rule || verdict.kind,
+            storefront: storefronts[i],
+          };
+          break;
+        }
+      }
+      await sleepMs(60);
+    }
+    artistState.artists.set(id, detail);
+    return detail;
+  }
+
+  // storefront：先用 bearer 的真实值，失败再走项目既有的降级链。
+  // 这是**可用性**参数，不参与艺人身份判定。
+  async function resolveArtistStorefronts() {
+    const list = [];
+    let primary = '';
+    try { primary = await webApi.getWebPlayerStorefront(); } catch (_) { primary = ''; }
+    if (primary) list.push(primary);
+    CATALOG_LOOKUP_STOREFRONTS.forEach(function (sf) { if (list.indexOf(sf) < 0) list.push(sf); });
+    return list;
+  }
+
+  // 主入口：按需解析（给一批 catalog song id），带并发上限与缓存统计。
+  async function resolveArtistsForSongs(catalogSongIds, options) {
+    const opts = options || {};
+    const limit = Math.max(1, Math.min(8, Number(opts.concurrency) || 4));
+    const ids = Array.from(new Set((Array.isArray(catalogSongIds) ? catalogSongIds : [])
+      .map(normalizeText).filter(Boolean)));
+    loadArtistsFromDisk();
+    const stats = { requested: ids.length, cacheHits: 0, resolved: 0, empty: 0, fetched: 0 };
+    const todo = [];
+    ids.forEach(function (id) {
+      if (artistState.songToArtists.has(id)) stats.cacheHits += 1; else todo.push(id);
+    });
+    let cursor = 0;
+    async function worker() {
+      while (cursor < todo.length) {
+        const id = todo[cursor]; cursor += 1;
+        const got = await resolveSongArtists(id);
+        stats.fetched += 1;
+        if (got && got.length) stats.resolved += 1; else stats.empty += 1;
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < limit; i += 1) workers.push(worker());
+    await Promise.all(workers);
+
+    // 收集本次涉及的 artist id，缺详情的补上
+    const wanted = new Set();
+    ids.forEach(function (sid) {
+      (artistState.songToArtists.get(sid) || []).forEach(function (aid) { wanted.add(aid); });
+    });
+    const artistIds = Array.from(wanted);
+    const missing = artistIds.filter(function (aid) { return !artistState.artists.has(aid); });
+    const detailStats = { artists: artistIds.length, detailCacheHits: artistIds.length - missing.length, detailFetched: 0 };
+    let mc = 0;
+    async function detailWorker() {
+      while (mc < missing.length) {
+        const aid = missing[mc]; mc += 1;
+        await resolveArtistDetail(aid);
+        detailStats.detailFetched += 1;
+      }
+    }
+    const dw = [];
+    for (let i = 0; i < limit; i += 1) dw.push(detailWorker());
+    await Promise.all(dw);
+    if (detailStats.detailFetched || stats.fetched) persistArtists();
+    return { songStats: stats, detailStats: detailStats, songToArtists: artistState.songToArtists, artists: artistState.artists };
+  }
+
+  // ------------------------------------------------------------
+  // 艺人轴主入口（与 Apple 的呈现对齐）
+  //
+  // 实测 Apple Music 的艺人列表：**完整艺人串作为一条**（"Abel Tesfaye & Madonna"
+  // 单独一行），不使用第一位艺人的名字去重 —— 所以显示名保留库里原始的 artistName。
+  // 但请求层面必须去重：多首歌/多个串会指向同一批 catalog artist ID，
+  // 解析一次就写缓存，重复出现直接命中。
+  //
+  // 头像来源：该串第一个**解析成功**的 artist ID 的艺人代表图像；
+  // 判据不合格或没有 → image 留空，由渲染层用名称首字母占位。
+  // ------------------------------------------------------------
+  async function resolveArtistGroups(groups, options) {
+    const opts = options || {};
+    const list = Array.isArray(groups) ? groups : [];
+    loadArtistsFromDisk();
+
+    // 1) 收集本批需要的 catalog song id（去重）
+    const songIds = [];
+    list.forEach(function (g) {
+      const cid = normalizeText(g && g.catalogSongId);
+      if (cid && songIds.indexOf(cid) < 0) songIds.push(cid);
+    });
+
+    // 2) 解析歌曲 -> 艺人 ID（命中缓存不算请求）
+    const songStats = { requested: songIds.length, cacheHits: 0, resolved: 0, empty: 0, fetched: 0 };
+    const todoSongs = [];
+    songIds.forEach(function (id) {
+      if (artistState.songToArtists.has(id)) songStats.cacheHits += 1; else todoSongs.push(id);
+    });
+    const songConc = Math.max(1, Math.min(8, Number(opts.concurrency) || 4));
+    let sc = 0;
+    async function songWorker() {
+      while (sc < todoSongs.length) {
+        const id = todoSongs[sc]; sc += 1;
+        const got = await resolveSongArtists(id);
+        songStats.fetched += 1;
+        if (got && got.length) songStats.resolved += 1; else songStats.empty += 1;
+      }
+    }
+    const sw = [];
+    for (let i = 0; i < songConc; i += 1) sw.push(songWorker());
+    await Promise.all(sw);
+
+    // 3) 收集需要的 artist id（去重），缺详情的补上
+    const wanted = [];
+    songIds.forEach(function (sid) {
+      (artistState.songToArtists.get(sid) || []).forEach(function (aid) {
+        if (wanted.indexOf(aid) < 0) wanted.push(aid);
+      });
+    });
+    const missing = wanted.filter(function (aid) { return !artistState.artists.has(aid); });
+    const detailStats = {
+      artists: wanted.length,
+      cacheHits: wanted.length - missing.length,
+      fetched: 0,
+      withImage: 0,
+      noImage: 0,
+    };
+    let dc = 0;
+    async function detailWorker() {
+      while (dc < missing.length) {
+        const aid = missing[dc]; dc += 1;
+        await resolveArtistDetail(aid);
+        detailStats.fetched += 1;
+      }
+    }
+    const dw = [];
+    for (let i = 0; i < songConc; i += 1) dw.push(detailWorker());
+    await Promise.all(dw);
+    wanted.forEach(function (aid) {
+      const d = artistState.artists.get(aid);
+      if (d && d.image) detailStats.withImage += 1; else detailStats.noImage += 1;
+    });
+
+    if (songStats.fetched || detailStats.fetched) persistArtists();
+
+    // 4) 归组：保留原始艺人串，附上解析出的 artist id 与代表图
+    const out = list.map(function (g) {
+      const cid = normalizeText(g && g.catalogSongId);
+      const ids = cid ? (artistState.songToArtists.get(cid) || []) : [];
+      let image = '';
+      let imageRule = '';
+      let genres = [];
+      for (let i = 0; i < ids.length; i += 1) {
+        const d = artistState.artists.get(ids[i]);
+        if (!d) continue;
+        if (!image && d.image) { image = d.image; imageRule = d.imageRule; }
+        if (!genres.length && Array.isArray(d.genres) && d.genres.length) genres = d.genres.slice();
+      }
+      return {
+        credit: normalizeText(g && g.credit),
+        artistIds: ids.slice(),
+        image: image,
+        imageRule: imageRule,
+        genres: genres,
+        resolved: ids.length > 0,
+      };
+    });
+    return {
+      groups: out,
+      stats: { songStats: songStats, detailStats: detailStats },
+      cache: getArtistCacheInfo(),
+    };
+  }
+
+  function getArtistCacheInfo() {
+    loadArtistsFromDisk();
+    return {
+      path: artistCachePathFor(cachePath),
+      songEntries: artistState.songToArtists.size,
+      artistEntries: artistState.artists.size,
+      persistedAt: artistState.persistedAt,
+    };
+  }
+
+  function getResolvedArtistIds(catalogSongId) {
+    loadArtistsFromDisk();
+    return (artistState.songToArtists.get(normalizeText(catalogSongId)) || []).slice();
+  }
+
+  function getArtistDetail(artistId) {
+    loadArtistsFromDisk();
+    return artistState.artists.get(normalizeText(artistId)) || null;
+  }
+
+  function sleepMs(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, Math.max(0, ms)); });
+  }
+
   function getRememberedCatalogAlbum(catalogSongId) {
     loadFromDisk();
     return derivedMaps.catalogAlbumBySongId.get(normalizeText(catalogSongId)) || '';
@@ -495,6 +812,11 @@ function createAppleMusicLibraryCacheService(options) {
     getRememberedCatalogAlbum,
     rememberAlbumCatalog,
     getAlbumCatalog,
+    resolveArtistsForSongs,
+    resolveArtistGroups,
+    getArtistCacheInfo,
+    getResolvedArtistIds,
+    getArtistDetail,
     rebuildDerived,
     // 测试用
     _internal: { offsetFromNext, mapRawSong, mapRawAlbum, readAllPages, resolveDefaultCachePath },
@@ -754,4 +1076,6 @@ module.exports = {
   loadCatalogAlbumTracks,
   CACHE_FILE_NAME,
   CACHE_SCHEMA_VERSION,
+  ARTIST_CACHE_FILE_NAME,
+  ARTIST_CACHE_SCHEMA_VERSION,
 };

@@ -491,6 +491,12 @@ async function albumNotesFor(libraryAlbumId) {
 
 // 专辑曲目重建：从本地索引取候选，再走 Catalog 校验归属。
 // 只返回资料库中真实保存、且通过身份校验的曲目。
+// 艺人轴：按库里原始的完整艺人串归组（与 Apple 的呈现一致），
+// 头像与 artist id 由缓存服务按需解析（首次完整请求、之后命中缓存）。
+async function resolveLibraryArtists(groups) {
+  return libraryCache.resolveArtistGroups(groups);
+}
+
 async function rebuildAlbumTracks(libraryAlbum) {
   const songs = libraryCache.getSongs();
   const res = await reconstructAlbumTracks(libraryAlbum, songs);
@@ -509,6 +515,7 @@ module.exports = {
   readLibraryAlbum,
   readSongsByAlbumName,
   libraryIndexState,
+  resolveLibraryArtists,
   rebuildAlbumTracks,
   handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,
