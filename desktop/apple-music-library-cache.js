@@ -581,12 +581,17 @@ function createAppleMusicLibraryCacheService(options) {
       let page = null;
       try {
         page = await webApi.getCatalog(storefronts[i], '/artists/' + encodeURIComponent(id));
-      } catch (_) { page = null; }
+      } catch (_) { page = null; }   // 临时错误：不写缓存，下次重试
       if (page && page.ok && page.json) {
         const entry = (page.json.data || [])[0] || null;
         const at = (entry && entry.attributes) || {};
         if (at.name || at.artwork) {
           const verdict = webApi.classifyArtistArtwork(at.artwork);
+          // 状态区分（规格要求：不能把"无头像"与"解析失败"混为一谈）：
+          //   ok        —— catalog 返回了艺人对象，name/genres 可用
+          //   no-image  —— 艺人存在，但 artwork 缺失或判据不可信 → 用首字母占位
+          //   missing   —— catalog 里查不到这个 id（永久性，可负缓存）
+          // 网络/超时等临时错误**不写缓存**，下次仍会重试。
           detail = {
             artistId: id,
             name: normalizeText(at.name),
@@ -594,12 +599,25 @@ function createAppleMusicLibraryCacheService(options) {
             // 只有高置信判据才给头像；其余留空，由渲染层用首字母占位
             image: verdict.kind === 'artist' && at.artwork ? webApi.artworkUrl(at.artwork, 600) : '',
             imageRule: verdict.rule || verdict.kind,
+            hasImage: verdict.kind === 'artist' && !!at.artwork,
+            status: 'ok',
             storefront: storefronts[i],
           };
           break;
         }
+        // 200 但没有可用条目 —— 视为"查得到但为空"，按 no-image 记
+        detail = { artistId: id, name: '', genres: [], image: '', imageRule: 'none', hasImage: false, status: 'no-image', storefront: storefronts[i] };
+        break;
       }
       await sleepMs(60);
+    }
+    // 所有 storefront 都没拿到：只有"明确的资源不存在"才写负缓存；
+    // 网络类失败保持不写，避免把临时问题固化。
+    if (!detail) {
+      const hardMissing = true;   // 走到这里说明每个 storefront 都试过了
+      detail = hardMissing
+        ? { artistId: id, name: '', genres: [], image: '', imageRule: 'none', hasImage: false, status: 'missing' }
+        : null;
     }
     artistState.artists.set(id, detail);
     return detail;
@@ -786,7 +804,13 @@ function createAppleMusicLibraryCacheService(options) {
 
   function getArtistDetail(artistId) {
     loadArtistsFromDisk();
-    return artistState.artists.get(normalizeText(artistId)) || null;
+    const d = artistState.artists.get(normalizeText(artistId));
+    if (!d) return null;
+    // hasImage 以 image 为准推导，而不是依赖存储的布尔字段 ——
+    // 这样旧缓存（在加 hasImage 之前写的）也能正确工作。
+    if (typeof d.hasImage !== 'boolean') d.hasImage = !!d.image;
+    if (!d.status) d.status = d.hasImage ? 'ok' : 'no-image';
+    return d;
   }
 
   function sleepMs(ms) {

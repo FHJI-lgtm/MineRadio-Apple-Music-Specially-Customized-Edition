@@ -2768,6 +2768,155 @@ html.mlib-has-hover .mlib-artist-card:hover .mlib-artist-art img {
   transform: none
 }
 
+/* 头像图片叠在首字母占位上：加载成功才显示图片（失败则移除 img，占位自动露出）。 */
+.mlib-artist-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity .2s ease
+}
+
+.mlib-artist-art.has-image .mlib-artist-img {
+  opacity: 1
+}
+
+/* 首字母占位若取不到字符（空名），退回音乐图标 */
+.mlib-artist-initial.is-icon svg {
+  width: 42%;
+  height: 42%;
+  color: rgba(255, 255, 255, .7)
+}
+
+/* ---------- 艺人详情（艺人视图内的二级页面） ---------- */
+.mlib-artist-detail {
+  display: block
+}
+
+.mlib-artist-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 8px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .04);
+  color: rgba(255, 255, 255, .78);
+  font: 500 13px inherit;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, border-color .18s ease
+}
+
+.mlib-artist-back:hover {
+  background: rgba(255, 255, 255, .10);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .22)
+}
+
+.mlib-artist-back svg {
+  width: 15px;
+  height: 15px
+}
+
+/* 顶部艺人信息区：头像与文字并排，不挤占下方作品主体 */
+.mlib-artist-hero {
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 2.4vw, 30px);
+  margin-bottom: clamp(24px, 3vw, 38px)
+}
+
+.mlib-artist-hero-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(96px, 11vw, 148px);
+  height: clamp(96px, 11vw, 148px);
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .05)
+}
+
+.mlib-artist-hero-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity .2s ease
+}
+
+.mlib-artist-hero-art.has-image img {
+  opacity: 1
+}
+
+.mlib-artist-hero-art .mlib-artist-initial {
+  font-size: clamp(34px, 4.2vw, 58px)
+}
+
+.mlib-artist-hero-meta {
+  min-width: 0
+}
+
+.mlib-artist-hero-name {
+  margin: 0 0 8px;
+  font-size: clamp(24px, 2.6vw, 36px);
+  font-weight: 700;
+  line-height: 1.15;
+  color: #fff;
+  text-shadow: 0 8px 30px rgba(0, 0, 0, .45)
+}
+
+.mlib-artist-hero-genres,
+.mlib-artist-hero-facts {
+  font-size: 13px;
+  color: rgba(255, 255, 255, .55)
+}
+
+.mlib-artist-hero-genres:not([hidden]) {
+  margin-bottom: 6px
+}
+
+/* 发行分区：沿用专辑墙的封面尺寸与文字规范 */
+.mlib-artist-section {
+  margin-top: clamp(22px, 2.6vw, 34px)
+}
+
+.mlib-artist-section .mlib-section-title {
+  font-size: clamp(16px, 1.5vw, 20px)
+}
+
+.mlib-grid-releases {
+  --mlib-cols: 5
+}
+
+@media (max-width: 1080px) {
+  .mlib-grid-releases {
+    --mlib-cols: 4
+  }
+}
+
+@media (max-width: 860px) {
+  .mlib-grid-releases {
+    --mlib-cols: 3
+  }
+
+  .mlib-artist-hero {
+    flex-direction: column;
+    align-items: flex-start
+  }
+}
+
+/* 无可点击发行入口时不给指针手势，避免"看起来能点" */
+.mlib-album-card:not(.is-openable) {
+  cursor: default
+}
+
 .mlib-grid-playlists {
   --mlib-cols: 5
 }

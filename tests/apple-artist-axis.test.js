@@ -132,3 +132,86 @@ test('艺人缓存：解析结果与负缓存都要落盘', async (t) => {
     assert.equal(info.songEntries, 0, '版本不符必须当空缓存，避免读到旧头像规则的结果');
   });
 });
+;
+// ============================================================
+// 艺人详情页：端点与服务端聚合契约
+// ============================================================
+test('艺人详情：以 artist ID 为实体，且只展示本地资料库作品', async (t2) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t2.test('艺人列表按 catalog artist ID 归组，不按名字分组', () => {
+    assert.match(SERVER, /byArtistId/, '必须以 artistId 作为聚合键');
+    assert.match(SERVER, /ensureArtist\(/, '每个 artist ID 一个实体');
+    // 不得存在"按名字建组"的实现
+    assert.ok(!/byArtistName\s*=/.test(SERVER), '不得按艺人名字分组');
+  });
+
+  await t2.test('解析失败的歌曲必须保留并标记，不得丢弃或错归属', () => {
+    assert.match(SERVER, /ensureUnresolved/, '解析失败要有独立的待解析集合');
+    assert.match(SERVER, /pendingSongs/, '待解析数量要如实上报');
+  });
+
+  await t2.test('详情端点是 /api/apple/library/artist/detail 且按发行分区', () => {
+    assert.match(SERVER, /\/api\/apple\/library\/artist\/detail/, '详情端点必须存在');
+    ['single', 'ep', 'unknown'].forEach((k) => {
+      assert.ok(SERVER.indexOf("'" + k + "'") >= 0 || SERVER.indexOf(k + ':') >= 0,
+        '必须有 ' + k + ' 分区');
+    });
+    assert.match(SERVER, /classifyRelease/, '发行类型要有独立判定函数');
+  });
+
+  await t2.test('发行类型只按名称后缀判定，不用曲目数推断', () => {
+    const fn = SERVER.slice(SERVER.indexOf('function classifyRelease'), SERVER.indexOf('const releases ='));
+    assert.match(fn, /Single/, 'Single 后缀规则');
+    assert.match(fn, /EP/, 'EP 后缀规则');
+    // 绝不能用 songCount === 1 判定 Single
+    assert.ok(!/songCount\s*===?\s*1/.test(fn), '不得用"只有一首歌"断定 Single');
+  });
+
+  await t2.test('详情页只展示本地资料库歌曲，不请求 catalog 全量', () => {
+    const block = SERVER.slice(SERVER.indexOf("/api/apple/library/artist/detail"),
+      SERVER.indexOf("/api/apple/library/artist/detail") + 2600);
+    assert.match(block, /readLibrarySongs/, '歌曲来源必须是本地索引');
+    assert.ok(!/\/artists\/[^']*\/albums/.test(block), '不得拉取 catalog 全量作品');
+  });
+
+  await t2.test('渲染层：返回按钮与列表滚动位置保留', () => {
+    assert.match(MOD, /backToArtistList/, '必须有返回列表的入口');
+    assert.match(MOD, /listScrollTop/, '返回时要恢复列表滚动位置');
+  });
+
+  await t2.test('渲染层：首字母占位规则覆盖英文/中文/空名', () => {
+    assert.match(MOD, /function artistInitial/, '首字母必须是独立函数');
+    const fn = MOD.slice(MOD.indexOf('function artistInitial'), MOD.indexOf('function artistAvatarHtml'));
+    assert.match(fn, /A-Za-z/, '英文分支');
+    assert.match(fn, /u4e00|\\u4e00/, '中文分支');
+    assert.match(fn, /return ''/, '取不到字符时返回空（由调用方给音乐图标）');
+  });
+
+  await t2.test('渲染层：头像加载失败要移除图片而不是留破图', () => {
+    assert.match(MOD, /img\.remove\(\)/, '失败时移除 img，露出首字母占位');
+  });
+});
+
+test('同步执行 artistInitial 的真实行为', async (t2) => {
+  const { execFileSync } = require('node:child_process');
+  // 直接从模块源码里抽出函数求值，验证三种名称的实际输出
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const start = MOD.indexOf('function artistInitial');
+  const end = MOD.indexOf('function artistAvatarHtml');
+  const src = MOD.slice(start, end);
+  const script = 'const ff = (function(){' + src + ' return artistInitial;})();' +
+    'const cases=[["The Weeknd","T"],["张杰","张"],["", ""],["  ",""],["Aero 张","A"],["张 Aero","张"],["123","1"]];' +
+    'const out=cases.map(function(c){try{return [c[0],ff(c[0]),c[1]];}catch(e){return [c[0],"ERR",c[1]];}});' +
+    'console.log(JSON.stringify(out));';
+  const out = execFileSync(process.execPath, ['-e', script], { encoding: 'utf8' }).trim();
+  const rows = JSON.parse(out);
+  await t2.test('英文取首字母大写、中文取首汉字、空名返回空', () => {
+    rows.forEach(function (r) {
+      assert.equal(r[1], r[2], '名称 ' + JSON.stringify(r[0]) + ' 期望 ' + JSON.stringify(r[2]) + ' 实际 ' + JSON.stringify(r[1]));
+    });
+  });
+});

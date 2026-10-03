@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5341,95 +5341,245 @@ const server = http.createServer(async (req, res) => {
   // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
   // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
   // 资料库专辑曲目（只含库内已保存曲目）。按 library album id 读取，不使用名称搜索。
-  // 资料库艺人：按**库里原始的完整艺人串**归组（与 Apple Music 的呈现一致 ——
-  // "Abel Tesfaye & Madonna" 是独立一条，而不是被拆成 Abel 一人）。
+  // 资料库艺人：**以 catalog artist ID 为实体唯一键**归组。
   //
-  // 头像与 artist id 来自 catalog 解析：y 显示名保留原始串，请求层面按 catalog artist ID 去重。
-  // 首次会完整解析并写入本地缓存（可能耗时），之后命中缓存。
-  // 解析不出头像时 image 为空，由渲染层用名称首字母占位 —— 绝不用专辑封面冒充。
+  // 为什么不能在端点里按 artistName 分组：同一个艺人在库里会以多种合作串出现
+  // （"鸣潮先约电台"、"鸣潮先约电台 & 秧秧"…），按串分组会把同一人拆成多条；
+  // 而按 ID 归并会把它们合回一个人。串只作为**展示名来源与解析入口**，不参与身份判定。
+  //
+  // 解析失败的歌曲（无 catalogId / catalog 查不到）不得丢弃 —— 保留在资料库中，
+  // 以原始串单独列出并标记 pending，绝不猜测归属。
   if (pn === '/api/apple/library/artists') {
     try {
-      const force = url.searchParams.get('resolve') === '1' || url.searchParams.get('force') === '1';
       const sync = await syncLibraryIndex({});
       const songs = readLibrarySongs() || [];
       const albums = readLibraryAlbums() || [];
 
-      // 1) 按原始艺人串归组，收集每组的 catalog song id 与专辑名
-      const groups = Object.create(null);
-      const order = [];
-      function touch(credit) {
-        const key = String(credit || '').trim();
-        if (!key) return null;
-        if (!groups[key]) {
-          groups[key] = { credit: key, songCount: 0, catalogSongIds: [], albums: Object.create(null) };
-          order.push(key);
-        }
-        return groups[key];
-      }
-      songs.forEach(function (song) {
-        const g = touch(song.artist);
-        if (!g) return;
-        g.songCount += 1;
-        const cid = String(song.catalogId || '').trim();
-        if (cid && g.catalogSongIds.indexOf(cid) < 0) g.catalogSongIds.push(cid);
-        if (song.albumName) g.albums[song.albumName] = true;
-      });
-      // 专辑表的 artist 也计入（有些专辑在歌曲轴没有对应行）
-      albums.forEach(function (album) {
-        if (!album) return;
-        const g = touch(album.artist);
-        if (!g) return;
-        if (album.name) g.albums[album.name] = true;
-      });
-
-      // 2) 交给缓存服务解析（去重 + 缓存 + 负缓存）
-      const payload = order.map(function (credit) {
-        const g = groups[credit];
-        // 一组里取第一个有 catalogId 的歌作为解析入口即可（同串必然指向同一批艺人）
-        return { credit: credit, catalogSongId: g.catalogSongIds[0] || '' };
-      });
-      const resolved = await resolveLibraryArtists(payload);
-      const byCredit = Object.create(null);
-      (resolved.groups || []).forEach(function (x) { byCredit[x.credit] = x; });
-
-      const artists = order.map(function (credit) {
-        const g = groups[credit];
-        const r = byCredit[credit] || {};
+      // 每首歌的 catalogId（解析入口）与专辑名（作品归属）
+      const songInfo = songs.map(function (song) {
         return {
-          name: credit,
-          artistIds: Array.isArray(r.artistIds) ? r.artistIds : [],
-          image: r.image || '',
-          imageRule: r.imageRule || '',
-          genres: Array.isArray(r.genres) ? r.genres : [],
-          resolved: r.resolved === true,
-          songCount: g.songCount,
-          albumCount: Object.keys(g.albums).length,
-          albums: Object.keys(g.albums),
+          credit: String(song.artist || '').trim(),
+          catalogId: String(song.catalogId || '').trim(),
+          albumName: String(song.albumName || '').trim(),
         };
       });
-      // 稳定排序：专辑数多在前，其次歌曲数，最后按名称
+      // 每首歌只解析一次：按去重 catalogId 收集
+      const uniqueCatalogIds = [];
+      songInfo.forEach(function (x) {
+        if (x.catalogId && uniqueCatalogIds.indexOf(x.catalogId) < 0) uniqueCatalogIds.push(x.catalogId);
+      });
+      const payload = uniqueCatalogIds.map(function (cid) {
+        return { credit: cid, catalogSongId: cid };   // credit 此处只作回传键，不参与归组
+      });
+      const resolved = await resolveLibraryArtists(payload);
+      const byCatalogSong = Object.create(null);
+      (resolved.groups || []).forEach(function (x) { byCatalogSong[x.credit] = x; });
+
+      // 专辑轴：专辑名 -> { cover, artist, dateAdded, trackCount }
+      const albumByName = Object.create(null);
+      albums.forEach(function (a) {
+        if (!a) return;
+        const nm = String(a.name || '').trim();
+        if (!nm || albumByName[nm]) return;
+        albumByName[nm] = { cover: a.cover || '', artist: String(a.artist || '').trim(), releaseDate: a.releaseDate || '' };
+      });
+
+      const byArtistId = Object.create(null);
+      const unresolved = Object.create(null);
+      function ensureArtist(id) {
+        if (!byArtistId[id]) {
+          byArtistId[id] = { artistId: id, displayName: '', credits: [], songKeys: Object.create(null), albums: Object.create(null) };
+        }
+        return byArtistId[id];
+      }
+      function ensureUnresolved(credit) {
+        if (!unresolved[credit]) unresolved[credit] = { credit: credit, songCount: 0, albums: Object.create(null) };
+        return unresolved[credit];
+      }
+
+      songInfo.forEach(function (x) {
+        const r = x.catalogId ? byCatalogSong[x.catalogId] : null;
+        const ids = (r && Array.isArray(r.artistIds)) ? r.artistIds : [];
+        if (!ids.length) {
+          // 解析失败 / 无 catalogId：如实保留，标记待解析
+          const u = ensureUnresolved(x.credit || '(未知艺人)');
+          u.songCount += 1;
+          if (x.albumName) u.albums[x.albumName] = true;
+          return;
+        }
+        ids.forEach(function (aid) {
+          const a = ensureArtist(aid);
+          if (x.credit && a.credits.indexOf(x.credit) < 0) a.credits.push(x.credit);
+          a.songKeys[x.catalogId || ('lib:' + x.credit + ':' + x.albumName)] = true;
+          if (x.albumName) a.albums[x.albumName] = true;
+        });
+      });
+
+      const artists = Object.keys(byArtistId).map(function (aid) {
+        const a = byArtistId[aid];
+        // 名称优先级：catalog 的 name → 该艺人出现过的串（取最短的，最接近原名）→ 未解析
+        const detail = typeof getArtistDetail === 'function' ? getArtistDetail(aid) : null;
+        const catalogName = detail && detail.name ? String(detail.name).trim() : '';
+        let fallback = '';
+        a.credits.slice().sort(function (x, y) { return x.length - y.length; }).some(function (c) { fallback = c; return true; });
+        const albumNames = Object.keys(a.albums);
+        return {
+          artistId: aid,
+          name: catalogName || fallback || '(未解析艺人)',
+          nameSource: catalogName ? 'catalog' : (fallback ? 'credit' : 'none'),
+          image: (detail && detail.image) || '',
+          imageRule: (detail && detail.imageRule) || '',
+          hasImage: !!(detail && detail.hasImage),
+          status: (detail && detail.status) || 'missing',
+          genres: (detail && Array.isArray(detail.genres)) ? detail.genres : [],
+          credits: a.credits.slice(0, 4),
+          collab: a.credits.length > 1,
+          songCount: Object.keys(a.songKeys).length,
+          albumCount: albumNames.length,
+          albums: albumNames,
+        };
+      });
       artists.sort(function (a, b) {
         if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
         if (b.songCount !== a.songCount) return b.songCount - a.songCount;
         return a.name.localeCompare(b.name);
       });
-      const pending = artists.filter(function (a) { return a.resolved && !a.image; }).length + artists.filter(function (a) { return !a.resolved; }).length;
+
+      // 待解析项：保留但不冒充艺人身份
+      const pendingList = Object.keys(unresolved).map(function (credit) {
+        const u = unresolved[credit];
+        return { credit: credit, songCount: u.songCount, albumCount: Object.keys(u.albums).length };
+      });
+
       sendJSON(res, {
         ok: true,
         artists: artists,
         total: artists.length,
-        withImage: artists.filter(function (a) { return !!a.image; }).length,
-        pendingImage: pending,
-        forced: force,
+        withImage: artists.filter(function (a) { return a.hasImage; }).length,
+        pendingSongs: pendingList.reduce(function (n, x) { return n + x.songCount; }, 0),
+        pendingArtists: pendingList,
         fromCache: !!sync.fromCache,
         indexSongs: songs.length,
         indexAlbums: albums.length,
+        distinctCatalogIds: uniqueCatalogIds.length,
         resolveStats: resolved.stats,
         artistCache: resolved.cache,
       });
     } catch (err) {
       console.error('[AppleMusicLibraryArtists]', err);
       sendJSON(res, { ok: false, error: err.message, artists: [] }, 500);
+    }
+    return;
+  }
+
+  // 艺人详情：只展示**本地资料库中与该艺人关联**的作品（不展示 catalog 全量作品）。
+  // 按发行归组，发行类型按本地名称后缀判定 Single / EP / 其他（不猜）。
+  if (pn === '/api/apple/library/artist/detail') {
+    try {
+      const artistId = String(url.searchParams.get('id') || '').trim();
+      if (!artistId) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID', albums: [] }, 400); return; }
+      const sync = await syncLibraryIndex({});
+      const songs = readLibrarySongs() || [];
+      const albums = readLibraryAlbums() || [];
+      const albumByName = Object.create(null);
+      albums.forEach(function (a) {
+        if (!a) return;
+        const nm = String(a.name || '').trim();
+        if (!nm || albumByName[nm]) return;
+        albumByName[nm] = a;
+      });
+      const catalogIds = [];
+      songs.forEach(function (x) {
+        const cid = String(x.catalogId || '').trim();
+        if (cid && catalogIds.indexOf(cid) < 0) catalogIds.push(cid);
+      });
+      const resolved = await resolveLibraryArtists(catalogIds.map(function (cid) {
+        return { credit: cid, catalogSongId: cid };
+      }));
+      const byCatalogSong = Object.create(null);
+      (resolved.groups || []).forEach(function (x) { byCatalogSong[x.credit] = x; });
+
+      // 该艺人关联的歌曲（本地资料库范围内）
+      const mine = songs.filter(function (x) {
+        const cid = String(x.catalogId || '').trim();
+        if (!cid) return false;
+        const r = byCatalogSong[cid];
+        return !!(r && Array.isArray(r.artistIds) && r.artistIds.indexOf(artistId) >= 0);
+      });
+
+      // 按发行归组
+      const byAlbum = Object.create(null);
+      const order = [];
+      let untitled = 0;
+      mine.forEach(function (x) {
+        let nm = String(x.albumName || '').trim();
+        if (!nm) { untitled += 1; nm = ''; }
+        const key = nm || ('__untitled__' + untitled);
+        if (!byAlbum[key]) {
+          byAlbum[key] = { name: nm, songs: [] };
+          order.push(key);
+        }
+        byAlbum[key].songs.push({
+          name: x.name || '',
+          artist: x.artist || '',
+          duration: x.duration || 0,
+          trackNumber: x.trackNumber || 0,
+          librarySongId: x.librarySongId || '',
+          catalogId: x.catalogId || '',
+        });
+      });
+
+      function classifyRelease(name) {
+        const nm = String(name || '');
+        if (/\s-\sSingle\s*$/i.test(nm)) return 'single';
+        if (/\s-\sEP\s*$/i.test(nm)) return 'ep';
+        if (/\s-\sLP\s*$/i.test(nm)) return 'album';
+        return 'unknown';
+      }
+
+      const releases = order.map(function (key) {
+        const g = byAlbum[key];
+        const meta = g.name ? albumByName[g.name] : null;
+        const type = classifyRelease(g.name);
+        return {
+          name: g.name || '未命名发行',
+          type: type,
+          cover: (meta && meta.cover) || '',
+          releaseDate: (meta && meta.releaseDate) || '',
+          // 字段名以后端映射为准：索引里是 libraryAlbumId；web-api 的映射用 libraryId/id。
+          // 三个都看，避免因映射来源不同而丢掉跳转入口。
+          libraryAlbumId: (meta && (meta.libraryAlbumId || meta.libraryId || meta.id)) || '',
+          songCount: g.songs.length,
+          songs: g.songs,
+        };
+      });
+      // 分区打包：专辑 / Single / EP / 其他发行 —— 不强行归类
+      const sections = {
+        album: releases.filter(function (r) { return r.type === 'album'; }),
+        single: releases.filter(function (r) { return r.type === 'single'; }),
+        ep: releases.filter(function (r) { return r.type === 'ep'; }),
+        unknown: releases.filter(function (r) { return r.type === 'unknown'; }),
+      };
+
+      const detail = typeof getArtistDetail === 'function' ? getArtistDetail(artistId) : null;
+      sendJSON(res, {
+        ok: true,
+        artistId: artistId,
+        name: (detail && detail.name) || '',
+        genres: (detail && Array.isArray(detail.genres)) ? detail.genres : [],
+        image: (detail && detail.image) || '',
+        imageRule: (detail && detail.imageRule) || '',
+        hasImage: !!(detail && detail.hasImage),
+        status: (detail && detail.status) || 'missing',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: sections,
+        fromCache: !!sync.fromCache,
+        resolveStats: resolved.stats,
+      });
+    } catch (err) {
+      console.error('[AppleMusicLibraryArtistDetail]', err);
+      sendJSON(res, { ok: false, error: err.message, sections: { album: [], single: [], ep: [], unknown: [] } }, 500);
     }
     return;
   }

@@ -497,6 +497,11 @@ async function resolveLibraryArtists(groups) {
   return libraryCache.resolveArtistGroups(groups);
 }
 
+// 单个艺人的缓存详情（名称/流派/可信头像/解析状态）。只读缓存，不发请求。
+function getArtistDetail(artistId) {
+  return libraryCache.getArtistDetail(artistId);
+}
+
 async function rebuildAlbumTracks(libraryAlbum) {
   const songs = libraryCache.getSongs();
   const res = await reconstructAlbumTracks(libraryAlbum, songs);
@@ -516,6 +521,7 @@ module.exports = {
   readSongsByAlbumName,
   libraryIndexState,
   resolveLibraryArtists,
+  getArtistDetail,
   rebuildAlbumTracks,
   handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,

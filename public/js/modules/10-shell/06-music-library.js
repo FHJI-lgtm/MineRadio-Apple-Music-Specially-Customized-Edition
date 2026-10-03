@@ -360,29 +360,79 @@
   // ---- 艺人视图 ----
   // 数据来自 /api/apple/library/artists（服务端从本地索引聚合，零额外网络）。
   var artistsState = { loaded: false, loading: false, seq: 0 };
+  // 首字母占位规则（规格要求三种情况都要正确）：
+  //   英文 -> 第一个有效英文字母，大写（"The Weeknd" -> "T"）
+  //   中文 -> 第一个有效汉字（"张杰" -> "张"）
+  //   空/无效 -> 通用音乐图标（由调用方给空串，渲染层画图标）
+  function artistInitial(name) {
+    var s = String(name || '').trim();
+    if (!s) return '';
+    var latin = s.match(/[A-Za-z]/);
+    var han = s.match(/[\u4e00-\u9fff\u3400-\u4dbf]/);
+    // 谁先出现用谁（"Aero 张" -> A；"张 Aero" -> 张）
+    if (latin && han) return latin.index <= han.index ? latin[0].toUpperCase() : han[0];
+    if (latin) return latin[0].toUpperCase();
+    if (han) return han[0];
+    var any = s.match(/[^\s\p{P}\p{S}]/u);
+    return any ? any[0].toUpperCase() : '';
+  }
+
+  // 头像 HTML：有可信头像则用图片（加载期间先显示首字母，成功再替换）；
+  // 没有则首字母占位；首字母也取不到则音乐图标。**绝不用专辑封面冒充**。
+  function artistAvatarHtml(image, name) {
+    var initial = artistInitial(name);
+    var fallback = initial
+      ? '<span class="mlib-artist-initial" aria-hidden="true">' + escHtml(initial) + '</span>'
+      : '<span class="mlib-artist-initial is-icon" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">' +
+        '<path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" />' +
+        '</svg></span>';
+    if (!image) return { html: fallback, initial: initial };
+    // 图片未加载完/加载失败时，首字母占位仍在下面（图加载成功才隐藏）
+    return {
+      html: fallback + '<img class="mlib-artist-img" src="' + escHtml(image) + '" alt="" loading="lazy" ' +
+        'decoding="async" referrerpolicy="no-referrer">',
+      initial: initial,
+    };
+  }
+
   function artistCardHtml(artist) {
     var name = String(artist.name || '未知艺人');
-    // 头像：只接受后端判为「艺人代表图像」的 URL。
-    // 拿不到就用名称首字母占位 —— **绝不用专辑封面冒充头像**（这是已确认的规则）。
-    var img = artist.image
-      ? '<img src="' + escHtml(artist.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
-      : '';
-    var initial = name.replace(/\s+/g, ' ').trim().charAt(0).toUpperCase() || '?';
+    var av = artistAvatarHtml(artist.image, name);
     var sub = [];
     if (artist.albumCount) sub.push(artist.albumCount + ' 张专辑');
     if (artist.songCount) sub.push(artist.songCount + ' 首');
     // 合作关系用小字标注（不建主次分类 —— 目前数据无法可靠区分）
-    if (Array.isArray(artist.artistIds) && artist.artistIds.length > 1) {
-      sub.push(artist.artistIds.length + ' 位合作');
-    }
-    return '<article class="mlib-album-card mlib-artist-card" role="listitem" data-mlib-artist="' + escHtml(name) + '">' +
-      '<div class="mlib-art mlib-artist-art' + (img ? '' : ' is-loaded') + '">' +
-      (img || '<span class="mlib-artist-initial" aria-hidden="true">' + escHtml(initial) + '</span>') +
-      '</div>' +
+    if (artist.collab) sub.push('合作');
+    return '<article class="mlib-album-card mlib-artist-card" role="listitem" tabindex="0"' +
+      ' data-mlib-artist-id="' + escHtml(artist.artistId || '') + '"' +
+      ' aria-label="打开艺人：' + escHtml(name) + '">' +
+      '<div class="mlib-art mlib-artist-art' + (av.initial || !artist.image ? ' is-loaded' : '') + '">' + av.html + '</div>' +
       '<div class="mlib-album-meta">' +
       '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
       '<div class="mlib-album-sub">' + escHtml(sub.join(' · ')) + '</div>' +
       '</div></article>';
+  }
+
+  // 头像图片的加载/失败处理：**加载期间保留首字母占位**，成功才隐藏占位；
+  // 失败则移除 img 并恢复占位 —— 不允许出现破图或空白头像。
+  // （img 的 load/error 不冒泡，所以在网格上用捕获阶段委托。）
+  function bindArtistAvatar(scope) {
+    if (!scope || scope.dataset.mlibArtistAvBound === '1') return;
+    scope.dataset.mlibArtistAvBound = '1';
+    scope.addEventListener('load', function (event) {
+      var img = event.target;
+      if (!img || img.tagName !== 'IMG' || !img.classList.contains('mlib-artist-img')) return;
+      var art = img.parentNode;
+      if (art) { art.classList.add('is-loaded'); art.classList.add('has-image'); }
+    }, true);
+    scope.addEventListener('error', function (event) {
+      var img = event.target;
+      if (!img || img.tagName !== 'IMG' || !img.classList.contains('mlib-artist-img')) return;
+      var art = img.parentNode;
+      if (art) { art.classList.remove('has-image'); art.classList.add('is-loaded'); }
+      try { img.remove(); } catch (_) { }
+    }, true);
   }
 
   function setViewState(name, text, tone) {
@@ -429,11 +479,13 @@
         setViewState('artists', (data && data.message) || '资料库里还没有可用的艺人信息。');
         return;
       }
-      // 如实汇报覆盖率：解析成功但没拿到合格头像的，会显示首字母占位。
-      var noImage = Number(data && data.pendingImage) || 0;
-      setViewState('artists', noImage > 0
-        ? ('共 ' + list.length + ' 位；其中 ' + noImage + ' 位暂无合格的艺人代表图像，已用名称首字母占位。')
-        : '', '');
+      // 如实汇报：多少位没有合格头像（用首字母占位）、多少首歌的艺人身份尚未解析。
+      var noImage = Math.max(0, list.length - (Number(data && data.withImage) || 0));
+      var pendingSongs = Number(data && data.pendingSongs) || 0;
+      var notes = [];
+      if (noImage > 0) notes.push(noImage + ' 位暂无合格的艺人代表图像，已用名称首字母占位');
+      if (pendingSongs > 0) notes.push(pendingSongs + ' 首歌的艺人身份尚未解析（仍保留在资料库中）');
+      setViewState('artists', notes.length ? ('共 ' + list.length + ' 位；' + notes.join('；') + '。') : '');
     }).catch(function (err) {
       clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;
@@ -442,6 +494,176 @@
       setViewState('artists', '读取艺人失败：' + ((err && err.message) || '未知错误'), 'warn');
     });
   }
+
+  // ---- 艺人详情（艺人视图内的二级页面）----
+  // 只展示**本地资料库中与该艺人关联**的作品；不展示 catalog 全量作品。
+  // 首屏用本地数据渲染，缺失的艺人元数据（名称/流派/头像）为后台渐进补齐的结果，
+  // 拿不到就不显示 —— 不编造。
+  var artistDetailState = { artistId: '', name: '', seq: 0, loading: false, listScrollTop: 0 };
+
+  function renderReleaseCard(release) {
+    var name = String(release.name || '未命名发行');
+    var cover = String(release.cover || '').trim();
+    var img = cover
+      ? '<img src="' + escHtml(cover) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+      : '';
+    var year = '';
+    var m2 = String(release.releaseDate || '').match(/^(\d{4})/);
+    if (m2) year = m2[1];
+    var sub = [];
+    if (release.songCount) sub.push(release.songCount + ' 首');
+    if (year) sub.push(year);
+    // 有 libraryAlbumId 才能沿用既有专辑详情入口；否则只做展示，不发明新的播放行为
+    var canOpen = !!release.libraryAlbumId;
+    // 发行对象存进模块 Map，按 libraryAlbumId 取回（与专辑/歌单卡片同一套做法）
+    if (canOpen) albumPayloads[String(release.libraryAlbumId)] = {
+      id: release.libraryAlbumId, libraryId: release.libraryAlbumId,
+      name: name, cover: cover, artist: artistDetailState.name || '', releaseDate: release.releaseDate || '',
+    };
+    return '<article class="mlib-album-card' + (canOpen ? ' is-openable' : '') + '" role="listitem"' +
+      (canOpen ? ' tabindex="0" data-mlib-release-album="' + escHtml(release.libraryAlbumId) + '"' +
+        ' aria-label="打开专辑：' + escHtml(name) + '"' : ' aria-label="' + escHtml(name) + '"') + '>' +
+      '<div class="mlib-art' + (cover ? '' : ' is-loaded') + '">' + img + '</div>' +
+      '<div class="mlib-album-meta">' +
+      '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
+      '<div class="mlib-album-sub">' + escHtml(sub.join(' · ')) + '</div>' +
+      '</div></article>';
+  }
+
+  function renderArtistDetail(data) {
+    var hero = document.getElementById('mlib-artist-hero-art');
+    var nameEl = document.getElementById('mlib-artist-hero-name');
+    var genresEl = document.getElementById('mlib-artist-hero-genres');
+    var factsEl = document.getElementById('mlib-artist-hero-facts');
+    var sectionsEl = document.getElementById('mlib-artist-sections');
+    var displayName = String((data && data.name) || artistDetailState.name || '艺人');
+    if (nameEl) nameEl.textContent = displayName;
+    if (hero) {
+      var av = artistAvatarHtml((data && data.image) || '', displayName);
+      hero.className = 'mlib-artist-hero-art' + (av.initial || !(data && data.image) ? ' is-loaded' : '');
+      hero.innerHTML = av.html;
+      if (data && data.image) {
+        var hi = hero.querySelector('img');
+        if (hi) {
+          if (hi.complete && hi.naturalWidth) { hero.classList.add('has-image'); }
+          else {
+            hi.addEventListener('load', function () { hero.classList.add('has-image'); }, { once: true });
+            hi.addEventListener('error', function () {
+              hero.classList.remove('has-image');
+              try { hi.remove(); } catch (_) { }
+            }, { once: true });
+          }
+        }
+      }
+    }
+    // 流派：有值才显示（不显示空字段）
+    var genres = (data && Array.isArray(data.genres)) ? data.genres.filter(Boolean) : [];
+    if (genresEl) {
+      genresEl.textContent = genres.join(' · ');
+      genresEl.hidden = genres.length === 0;
+    }
+    // 统计：只用本地资料库里的关联数量，不混入 catalog 全量
+    if (factsEl) {
+      var facts = [];
+      if (data && data.releaseTotal) facts.push(data.releaseTotal + ' 张发行');
+      if (data && data.songTotal) facts.push(data.songTotal + ' 首歌曲');
+      factsEl.textContent = facts.join(' · ');
+      factsEl.hidden = facts.length === 0;
+    }
+    if (!sectionsEl) return;
+    var sec = (data && data.sections) || {};
+    var SPEC = [
+      { key: 'album', title: '专辑' },
+      { key: 'single', title: 'Single' },
+      { key: 'ep', title: 'EP' },
+      { key: 'unknown', title: '其他发行' },
+    ];
+    var html = '';
+    SPEC.forEach(function (s2) {
+      var list = Array.isArray(sec[s2.key]) ? sec[s2.key] : [];
+      if (!list.length) return;   // 空分区不渲染，避免"强行归类"的观感
+      html += '<section class="mlib-artist-section"><div class="mlib-section-head">' +
+        '<h4 class="mlib-section-title">' + escHtml(s2.title) + '</h4>' +
+        '<span class="mlib-section-count">' + list.length + '</span></div>' +
+        '<div class="mlib-grid mlib-grid-releases" role="list">' +
+        list.map(renderReleaseCard).join('') + '</div></section>';
+    });
+    sectionsEl.innerHTML = html;
+    if (!html) {
+      sectionsEl.innerHTML = '<div class="am-album-empty">这个艺人在你的资料库里没有可展示的发行。</div>';
+    }
+  }
+
+  function loadArtistDetail(artistId) {
+    var seq = ++artistDetailState.seq;
+    artistDetailState.loading = true;
+    setViewState('artist-detail', '正在读取艺人作品…');
+    apiJson('/api/apple/library/artist/detail?id=' + encodeURIComponent(artistId)).then(function (data) {
+      if (seq !== artistDetailState.seq) return;
+      artistDetailState.loading = false;
+      if (!data || data.ok === false) {
+        setViewState('artist-detail', '读取艺人作品失败：' + ((data && data.error) || '未知错误'), 'warn');
+        renderArtistDetail({ name: artistDetailState.name, sections: {} });
+        return;
+      }
+      renderArtistDetail(data);
+      // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，
+      // scrollTop 被浏览器钳到 0；内容渲染回来后浏览器会恢复旧值，
+      // 于是详情页在中途位置打开、看起来叠在导航上。这里补一次置顶。
+      if (typeof scrollLibraryToTop === 'function') scrollLibraryToTop();
+      // 有数据时清掉提示；没有作品时如实说明
+      if (!data.songTotal) {
+        setViewState('artist-detail', '这个艺人在你的资料库里还没有关联的歌曲。');
+      } else {
+        setViewState('artist-detail', '');
+      }
+    }).catch(function (err) {
+      if (seq !== artistDetailState.seq) return;
+      artistDetailState.loading = false;
+      setViewState('artist-detail', '读取艺人作品失败：' + ((err && err.message) || '未知错误') + '（可重试）', 'warn');
+    });
+  }
+
+  // 把资料库滚动容器移回顶部（两级 rAF：等隐藏/显示引起的重排结算完再设，
+  // 否则会被浏览器随后恢复的旧值覆盖）。
+  function scrollLibraryToTop() {
+    var sc = document.getElementById('music-library-scroll');
+    if (!sc) return;
+    sc.scrollTop = 0;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function () {
+        sc.scrollTop = 0;
+        requestAnimationFrame(function () { sc.scrollTop = 0; });
+      });
+    }
+  }
+
+  function setArtistPane(showDetail) {
+    var list = document.getElementById('mlib-artist-list');
+    var detail = document.getElementById('mlib-artist-detail');
+    if (list) list.hidden = !!showDetail;
+    if (detail) detail.hidden = !showDetail;
+  }
+
+  window.openArtistDetail = function (artistId, name) {
+    var id = String(artistId || '').trim();
+    if (!id) return;
+    // 记录列表滚动位置，返回时恢复（规格要求）
+    var sc = document.getElementById('music-library-scroll');
+    artistDetailState.listScrollTop = sc ? sc.scrollTop : 0;
+    artistDetailState.artistId = id;
+    artistDetailState.name = String(name || '');
+    setArtistPane(true);
+    scrollLibraryToTop();
+    loadArtistDetail(id);
+  };
+
+  window.backToArtistList = function () {
+    artistDetailState.seq += 1;   // 让在途请求失效，避免回来后覆盖列表
+    setArtistPane(false);
+    var sc = document.getElementById('music-library-scroll');
+    if (sc) sc.scrollTop = artistDetailState.listScrollTop || 0;
+  };
 
   // ---- 歌单视图 ----
   // 真实数据来自既有只读接口 /api/apple/user/playlists；不新建、不虚构歌单。
@@ -576,11 +798,46 @@
       });
     }
     var artistsGrid = document.getElementById('mlib-artists-grid');
-    if (artistsGrid && artistsGrid.dataset.mlibNavBound !== '1') {
-      artistsGrid.dataset.mlibNavBound = '1';
-      // 艺人卡片暂时只读展示：项目没有 Apple 艺人详情数据源，
-      // 不伪造艺人页，也不把点击接到别的入口上。
-      artistsGrid.addEventListener('click', function () { });
+    if (artistsGrid) {
+      bindArtistAvatar(artistsGrid);
+      if (artistsGrid.dataset.mlibNavBound !== '1') {
+        artistsGrid.dataset.mlibNavBound = '1';
+        // 点卡片进艺人详情（用卡片自己的 artistId，不按名字猜）
+        artistsGrid.addEventListener('click', function (event) {
+          var card = event.target && event.target.closest ? event.target.closest('[data-mlib-artist-id]') : null;
+          if (!card || !artistsGrid.contains(card)) return;
+          var nm = card.querySelector('.mlib-album-name');
+          window.openArtistDetail(card.getAttribute('data-mlib-artist-id'), nm ? nm.textContent : '');
+        });
+        artistsGrid.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          var card = event.target && event.target.closest ? event.target.closest('[data-mlib-artist-id]') : null;
+          if (!card) return;
+          event.preventDefault();
+          var nm = card.querySelector('.mlib-album-name');
+          window.openArtistDetail(card.getAttribute('data-mlib-artist-id'), nm ? nm.textContent : '');
+        });
+      }
+    }
+    // 艺人详情里的发行卡片：复用既有专辑详情入口（不发明新的播放/跳转行为）
+    var sections = document.getElementById('mlib-artist-sections');
+    if (sections && sections.dataset.mlibReleaseBound !== '1') {
+      sections.dataset.mlibReleaseBound = '1';
+      sections.addEventListener('click', function (event) {
+        var card = event.target && event.target.closest ? event.target.closest('[data-mlib-release-album]') : null;
+        if (!card) return;
+        var id = card.getAttribute('data-mlib-release-album');
+        var album = albumPayloads[String(id || '')];
+        if (album && typeof window.openAmAlbumDetail === 'function') window.openAmAlbumDetail(album);
+      });
+      sections.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        var card = event.target && event.target.closest ? event.target.closest('[data-mlib-release-album]') : null;
+        if (!card) return;
+        event.preventDefault();
+        var album = albumPayloads[String(card.getAttribute('data-mlib-release-album') || '')];
+        if (album && typeof window.openAmAlbumDetail === 'function') window.openAmAlbumDetail(album);
+      });
     }
     // 歌单卡片 -> 歌单详情页（与专辑详情同构）。事件委托，卡片重渲染后依然有效。
     var playlistsGrid = document.getElementById('mlib-playlists-grid');

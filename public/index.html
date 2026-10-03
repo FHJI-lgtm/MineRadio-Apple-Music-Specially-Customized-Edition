@@ -374,8 +374,30 @@
 
         <!-- 艺人：由本地索引的 artist 字段聚合，不虚构数据 -->
         <section class="mlib-section mlib-view" id="mlib-view-artists" data-mlib-view="artists" hidden aria-label="艺人">
-          <div class="mlib-grid mlib-grid-artists" id="mlib-artists-grid" role="list" aria-busy="false"></div>
-          <div class="mlib-state" id="mlib-artists-state" role="status" aria-live="polite" hidden></div>
+          <!-- 艺人列表 -->
+          <div class="mlib-artist-list" id="mlib-artist-list">
+            <div class="mlib-grid mlib-grid-artists" id="mlib-artists-grid" role="list" aria-busy="false"></div>
+            <div class="mlib-state" id="mlib-artists-state" role="status" aria-live="polite" hidden></div>
+          </div>
+          <!-- 艺人详情：同一视图内的二级页面，返回时便于保留列表滚动位置 -->
+          <div class="mlib-artist-detail" id="mlib-artist-detail" hidden>
+            <button class="mlib-artist-back" id="mlib-artist-back" type="button"
+              onclick="backToArtistList()" aria-label="返回艺人列表">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l-4 4 4 4" /></svg>
+              <span>返回艺人列表</span>
+            </button>
+            <div class="mlib-artist-hero">
+              <div class="mlib-artist-hero-art" id="mlib-artist-hero-art"></div>
+              <div class="mlib-artist-hero-meta">
+                <h3 class="mlib-artist-hero-name" id="mlib-artist-hero-name"></h3>
+                <div class="mlib-artist-hero-genres" id="mlib-artist-hero-genres"></div>
+                <div class="mlib-artist-hero-facts" id="mlib-artist-hero-facts"></div>
+              </div>
+            </div>
+            <div class="mlib-artist-sections" id="mlib-artist-sections"></div>
+            <div class="mlib-state" id="mlib-artist-detail-state" role="status" aria-live="polite" hidden></div>
+          </div>
         </section>
 
         <!-- 歌单：Apple Music 资料库歌单 -->
