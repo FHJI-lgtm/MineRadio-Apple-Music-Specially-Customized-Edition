@@ -2050,11 +2050,27 @@
               <h2 id="am-playlist-detail-heading" class="am-album-title">歌单</h2>
               <div class="am-album-artist" id="am-playlist-detail-creator"></div>
               <div class="am-album-facts" id="am-playlist-detail-facts"></div>
-              <button class="am-album-play" id="am-playlist-detail-play" type="button"
-                onclick="playAmPlaylistFromStart()">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13l10.5-6.5z" /></svg>
-                <span id="am-playlist-detail-play-label">播放歌单</span>
-              </button>
+              <div class="am-album-actions">
+                <button class="am-album-play" id="am-playlist-detail-play" type="button"
+                  onclick="playAmPlaylistFromStart()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13l10.5-6.5z" /></svg>
+                  <span id="am-playlist-detail-play-label">播放歌单</span>
+                </button>
+                <!-- 随机播放：**只在歌单里显示**（专辑详情不放）。
+                     图标为交叉双箭头；按钮常驻可见（不做悬浮才出现）。
+                     点击行为由 UIA 侧实现，这里只提供入口与标识。 -->
+                <button class="am-shuffle-btn" id="am-playlist-detail-shuffle" type="button"
+                  data-am-shuffle="playlist" title="随机播放" aria-label="随机播放歌单"
+                  onclick="playAmPlaylistShuffled()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7h3.5c2 0 3.5 1.2 5 3s3 5 5 5H20" />
+                    <path d="M17.5 12.5 20 15l-2.5 2.5" />
+                    <path d="M3 17h3.5c2 0 3.5-1.2 5-3s3-5 5-5H20" />
+                    <path d="M17.5 9.5 20 7l-2.5-2.5" />
+                  </svg>
+                </button>
+              </div>
               <div class="am-album-status" id="am-playlist-detail-status" role="status" aria-live="polite" hidden></div>
             </div>
           </div>

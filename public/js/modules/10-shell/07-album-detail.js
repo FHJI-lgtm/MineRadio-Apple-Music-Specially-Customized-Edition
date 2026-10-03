@@ -580,6 +580,9 @@
     plState.busy = !!busy;
     var btn = plEl('am-playlist-detail-play');
     if (btn) { btn.disabled = !!busy; btn.setAttribute('aria-busy', busy ? 'true' : 'false'); }
+    // 随机按钮同样受忙碌态约束，避免重复触发
+    var sh = plEl('am-playlist-detail-shuffle');
+    if (sh) { sh.disabled = !!busy; sh.setAttribute('aria-busy', busy ? 'true' : 'false'); }
   }
 
   function plRenderInfo(playlist) {
@@ -722,6 +725,28 @@
   window.closeAmPlaylistDetail = function () {
     var mask = plMask();
     if (mask) closeGsapModal(mask);
+  };
+
+  // 随机播放入口。**真正的随机播放行为由 UIA 侧实现** —— 这里只负责触发，
+  // 并把"点击发生了"如实反馈到状态区（不谎报已开始播放）。
+  window.playAmPlaylistShuffled = function () {
+    var amc = window.mineradio && window.mineradio.amc;
+    var name = String((plState.playlist && plState.playlist.name) || '').trim();
+    if (!name) { plSetStatus('这个歌单没有可用的名称', 'warn'); return; }
+    if (!amc || typeof amc.playPlaylistShuffled !== 'function') {
+      plSetStatus('随机播放通道尚未接入', 'warn');
+      return;
+    }
+    plSetBusy(true);
+    plSetStatus('正在让 Apple Music 随机播放…', '');
+    Promise.resolve(amc.playPlaylistShuffled({ name: name })).then(function (res) {
+      plSetBusy(false);
+      if (res && res.verified) plSetStatus('✓ Apple Music 已开始随机播放', 'ok');
+      else plSetStatus('随机播放未完成：' + ((res && res.stage) || 'NO_RESULT'), 'warn');
+    }).catch(function () {
+      plSetBusy(false);
+      plSetStatus('随机播放失败（IPC 错误）', 'warn');
+    });
   };
 
   window.playAmPlaylistFromStart = function () { return plPlay('这个歌单'); };

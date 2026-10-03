@@ -874,3 +874,87 @@ test('Apple 歌单曲目：分页取全（不再只有 100 首）', async (t10) 
     assert.match(SERVER, /searchParams\.get\('all'\) === '1'/, '服务端要有 all=1 分支');
   });
 });
+;
+// ============================================================
+// 歌单详情的随机播放按钮
+// ============================================================
+test('歌单详情：随机播放按钮只在歌单里显示且常驻可见', async (t11) => {
+  const HTML = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'index.html'), 'utf8');
+  const CSS = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'css', 'index.css'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  await t11.test('按钮存在于歌单详情，且紧邻播放歌单按钮', () => {
+    assert.match(HTML, /am-playlist-detail-shuffle/, '歌单详情必须有随机按钮');
+    const i = HTML.indexOf('am-album-actions');
+    const block = HTML.slice(i, i + 900);
+    assert.match(block, /am-playlist-detail-play/, '同一操作区里要有播放歌单');
+    assert.match(block, /am-playlist-detail-shuffle/, '同一操作区里要有随机播放');
+    assert.ok(block.indexOf('am-playlist-detail-play') < block.indexOf('am-playlist-detail-shuffle'),
+      '随机应排在播放之后（左侧播放、右侧随机）');
+  });
+
+  await t11.test('只在歌单：专辑详情不得出现该按钮', () => {
+    const albumPart = HTML.indexOf('am-album-detail');
+    const shuffleCount = (HTML.match(/am-shuffle-btn/g) || []).length;
+    assert.equal(shuffleCount, 1, '全页只应有一个随机按钮');
+    assert.ok(albumPart > 0, '专辑详情存在');
+    // 专辑详情的操作区不应包含随机按钮
+    const ai = HTML.indexOf('id="am-album-detail-play"');
+    if (ai > 0) {
+      const around = HTML.slice(Math.max(0, ai - 400), ai + 400);
+      assert.ok(around.indexOf('am-shuffle-btn') < 0, '专辑详情的播放区不得有随机按钮');
+    }
+  });
+
+  await t11.test('常驻可见：不依赖 hover 才出现', () => {
+    const i = CSS.indexOf('.am-shuffle-btn {');
+    const block = CSS.slice(i, i + 900);
+    assert.ok(!/opacity:\s*0/.test(block), '不得默认透明（那是悬浮才出现的做法）');
+    assert.ok(!/pointer-events:\s*none/.test(block), '不得默认不可点');
+    assert.ok(!/html\.mlib-has-hover[\s\S]{0,80}am-shuffle-btn/.test(CSS), '不得挂在 hover 规则下');
+  });
+
+  await t11.test('无文字描述，纯图标', () => {
+    const i = HTML.indexOf('id="am-playlist-detail-shuffle"');
+    const start = HTML.lastIndexOf('<button', i);
+    const block = HTML.slice(start, HTML.indexOf('</button>', i) + 9);
+    assert.ok(!/播放歌单|随机播放<\/span>/.test(block.replace(/title="[^"]*"|aria-label="[^"]*"/g, '')),
+      '按钮内不得有可见文字');
+    assert.match(block, /<svg/, '要有图标');
+    // 图标形状：两条交叉的曲线箭头（不能是一堆端头重合的独立线段）
+    // 注意：必须带单词边界，否则 id="..." 里的 "d=\"" 也会被算进来
+    const paths = block.match(/\sd="[^"]+"/g) || [];
+    assert.equal(paths.length, 4, '应为 2 条曲线 + 2 个箭头头部');
+    assert.match(block, /M3 7h3\.5c2 0 3\.5 1\.2 5 3s3 5 5 5H20/, '一条曲线');
+    assert.match(block, /M3 17h3\.5c2 0 3\.5-1\.2 5-3s3-5 5-5H20/, '另一条曲线（与前者交叉）');
+    assert.match(block, /M17\.5 12\.5 20 15l-2\.5 2\.5/, '下端箭头');
+    assert.match(block, /M17\.5 9\.5 20 7l-2\.5-2\.5/, '上端箭头');
+  });
+
+  await t11.test('质感与专辑悬浮按钮一致（玻璃圆钮）', () => {
+    const i = CSS.indexOf('.am-shuffle-btn {');
+    const block = CSS.slice(i, i + 900);
+    const play = CSS.slice(CSS.indexOf('.mlib-play-btn {'), CSS.indexOf('.mlib-play-btn {') + 900);
+    ['border-radius: 50%', 'backdrop-filter', 'inset 0 1px 0'].forEach(function (token) {
+      assert.ok(block.indexOf(token) >= 0, '随机按钮要有 ' + token);
+      assert.ok(play.indexOf(token) >= 0, '专辑悬浮按钮里确实有 ' + token + '（作为对照）');
+    });
+  });
+
+  await t11.test('点击入口存在，且不会谎报已随机播放', () => {
+    assert.match(HTML, /onclick="playAmPlaylistShuffled\(\)"/, '必须有点击入口');
+    assert.match(MOD, /window\.playAmPlaylistShuffled = function/, '要有对应的全局入口');
+    assert.match(MOD, /随机播放通道尚未接入/, '通道未接入时要如实提示，不能假装成功');
+  });
+
+  await t11.test('忙碌态会一并禁用随机按钮', () => {
+    const i = MOD.indexOf('function plSetBusy');
+    const block = MOD.slice(i, i + 500);
+    assert.match(block, /am-playlist-detail-shuffle/, 'plSetBusy 要照顾随机按钮');
+  });
+
+  await t11.test('给 UIA 侧留出明确的接入标识', () => {
+    assert.match(HTML, /data-am-shuffle="playlist"/, '要有稳定的 data-* 标识供 UIA 定位');
+  });
+});

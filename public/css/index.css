@@ -2289,8 +2289,16 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   color: rgba(255, 255, 255, .28)
 }
 
+/* 歌单详情的操作区：播放 + 随机。随机按钮只在歌单里出现，专辑详情没有。 */
+.am-album-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px
+}
+
 .am-album-play {
-  margin-top: 14px;
+  margin-top: 0;
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -2320,6 +2328,54 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 .am-album-play:disabled {
   opacity: .55;
   cursor: default
+}
+
+/* 随机播放：与专辑卡片悬浮按钮同一套玻璃质感，但**常驻可见**（不随 hover 显隐）。
+   圆形、无文字，图标为交叉双箭头。 */
+.am-shuffle-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .38);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: background .18s, border-color .18s, box-shadow .18s, transform .16s
+}
+
+.am-shuffle-btn svg {
+  width: 19px;
+  height: 19px
+}
+
+.am-shuffle-btn:hover {
+  background: rgba(0, 0, 0, .52);
+  border-color: rgba(255, 255, 255, .30);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .24);
+  transform: translateY(-1px)
+}
+
+.am-shuffle-btn:active {
+  transform: translateY(0) scale(.96)
+}
+
+.am-shuffle-btn:focus-visible {
+  outline: 2px solid rgba(0, 245, 212, .65);
+  outline-offset: 2px
+}
+
+.am-shuffle-btn:disabled {
+  opacity: .5;
+  cursor: default;
+  transform: none
 }
 
 .am-album-status {
