@@ -215,3 +215,150 @@ test('同步执行 artistInitial 的真实行为', async (t2) => {
     });
   });
 });
+;
+// ============================================================
+// 艺人简介（Wikipedia）：解析、消歧与负缓存
+//
+// 本机无法访问 wikipedia（实测 tcp 超时），所以这里**注入假 HTTP** 来验证逻辑，
+// 不依赖联网；联网表现由真机验收。
+// ============================================================
+test('艺人简介：只接受可确认的条目，且失败也要记缓存', async (t3) => {
+  const os = require('node:os');
+  const fsp = require('node:fs');
+  const { createAppleMusicLibraryCacheService } = require(path.join(APP_ROOT, 'desktop', 'apple-music-library-cache.js'));
+
+  function makeService(handler) {
+    const dir = fsp.mkdtempSync(path.join(os.tmpdir(), 'wiki-'));
+    const svc = createAppleMusicLibraryCacheService({ cachePath: path.join(dir, 'idx.json') });
+    const calls = [];
+    svc.setHttpGetJsonImpl(function (url, timeoutMs, redirects) {
+      calls.push(url);
+      return Promise.resolve(handler(url));
+    });
+    return { svc: svc, calls: calls };
+  }
+
+  await t3.test('正常条目：取回正文与来源链接', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('zh.wikipedia.org') >= 0) {
+        return { status: 200, json: { type: 'standard', title: '张杰', description: '中国内地男歌手', extract: '张杰，中国内地男歌手。', lang: 'zh', content_urls: { desktop: { page: 'https://zh.wikipedia.org/wiki/张杰' } } } };
+      }
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('111', '张杰');
+    assert.equal(rec.status, 'ok');
+    assert.match(rec.extract, /男歌手/);
+    assert.match(rec.url, /zh\.wikipedia\.org/);
+    assert.equal(h.calls.length, 1, '中文名应只查一次中文维基');
+    assert.ok(h.calls[0].indexOf('zh.wikipedia.org') >= 0, '中文名优先中文维基');
+  });
+
+  await t3.test('消歧页必须丢弃（不能把同名条目当艺人）', async () => {
+    const h = makeService(function () {
+      return { status: 200, json: { type: 'disambiguation', title: '张杰', extract: '张杰可以指：…' } };
+    });
+    const rec = await h.svc.resolveArtistWiki('222', '张杰');
+    assert.equal(rec.status, 'missing');
+    assert.equal(rec.reason, 'DISAMBIGUATION');
+  });
+
+  await t3.test('描述指向其他领域时丢弃', async () => {
+    const h = makeService(function () {
+      return { status: 200, json: { type: 'standard', title: '凤凰', description: '中国湖南省的一座城市', extract: '凤凰县位于…' } };
+    });
+    const rec = await h.svc.resolveArtistWiki('333', '凤凰');
+    assert.equal(rec.status, 'missing');
+    assert.match(rec.reason, /WRONG_SUBJECT/);
+  });
+
+  await t3.test('没有正文时丢弃', async () => {
+    const h = makeService(function () { return { status: 200, json: { type: 'standard', title: 'X' } }; });
+    const rec = await h.svc.resolveArtistWiki('444', 'X');
+    assert.equal(rec.status, 'missing');
+    assert.equal(rec.reason, 'NO_EXTRACT');
+  });
+
+  await t3.test('网络不可达：记为 missing 而不是抛错，且不影响其他功能', async () => {
+    const h = makeService(function () { return null; });   // 模拟超时/不可达
+    const rec = await h.svc.resolveArtistWiki('555', 'Someone');
+    assert.equal(rec.status, 'missing');
+    assert.match(rec.reason, /HTTP_/);
+  });
+
+  await t3.test('负缓存：同一个艺人不会反复请求', async () => {
+    const h = makeService(function () { return null; });
+    await h.svc.resolveArtistWiki('666', 'Nobody');
+    const first = h.calls.length;
+    await h.svc.resolveArtistWiki('666', 'Nobody');
+    assert.equal(h.calls.length, first, '第二次必须命中缓存，不再发请求');
+    assert.equal(h.svc.getArtistWiki('666').status, 'missing');
+  });
+
+  await t3.test('非中文名只查英文维基（不做多余请求）', async () => {
+    const h = makeService(function (url) {
+      assert.ok(url.indexOf('en.wikipedia.org') >= 0, '英文名应查英文维基');
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('777', 'Ariana Grande');
+    assert.equal(rec.status, 'missing');
+    assert.equal(h.calls.length, 1);
+  });
+
+  await t3.test('结果为 missing 时 title 为空也不发请求', async () => {
+    const h = makeService(function () { return { status: 200, json: { type: 'standard', extract: 'x' } }; });
+    const rec = await h.svc.resolveArtistWiki('888', '');
+    assert.equal(rec, null);
+    assert.equal(h.calls.length, 0, '没有名字就不该请求');
+  });
+
+  await t3.test('失败记录随缓存落盘（重开服务仍命中）', async () => {
+    const dir = fsp.mkdtempSync(path.join(os.tmpdir(), 'wiki-persist-'));
+    const cacheFile = path.join(dir, 'idx.json');
+    const s1 = createAppleMusicLibraryCacheService({ cachePath: cacheFile });
+    s1.setHttpGetJsonImpl(function () { return { status: 200, json: { type: 'standard', title: 'A', description: '歌手', extract: 'A 是一名歌手。' } }; });
+    await s1.resolveArtistWiki('999', 'A');
+    // 重开：不再注入 http，若仍能读到说明落盘成功（读缓存不会发请求）
+    const s2 = createAppleMusicLibraryCacheService({ cachePath: cacheFile });
+    const rec = s2.getArtistWiki('999');
+    assert.ok(rec, '简介结果必须落盘');
+    assert.equal(rec.status, 'ok');
+    assert.match(rec.extract, /歌手/);
+  });
+});
+
+test('艺人简介：端点与 UI 契约', async (t3) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const HTML = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'index.html'), 'utf8');
+
+  await t3.test('简介端点存在，且不编造（拿不到就 null）', () => {
+    assert.match(SERVER, /\/api\/apple\/library\/artist\/wiki/, '必须有简介端点');
+    const fn = SERVER.slice(SERVER.indexOf('function wikiPayload'), SERVER.indexOf('function wikiPayload') + 500);
+    assert.match(fn, /status !== 'ok'/, '非 ok 状态一律不给正文');
+    assert.match(fn, /return null/, '拿不到就返回 null');
+  });
+
+  await t3.test('简介不得阻塞详情返回', () => {
+    const detail = SERVER.slice(SERVER.indexOf('/api/apple/library/artist/detail'),
+      SERVER.indexOf('/api/apple/library/artist/detail') + 4200);
+    assert.ok(!/await resolveArtistWiki\(/.test(detail), '详情端点不得 await 维基请求');
+    assert.ok(/resolveArtistWikiAsync/.test(detail) || /getArtistWiki/.test(detail),
+      '详情只带已有缓存 / 后台启动解析');
+  });
+
+  await t3.test('UI 有「来源: Wikipedia」标注', () => {
+    assert.match(HTML, /来源: Wikipedia/, '必须有来源标注');
+    assert.match(HTML, /mlib-artist-bio-source/);
+  });
+
+  await t3.test('UI 拿不到简介时不显示该区块', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderArtistBio'), MOD.indexOf('function fetchArtistBioIfMissing'));
+    assert.match(fn, /box\.hidden = true/, '没有正文必须隐藏整块');
+  });
+
+  await t3.test('返回列表时清掉简介，避免残留到别的艺人', () => {
+    const back = MOD.slice(MOD.indexOf('window.backToArtistList'), MOD.indexOf('window.backToArtistList') + 400);
+    assert.match(back, /renderArtistBio\(null\)/, '返回列表要清简介');
+  });
+});

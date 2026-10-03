@@ -23,6 +23,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 const webApi = require('./apple-music-web-api');
 
 const CACHE_SCHEMA_VERSION = 1;
@@ -221,6 +223,8 @@ function createAppleMusicLibraryCacheService(options) {
     loaded: false,
     songToArtists: new Map(),
     artists: new Map(),
+    // artistId -> { status:'ok', extract, url, ... } 或 { status:'missing', reason }
+    wiki: new Map(),
     persistedAt: 0,
   };
 
@@ -516,6 +520,7 @@ function createAppleMusicLibraryCacheService(options) {
       if (!payload || payload.schemaVersion !== ARTIST_CACHE_SCHEMA_VERSION) return false;
       artistState.songToArtists = new Map(Array.isArray(payload.songToArtists) ? payload.songToArtists : []);
       artistState.artists = new Map(Array.isArray(payload.artists) ? payload.artists : []);
+      artistState.wiki = new Map(Array.isArray(payload.wiki) ? payload.wiki : []);
       artistState.persistedAt = Number(payload.savedAt) || 0;
       return true;
     } catch (_) {
@@ -533,6 +538,7 @@ function createAppleMusicLibraryCacheService(options) {
         savedAt: Date.now(),
         songToArtists: Array.from(artistState.songToArtists.entries()),
         artists: Array.from(artistState.artists.entries()),
+        wiki: Array.from(artistState.wiki.entries()),
       };
       fs.writeFileSync(p, JSON.stringify(payload), 'utf8');
       artistState.persistedAt = payload.savedAt;
@@ -787,6 +793,263 @@ function createAppleMusicLibraryCacheService(options) {
     };
   }
 
+  // ------------------------------------------------------------
+  // 艺人简介：Wikipedia REST summary
+  //
+  // 需求方指定的数据源。要点与风险：
+  //   - **同名消歧**：艺人名经常与人物/地名/乐队撞名。用 summary 的 type 与
+  //     description 做保守校验，拿不准就不给（宁可不显示，也不贴错人）。
+  //   - 中文名优先查中文维基，否则查英文；两者都拿不到算 miss。
+  //   - 与艺人详情一样按 artist ID 缓存，且**记录失败**（避免每次进详情都重试）。
+  //   - 该源在部分网络下不可达（实测本机 zh/en.wikipedia.org 均超时）：
+  //     所以任何失败都不得影响详情页，只记 negative 缓存。
+  // ------------------------------------------------------------
+  const WIKI_TIMEOUT_MS = 6000;
+  const WIKI_FACT_KEYS = ['wikimedia', 'wikipedia', 'Wikimedia', 'Wikipedia'];
+
+  function hasCjk(s) {
+    return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(String(s || ''));
+  }
+
+  // type=disambiguation 或描述明确指向非音乐条目 -> 丢弃
+  function wikiVerdict(json) {
+    // found 表示"这个语言的页面确实存在" —— 存在但不可用时**不应再回退**到下一语言，
+    // 否则会用另一个语言的 404 覆盖掉真实原因（实测：中文消歧义页被英文 404 覆盖）。
+    if (!json || typeof json !== 'object') return { ok: false, found: false, reason: 'EMPTY' };
+    const type = normalizeText(json.type);
+    if (type === 'disambiguation') return { ok: false, found: true, reason: 'DISAMBIGUATION' };
+    const extract = normalizeText(json.extract);
+    if (!extract) return { ok: false, found: true, reason: 'NO_EXTRACT' };
+    const desc = normalizeText(json.description);
+    // 明确是别的领域 -> 丢掉（保守：只挡最明显的误配）
+    if (/人物|地名|城市|国家|植物|动物|电影|电视剧|公司|品牌|大学/.test(desc) && !/歌手|乐队|音乐|组合|艺人|乐团|作曲家|创作|女团|男团|说唱|音樂/.test(desc)) {
+      return { ok: false, found: true, reason: 'WRONG_SUBJECT:' + desc };
+    }
+    const url = (json.content_urls && json.content_urls.desktop && json.content_urls.desktop.page) || '';
+    return {
+      ok: true,
+      data: {
+        extract: extract,
+        description: desc,
+        title: normalizeText(json.title),
+        url: normalizeText(url),
+        lang: normalizeText(json.lang) || '',
+        fetchedAt: Date.now(),
+      },
+    };
+  }
+
+  // ------------------------------------------------------------
+  // 系统代理探测
+  //
+  // Node 的 https **不会**自动使用 Windows 系统代理（实测：Clash 已开系统代理
+  // 127.0.0.1:7897 时，直连 wikipedia 仍超时）。而维基在许多网络下必须走代理，
+  // 所以这里主动读取系统代理设置，命中的话用 CONNECT 隧道。
+  // 读不到/连不上就退回直连 —— 任何情况都不让详情页失败。
+  // ------------------------------------------------------------
+  function readSystemProxy() {
+    const fromEnv = normalizeText(process.env.HTTPS_PROXY || process.env.https_proxy
+      || process.env.HTTP_PROXY || process.env.http_proxy);
+    if (fromEnv) return fromEnv;
+    if (process.platform !== 'win32') return '';
+    try {
+      const out = require('child_process').execFileSync('reg', [
+        'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+        '/v', 'ProxyEnable',
+      ], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+      if (!/ProxyEnable\s+REG_DWORD\s+0x1/i.test(out)) return '';
+      const srv = require('child_process').execFileSync('reg', [
+        'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+        '/v', 'ProxyServer',
+      ], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+      const m = srv.match(/ProxyServer\s+REG_SZ\s+(.+)/i);
+      if (!m) return '';
+      let v = m[1].trim();
+      // 形如 "http=host:port;https=host:port" 或 "host:port"
+      const httpsPart = v.match(/https=([^;]+)/i);
+      if (httpsPart) v = httpsPart[1].trim();
+      else v = v.split(';')[0].trim();
+      if (!v) return '';
+      return /^https?:\/\//i.test(v) ? v : ('http://' + v);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // 经代理取 JSON（HTTPS 走 CONNECT 隧道）
+  function httpGetJsonViaProxy(proxyUrl, targetUrl, timeoutMs) {
+    return new Promise(function (resolve) {
+      let proxy = null;
+      let target = null;
+      try { proxy = new URL(proxyUrl); target = new URL(targetUrl); } catch (_) { resolve(null); return; }
+      let settled = false;
+      const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+      let req = null;
+      try {
+        req = http.request({
+          host: proxy.hostname,
+          port: proxy.port || 8080,
+          method: 'CONNECT',
+          path: target.hostname + ':443',
+          headers: { Host: target.hostname + ':443' },
+        });
+      } catch (_) { return done(null); }
+      req.setTimeout(Math.max(1000, Number(timeoutMs) || WIKI_TIMEOUT_MS), function () { try { req.destroy(); } catch (_) { } done(null); });
+      req.on('error', function () { done(null); });
+      req.on('connect', function (res, socket) {
+        if (res.statusCode !== 200) { try { socket.destroy(); } catch (_) { } return done(null); }
+        let tls = null;
+        try { tls = https.request({ socket: socket, servername: target.hostname, host: target.hostname, path: target.pathname + target.search, method: 'GET', headers: { 'User-Agent': 'MineRadio/2.0 (artist bio)', 'Accept': 'application/json' } }); } catch (_) { return done(null); }
+        tls.setTimeout(Math.max(1000, Number(timeoutMs) || WIKI_TIMEOUT_MS), function () { try { tls.destroy(); } catch (_) { } done(null); });
+        tls.on('error', function () { done(null); });
+        tls.on('response', function (r) {
+          const chunks = [];
+          r.on('data', function (ch) { chunks.push(ch); if (chunks.length > 64) r.destroy(); });
+          r.on('end', function () {
+            const text = Buffer.concat(chunks).toString('utf8');
+            let json = null;
+            try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
+            done({ status: r.statusCode || 0, json: json });
+          });
+        });
+        tls.end();
+      });
+      req.end();
+    });
+  }
+
+  // 可注入的 http 层：测试用它注入假响应，不必联网也不需要为测试开后门。
+  // 与项目既有的 setCredentialSource 注入风格一致。
+  let httpGetJsonImpl = null;
+  function setHttpGetJsonImpl(fn) { httpGetJsonImpl = typeof fn === 'function' ? fn : null; }
+
+  // 自包含的只读 JSON GET（带重定向与超时）。
+  // 不依赖 apple-music-web-lyrics 的内部工具，避免为一次维基请求扩大别的模块的公开接口。
+  let cachedProxy = null;   // undefined=未探测，''=无代理
+  function systemProxy() {
+    if (cachedProxy === null) cachedProxy = readSystemProxy();
+    return cachedProxy;
+  }
+
+  // 直连优先，失败再试系统代理。两条路都失败返回 null —— 调用方按 missing 处理，
+  // 绝不让详情页因此失败。
+  //
+  // 代理记忆：一旦代理成功过（说明当前网络确实需要它），后续不再白试直连 ——
+  // 否则每次都要先等一次直连超时，白白多花数秒。
+  let proxyProven = false;
+
+  async function httpGetJsonWithProxy(url, timeoutMs, redirectsLeft) {
+    const proxy = systemProxy();
+    if (!(proxy && proxyProven)) {
+      const direct = await httpGetJsonDirect(url, timeoutMs, redirectsLeft);
+      if (direct && direct.status === 200) return direct;
+      if (!proxy) return direct;
+      const viaProxy = await httpGetJsonViaProxy(proxy, url, timeoutMs);
+      if (viaProxy && viaProxy.status === 200) { proxyProven = true; return viaProxy; }
+      return direct || viaProxy;
+    }
+    const viaProxyFirst = await httpGetJsonViaProxy(proxy, url, timeoutMs);
+    if (viaProxyFirst && viaProxyFirst.status === 200) return viaProxyFirst;
+    // 代理这次不行了（可能被关掉）—— 回落直连，并清掉记忆
+    proxyProven = false;
+    return httpGetJsonDirect(url, timeoutMs, redirectsLeft);
+  }
+
+  function httpGetJson(url, timeoutMs, redirectsLeft) {
+    if (httpGetJsonImpl) return httpGetJsonImpl(url, timeoutMs, redirectsLeft);
+    return httpGetJsonWithProxy(url, timeoutMs, redirectsLeft);
+  }
+
+  function httpGetJsonDirect(url, timeoutMs, redirectsLeft) {
+    return new Promise(function (resolve) {
+      const left = typeof redirectsLeft === 'number' ? redirectsLeft : 2;
+      let u = null;
+      try { u = new URL(url); } catch (_) { resolve(null); return; }
+      let settled = false;
+      const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+      let req = null;
+      try {
+        req = https.request({
+          hostname: u.hostname,
+          path: u.pathname + u.search,
+          method: 'GET',
+          headers: { 'User-Agent': 'MineRadio/2.0 (artist bio)', 'Accept': 'application/json' },
+        }, function (res) {
+          const code = res.statusCode || 0;
+          if (code >= 300 && code < 400 && res.headers.location && left > 0) {
+            res.resume();
+            const next = new URL(res.headers.location, url).toString();
+            // 跟随重定向要回到**自身**（直连路径），不能再进外层分流，
+            // 否则会重复一次"直连+代理"的双路径，并可能拿错最终结果。
+            return httpGetJsonDirect(next, timeoutMs, left - 1).then(done);
+          }
+          const chunks = [];
+          res.on('data', function (ch) { chunks.push(ch); });
+          res.on('end', function () {
+            const text = Buffer.concat(chunks).toString('utf8');
+            let json = null;
+            try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
+            done({ status: code, json: json });
+          });
+        });
+      } catch (_) { return done(null); }
+      req.setTimeout(Math.max(1000, Number(timeoutMs) || WIKI_TIMEOUT_MS), function () { try { req.destroy(); } catch (_) { } done(null); });
+      req.on('error', function () { done(null); });
+      req.end();
+    });
+  }
+
+  async function fetchWikiSummary(title, lang) {
+    const url = 'https://' + lang + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title)
+      + '?redirect=true';
+    const res = await httpGetJson(url, WIKI_TIMEOUT_MS, 2);
+    if (!res || res.status !== 200 || !res.json) {
+      return { ok: false, found: false, reason: 'HTTP_' + ((res && res.status) || 'ERR') };
+    }
+    if (res.json.lang === undefined) res.json.lang = lang;
+    const v = wikiVerdict(res.json);
+    if (!v.ok) v.found = v.found !== false;   // 200 且解析出对象 -> 页面存在
+    return v;
+  }
+
+  // 按 artist ID 取简介；结果（含失败）写缓存。
+  async function resolveArtistWiki(artistId, name) {
+    const id = normalizeText(artistId);
+    const title = normalizeText(name);
+    if (!id) return null;
+    loadArtistsFromDisk();
+    if (artistState.wiki.has(id)) return artistState.wiki.get(id) || null;
+    if (!title) { artistState.wiki.set(id, null); persistArtists(); return null; }
+
+    const langs = hasCjk(title) ? ['zh', 'en'] : ['en'];
+    let hit = null;
+    let lastReason = 'MISS';
+    for (let i = 0; i < langs.length; i += 1) {
+      const r = await fetchWikiSummary(title, langs[i]);
+      if (r.ok) { hit = r.data; break; }
+      lastReason = r.reason || lastReason;
+      // 页面存在但被判定不可用（消歧义/跨领域等）-> 不再回退下一个语言，
+      // 否则真实原因会被另一个语言的 404 覆盖。
+      if (r.found) break;
+    }
+    const record = hit
+      ? Object.assign({ status: 'ok' }, hit)
+      : { status: 'missing', reason: lastReason, fetchedAt: Date.now() };
+    artistState.wiki.set(id, record);
+    persistArtists();
+    return record;
+  }
+
+  // 不阻塞版：调用方拿到 Promise，但可以不等它 —— 详情页不因维基变慢。
+  function resolveArtistWikiAsync(artistId, name) {
+    return resolveArtistWiki(artistId, name).catch(function () { return null; });
+  }
+
+  function getArtistWiki(artistId) {
+    loadArtistsFromDisk();
+    return artistState.wiki.get(normalizeText(artistId)) || null;
+  }
+
   function getArtistCacheInfo() {
     loadArtistsFromDisk();
     return {
@@ -841,6 +1104,11 @@ function createAppleMusicLibraryCacheService(options) {
     getArtistCacheInfo,
     getResolvedArtistIds,
     getArtistDetail,
+    resolveArtistWiki,
+    resolveArtistWikiAsync,
+    getArtistWiki,
+    // 测试用
+    setHttpGetJsonImpl,
     rebuildDerived,
     // 测试用
     _internal: { offsetFromNext, mapRawSong, mapRawAlbum, readAllPages, resolveDefaultCachePath },

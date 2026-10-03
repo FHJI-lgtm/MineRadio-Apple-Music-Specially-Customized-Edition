@@ -502,6 +502,11 @@ function getArtistDetail(artistId) {
   return libraryCache.getArtistDetail(artistId);
 }
 
+// 艺人简介（Wikipedia）。按 artist ID 缓存，含失败记录。
+function resolveArtistWiki(artistId, name) { return libraryCache.resolveArtistWiki(artistId, name); }
+function resolveArtistWikiAsync(artistId, name) { return libraryCache.resolveArtistWikiAsync(artistId, name); }
+function getArtistWiki(artistId) { return libraryCache.getArtistWiki(artistId); }
+
 async function rebuildAlbumTracks(libraryAlbum) {
   const songs = libraryCache.getSongs();
   const res = await reconstructAlbumTracks(libraryAlbum, songs);
@@ -522,6 +527,9 @@ module.exports = {
   libraryIndexState,
   resolveLibraryArtists,
   getArtistDetail,
+  resolveArtistWiki,
+  resolveArtistWikiAsync,
+  getArtistWiki,
   rebuildAlbumTracks,
   handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,

@@ -2882,6 +2882,40 @@ html.mlib-has-hover .mlib-artist-card:hover .mlib-artist-art img {
   margin-bottom: 6px
 }
 
+/* 艺人简介：正文 + 极小的来源标注。拿不到简介时整块不渲染。 */
+.mlib-artist-hero-bio {
+  margin-top: 10px;
+  max-width: 62ch
+}
+
+.mlib-artist-bio-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: rgba(255, 255, 255, .38)
+}
+
+.mlib-artist-bio-link {
+  color: rgba(255, 255, 255, .52);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .22)
+}
+
+.mlib-artist-bio-link:hover {
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, .5)
+}
+
+.mlib-artist-bio-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.62;
+  color: rgba(255, 255, 255, .62)
+}
+
 /* 发行分区：沿用专辑墙的封面尺寸与文字规范 */
 .mlib-artist-section {
   margin-top: clamp(22px, 2.6vw, 34px)

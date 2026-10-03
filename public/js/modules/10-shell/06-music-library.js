@@ -570,6 +570,9 @@
       factsEl.textContent = facts.join(' · ');
       factsEl.hidden = facts.length === 0;
     }
+    // 简介（Wikipedia）：只有 status=ok 才显示，并带「来源: Wikipedia」小标注。
+    // 拿不到（无条目/消歧/网络不可达）就不显示该区块 —— 不编造。
+    renderArtistBio(data && data.wiki);
     if (!sectionsEl) return;
     var sec = (data && data.sections) || {};
     var SPEC = [
@@ -594,6 +597,40 @@
     }
   }
 
+  // 简介渲染：正文 + 极小的来源标注（可点进维基条目）
+  function renderArtistBio(wiki) {
+    var box = document.getElementById('mlib-artist-hero-bio');
+    var text = document.getElementById('mlib-artist-bio-text');
+    var link = document.getElementById('mlib-artist-bio-link');
+    if (!box || !text) return;
+    var extract = wiki && wiki.extract ? String(wiki.extract).trim() : '';
+    if (!extract) {
+      box.hidden = true;
+      text.textContent = '';
+      if (link) { link.hidden = true; link.removeAttribute('href'); }
+      return;
+    }
+    box.hidden = false;
+    text.textContent = extract;
+    if (link) {
+      if (wiki.url) { link.hidden = false; link.href = wiki.url; }
+      else { link.hidden = true; link.removeAttribute('href'); }
+    }
+  }
+
+  // 详情返回时通常还没有简介（首次要现取）。这里不改动已渲染的页面，
+  // 只在后台把结果补上；拿不到就什么都不做。
+  function fetchArtistBioIfMissing(artistId, name) {
+    var box = document.getElementById('mlib-artist-hero-bio');
+    if (box && !box.hidden) return;   // 已经有简介了
+    var seq = artistDetailState.seq;
+    apiJson('/api/apple/library/artist/wiki?id=' + encodeURIComponent(artistId)
+      + '&name=' + encodeURIComponent(name || '')).then(function (data) {
+      if (seq !== artistDetailState.seq) return;
+      if (data && data.wiki) renderArtistBio(data.wiki);
+    }).catch(function () { /* 维基不可达：保持不显示，不影响详情页 */ });
+  }
+
   function loadArtistDetail(artistId) {
     var seq = ++artistDetailState.seq;
     artistDetailState.loading = true;
@@ -607,6 +644,8 @@
         return;
       }
       renderArtistDetail(data);
+      // 首次进入时简介还没取到（详情端点为不阻塞返回），后台补齐
+      if (!data.wiki) fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name);
       // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，
       // scrollTop 被浏览器钳到 0；内容渲染回来后浏览器会恢复旧值，
       // 于是详情页在中途位置打开、看起来叠在导航上。这里补一次置顶。
@@ -660,6 +699,7 @@
 
   window.backToArtistList = function () {
     artistDetailState.seq += 1;   // 让在途请求失效，避免回来后覆盖列表
+    renderArtistBio(null);        // 清掉上一位艺人的简介，避免残留
     setArtistPane(false);
     var sc = document.getElementById('music-library-scroll');
     if (sc) sc.scrollTop = artistDetailState.listScrollTop || 0;
