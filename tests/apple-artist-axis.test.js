@@ -932,11 +932,19 @@ test('歌单详情：随机播放按钮只在歌单里显示且常驻可见', as
     assert.match(block, /M17\.5 9\.5 20 7l-2\.5-2\.5/, '上端箭头');
   });
 
-  await t11.test('质感与专辑悬浮按钮一致（玻璃圆钮）', () => {
+  await t11.test('浅色玻璃圆钮（歌单背景是亮青色，深色钮对比不足）', () => {
     const i = CSS.indexOf('.am-shuffle-btn {');
-    const block = CSS.slice(i, i + 900);
+    const block = CSS.slice(i, i + 950);
+    assert.match(block, /border-radius: 50%/, '圆形');
+    assert.match(block, /backdrop-filter/, '保留玻璃质感');
+    assert.match(block, /inset 0 1px 0 rgba\(255, 255, 255/, '内高光是浅色');
+    // 底色必须明亮、文字/图标必须深色 —— 否则在亮青色背景上又变回看不清
+    const bg = (block.match(/background:\s*rgba\(255, 255, 255, ([\d.]+)\)/) || [])[1];
+    assert.ok(bg && Number(bg) >= 0.7, '底色要是明亮的浅色玻璃（实际 ' + bg + '）');
+    assert.match(block, /color: #14161a/, '图标必须是深色，才能压在浅色底上');
+    // 圆形与玻璃质感都要与专辑悬浮按钮同源
     const play = CSS.slice(CSS.indexOf('.mlib-play-btn {'), CSS.indexOf('.mlib-play-btn {') + 900);
-    ['border-radius: 50%', 'backdrop-filter', 'inset 0 1px 0'].forEach(function (token) {
+    ['border-radius: 50%', 'backdrop-filter'].forEach(function (token) {
       assert.ok(block.indexOf(token) >= 0, '随机按钮要有 ' + token);
       assert.ok(play.indexOf(token) >= 0, '专辑悬浮按钮里确实有 ' + token + '（作为对照）');
     });

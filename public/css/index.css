@@ -2330,8 +2330,9 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   cursor: default
 }
 
-/* 随机播放：与专辑卡片悬浮按钮同一套玻璃质感，但**常驻可见**（不随 hover 显隐）。
-   圆形、无文字，图标为交叉双箭头。 */
+/* 随机播放：**浅色玻璃**圆钮。歌单背景是亮青色，深色玻璃钮在该背景上对比太弱，
+   所以反相为浅色玻璃 —— 与「播放歌单」按钮的亮色语言一致，但保留玻璃质感。
+   常驻可见，不随 hover 显隐。 */
 .am-shuffle-btn {
   flex: none;
   width: 44px;
@@ -2340,14 +2341,14 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, .18);
+  border: 1px solid rgba(255, 255, 255, .62);
   border-radius: 50%;
-  background: rgba(0, 0, 0, .38);
-  color: #fff;
+  background: rgba(255, 255, 255, .82);
+  color: #14161a;
   cursor: pointer;
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .18);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .26), inset 0 1px 0 rgba(255, 255, 255, .9);
   transition: background .18s, border-color .18s, box-shadow .18s, transform .16s
 }
 
@@ -2357,9 +2358,9 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 }
 
 .am-shuffle-btn:hover {
-  background: rgba(0, 0, 0, .52);
-  border-color: rgba(255, 255, 255, .30);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 255, 255, .24);
+  background: rgba(255, 255, 255, .96);
+  border-color: rgba(255, 255, 255, .85);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .95);
   transform: translateY(-1px)
 }
 
@@ -2368,12 +2369,12 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 }
 
 .am-shuffle-btn:focus-visible {
-  outline: 2px solid rgba(0, 245, 212, .65);
+  outline: 2px solid rgba(20, 22, 26, .55);
   outline-offset: 2px
 }
 
 .am-shuffle-btn:disabled {
-  opacity: .5;
+  opacity: .55;
   cursor: default;
   transform: none
 }
