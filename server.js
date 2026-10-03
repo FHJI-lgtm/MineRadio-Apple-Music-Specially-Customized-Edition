@@ -5447,6 +5447,7 @@ const server = http.createServer(async (req, res) => {
         return {
           artistId: aid,
           name: catalogName || fallback || '(未解析艺人)',
+          bucket: artistBucket(catalogName || fallback || ''),
           nameSource: catalogName ? 'catalog' : (fallback ? 'credit' : 'none'),
           image: (detail && detail.image) || '',
           imageRule: (detail && detail.imageRule) || '',
@@ -5460,10 +5461,26 @@ const server = http.createServer(async (req, res) => {
           albums: albumNames,
         };
       });
+      // 排序：A–Z（中文按拼音），数字与特殊符号开头的归到"其他"并垫底。
+      // 分类用 Unicode 属性判断，避免自造字符表。
+      function artistBucket(name) {
+        const s2 = String(name || '').trim();
+        if (!s2) return 2;                       // 空名也归"其他"
+        if (/^[0-9]/.test(s2)) return 1;         // 数字开头
+        if (/^[\p{L}]/u.test(s2)) return 0;      // 字母（含中日韩汉字）开头 -> A–Z
+        return 1;                                 // 其余（符号、表情、带圈数字等）
+      }
+      // 中文用拼音排序：'zh' 区域设置会让汉字按拼音比较，而不是按码点。
+      const nameCollator = new Intl.Collator(['zh-Hans-CN', 'en'], { numeric: true, sensitivity: 'base' });
       artists.sort(function (a, b) {
+        const ba = artistBucket(a.name);
+        const bb = artistBucket(b.name);
+        if (ba !== bb) return ba - bb;           // 先按分组，其他永远在最后
+        const byName = nameCollator.compare(String(a.name || ''), String(b.name || ''));
+        if (byName !== 0) return byName;
+        // 同名时用别的字段保证稳定顺序
         if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
-        if (b.songCount !== a.songCount) return b.songCount - a.songCount;
-        return a.name.localeCompare(b.name);
+        return String(a.artistId || '').localeCompare(String(b.artistId || ''));
       });
 
       // 待解析项：保留但不冒充艺人身份

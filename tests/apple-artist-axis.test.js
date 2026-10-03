@@ -597,3 +597,44 @@ test('艺人简介：来源标注必须如实反映数据源', async (t5) => {
     assert.ok(MOD.indexOf("wiki.source || 'Wikipedia'") >= 0, 'UI 要按实际来源标注');
   });
 });
+;
+// ============================================================
+// 艺人列表排序：A–Z，数字/符号归"其他"垫底
+// ============================================================
+test('艺人列表排序：A–Z + 其他垫底（中文按拼音）', async (t6) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t6.test('第一排序键是名称，不是数量', () => {
+    const i = SERVER.indexOf('artists.sort(function (a, b) {');
+    const block = SERVER.slice(i, i + 1100);
+    // 名称比较必须出现在数量兜底之前
+    const nameAt = block.indexOf('nameCollator.compare');
+    const albumAt = block.indexOf('b.albumCount - a.albumCount');
+    assert.ok(nameAt > 0, '必须按名称比较');
+    assert.ok(albumAt < 0 || nameAt < albumAt, '名称必须先于数量；数量只能做同名兜底');
+  });
+
+  await t6.test('中文按拼音：使用 zh 区域设置而不是码点比较', () => {
+    const i = SERVER.indexOf('const nameCollator');
+    const line = SERVER.slice(i, i + 200);
+    assert.match(line, /zh/, '必须带 zh 区域设置（拼音），否则汉字会按码点乱序');
+    assert.match(line, /Intl\.Collator/, '用 Intl.Collator');
+  });
+
+  await t6.test('数字/符号开头归"其他"并垫底', () => {
+    const i = SERVER.indexOf('function artistBucket');
+    const fn = SERVER.slice(i, i + 700);
+    assert.match(fn, /\^\[0-9\]/, '数字开头要单独归类');
+    assert.match(fn, /\^\[\\p\{L\}\]\/u/, '字母/汉字归 A–Z 分组');
+    const sortBlock = SERVER.slice(SERVER.indexOf('artists.sort(function (a, b) {'), SERVER.indexOf('artists.sort(function (a, b) {') + 1100);
+    assert.match(sortBlock, /ba - bb/, '先按分组排序（其他垫底）');
+  });
+
+  await t6.test('"其他"分组要有可见分界', () => {
+    assert.match(MOD, /mlib-artist-divider/, '列表里要有分界，否则末尾像排序坏了');
+    const CSS = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'css', 'index.css'), 'utf8');
+    assert.match(CSS, /\.mlib-artist-divider[\s\S]{0,120}grid-column: 1 \/ -1/, '分界要跨整行');
+  });
+});

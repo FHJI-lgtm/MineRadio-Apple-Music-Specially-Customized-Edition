@@ -2733,6 +2733,15 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   --mlib-cols: 6
 }
 
+/* "其他"分组（数字/符号开头）的分界：跨整行，避免末尾条目看起来像排序坏了 */
+.mlib-artist-divider {
+  grid-column: 1 / -1;
+  margin: 6px 0 2px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: rgba(255, 255, 255, .42)
+}
+
 /* 艺人头像：统一圆形裁切。拿不到「艺人代表图像」时用名称首字母占位，
    绝不用专辑封面冒充（专辑封面在 .mlib-art 里是方的，这里强制成圆）。 */
 .mlib-artist-art {

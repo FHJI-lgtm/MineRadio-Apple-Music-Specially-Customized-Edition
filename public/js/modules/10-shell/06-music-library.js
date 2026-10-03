@@ -469,7 +469,17 @@
       artistsState.loading = false;
       var list = (data && Array.isArray(data.artists)) ? data.artists : [];
       if (grid) {
-        grid.innerHTML = list.map(artistCardHtml).join('');
+        // 在"其他"分组（数字/符号开头）之前插入分界，否则列表末尾的乱序感会被当成 bug。
+        var parts = [];
+        var insertedDivider = false;
+        list.forEach(function (a) {
+          if (!insertedDivider && Number(a.bucket) === 1) {
+            insertedDivider = true;
+            parts.push('<div class="mlib-artist-divider" role="separator">其他</div>');
+          }
+          parts.push(artistCardHtml(a));
+        });
+        grid.innerHTML = parts.join('');
         Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
         grid.setAttribute('aria-busy', 'false');
       }
