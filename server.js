@@ -5567,12 +5567,15 @@ const server = http.createServer(async (req, res) => {
         });
       });
 
+      // 发行分类：只能靠本地专辑名后缀判定，且只区分 Single / EP。
+      // 其余一律是"专辑"。**不再单列 LP 再落到 unknown** —— 实测库里 549 张专辑
+      // 没有一张带 " - LP" 后缀，那条规则永远不会命中，只会让"专辑"被拆成两个分区。
+      // 也不按曲目数推断：只有一首歌不等于 Single。
       function classifyRelease(name) {
         const nm = String(name || '');
         if (/\s-\sSingle\s*$/i.test(nm)) return 'single';
         if (/\s-\sEP\s*$/i.test(nm)) return 'ep';
-        if (/\s-\sLP\s*$/i.test(nm)) return 'album';
-        return 'unknown';
+        return 'album';
       }
 
       const releases = order.map(function (key) {
@@ -5591,12 +5594,13 @@ const server = http.createServer(async (req, res) => {
           songs: g.songs,
         };
       });
-      // 分区打包：专辑 / Single / EP / 其他发行 —— 不强行归类
+      // 分区打包：专辑 / Single / EP。unknown 保留为空数组，
+      // 维持既有响应形状（旧调用方不必改），不再产生条目。
       const sections = {
         album: releases.filter(function (r) { return r.type === 'album'; }),
         single: releases.filter(function (r) { return r.type === 'single'; }),
         ep: releases.filter(function (r) { return r.type === 'ep'; }),
-        unknown: releases.filter(function (r) { return r.type === 'unknown'; }),
+        unknown: [],
       };
 
       const detail = typeof getArtistDetail === 'function' ? getArtistDetail(artistId) : null;

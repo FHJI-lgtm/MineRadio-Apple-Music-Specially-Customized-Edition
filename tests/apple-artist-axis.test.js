@@ -673,3 +673,40 @@ test('艺人详情发行卡片：悬浮播放按钮与专辑/歌单一致', asyn
     assert.match(block, /data-mlib-play-release/, '键盘路径也要让开播放按钮');
   });
 });
+;
+// ============================================================
+// 发行分区：只分 Single / EP，其余都是专辑
+// ============================================================
+test('艺人详情发行分区：只分 Single / EP，其余归专辑', async (t8) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t8.test('分类只产出 single / ep / album，不再有 unknown', () => {
+    const i = SERVER.indexOf('function classifyRelease');
+    const fn = SERVER.slice(i, i + 700);
+    assert.match(fn, /return 'single'/, 'Single 后缀规则');
+    assert.match(fn, /return 'ep'/, 'EP 后缀规则');
+    assert.match(fn, /return 'album'/, '其余一律是专辑');
+    assert.ok(!/return 'unknown'/.test(fn), '不能再把不可判定的丢进 unknown');
+    assert.ok(!/\s-\sLP/.test(fn), 'LP 规则永远不命中，已移除');
+  });
+
+  await t8.test('不按曲目数推断 Single', () => {
+    const i = SERVER.indexOf('function classifyRelease');
+    const fn = SERVER.slice(i, i + 700);
+    assert.ok(!/songCount/.test(fn), '只有一首歌不等于 Single');
+  });
+
+  await t8.test('前端只有一个「专辑」分区标题（不会渲染出两个同名分区）', () => {
+    const i = MOD.indexOf('var SPEC = [');
+    const spec = MOD.slice(i, MOD.indexOf('];', i));
+    const albumTitles = (spec.match(/title: '专辑'/g) || []).length;
+    assert.equal(albumTitles, 1, '「专辑」标题只能有一个');
+    assert.ok(spec.indexOf('unknown') < 0, '前端不再渲染 unknown 分区');
+  });
+
+  await t8.test('响应形状保持兼容（unknown 仍存在但恒为空）', () => {
+    assert.match(SERVER, /unknown: \[\]/, '保留 unknown 键以兼容旧调用方，但不再产生条目');
+  });
+});

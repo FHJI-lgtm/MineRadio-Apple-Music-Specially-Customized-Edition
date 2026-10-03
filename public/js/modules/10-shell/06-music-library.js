@@ -594,7 +594,6 @@
       { key: 'album', title: '专辑' },
       { key: 'single', title: 'Single' },
       { key: 'ep', title: 'EP' },
-      { key: 'unknown', title: '其他发行' },
     ];
     var html = '';
     SPEC.forEach(function (s2) {
