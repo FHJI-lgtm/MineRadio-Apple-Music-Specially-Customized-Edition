@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.0 — Apple Music 版
+
+- 新增：音乐资料库页面（Apple Music 资料库：歌单 / 艺人 / 专辑 / 喜爱歌曲），与原有「音乐库」入口并存。
+- 新增：歌单详情支持 **播放歌单** 与 **随机播放**（驱动 Apple Music 歌单页自己的随机播放按钮，用 ToggleState + SMTC 双重确认）。
+- 新增：所有播放路径（单曲 / 专辑 / 歌单 / 随机播放）播放后自动最小化 Apple Music。
+- 新增：Apple Music 隐身模式（Alpha=1 + 鼠标穿透 + 看门狗 + 播放门控），默认开启。
+- 修复：随机播放报「IPC 错误」（新增函数缺少 fs 绑定）。
+- 修复：安装版点播放报 NO_JSON（打包白名单漏掉冻结链目录）。
+- 打包：安装包不包含任何开发期实验记录。
+
 ## v2.0.0-beta.1
 
 - 新增 Apple Music 隐身模式（Alpha=1 + WS_EX_LAYERED + WS_EX_TRANSPARENT）：窗口视觉隐藏的同时保留 UIA 控制与播放能力。
