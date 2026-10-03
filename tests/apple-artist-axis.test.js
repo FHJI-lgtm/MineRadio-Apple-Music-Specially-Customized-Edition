@@ -773,3 +773,104 @@ test('艺人头像：Apple 判据优先，国内源头像兜底', async (t9) => 
     assert.ok(!/artwork|album|cover/i.test(line), '不得用作品封面字段当头像');
   });
 });
+;
+// ============================================================
+// Apple 歌单曲目：必须取全，不能只取第一页
+// ============================================================
+test('Apple 歌单曲目：分页取全（不再只有 100 首）', async (t10) => {
+  const READS = require(path.join(APP_ROOT, 'desktop', 'apple-music-web-reads-api.js'));
+  const ALL = READS.handleApplePlaylistTracksAllWeb;
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  function makeFakePage(totalCount, pageLimit) {
+    const calls = [];
+    const fn = function (id, opts) {
+      const limit = Number(opts && opts.limit) || pageLimit;
+      const offset = Number(opts && opts.offset) || 0;
+      calls.push({ offset: offset, limit: limit });
+      const end = Math.min(totalCount, offset + limit);
+      const tracks = [];
+      for (let i = offset; i < end; i += 1) tracks.push({ index: i, name: 'T' + i });
+      return Promise.resolve({
+        ok: true, provider: 'apple', tracks: tracks, total: totalCount,
+        offset: offset, limit: limit, nextOffset: end, hasMore: end < totalCount, error: '',
+      });
+    };
+    return { fn: fn, calls: calls };
+  }
+
+  await t10.test('370 首会分页取满，而不是停在 100', async () => {
+    const fake = makeFakePage(370, READS.APPLE_PLAYLIST_PAGE_LIMIT);
+    const res = await ALL('p1', { fetchPage: fake.fn });
+    assert.equal(res.tracks.length, 370, '必须取满 370 首');
+    assert.equal(res.total, 370);
+    assert.equal(res.pages, 4, '370 / 100 应为 4 页');
+    assert.equal(res.truncated, false);
+    assert.equal(res.error, '');
+    // 页与页之间不能重叠或漏项
+    assert.deepEqual(res.tracks.map(function (x) { return x.index; }),
+      Array.from({ length: 370 }, function (_, i) { return i; }), '顺序与索引必须连续无重复');
+  });
+
+  await t10.test('页码推进正确（offset 逐页递增）', async () => {
+    const fake = makeFakePage(250, READS.APPLE_PLAYLIST_PAGE_LIMIT);
+    await ALL('p2', { fetchPage: fake.fn });
+    assert.deepEqual(fake.calls.map(function (c) { return c.offset; }), [0, 100, 200]);
+  });
+
+  await t10.test('正好整除时不多取一页', async () => {
+    const fake = makeFakePage(300, READS.APPLE_PLAYLIST_PAGE_LIMIT);
+    const res = await ALL('p3', { fetchPage: fake.fn });
+    assert.equal(res.tracks.length, 300);
+    assert.equal(fake.calls.length, 3, '300 首正好 3 页，不该发第 4 次请求');
+  });
+
+  await t10.test('空歌单不发第二次请求', async () => {
+    const fake = makeFakePage(0, READS.APPLE_PLAYLIST_PAGE_LIMIT);
+    const res = await ALL('p4', { fetchPage: fake.fn });
+    assert.equal(res.tracks.length, 0);
+    assert.equal(fake.calls.length, 1);
+  });
+
+  await t10.test('有安全上限并标记 truncated，而不是无界循环', async () => {
+    const fake = makeFakePage(999999, READS.APPLE_PLAYLIST_PAGE_LIMIT);
+    const res = await ALL('p5', { fetchPage: fake.fn, maxTotal: 250 });
+    assert.equal(res.tracks.length, 250);
+    assert.equal(res.truncated, true, '被上限截断必须如实标记');
+    assert.ok(fake.calls.length <= 40, '必须有页数上限，避免无界循环');
+  });
+
+  await t10.test('单页报错时如实带出错误，不假装取全了', async () => {
+    let n = 0;
+    const res = await ALL('p6', {
+      fetchPage: function (id, opts) {
+        n += 1;
+        if (n === 1) {
+          return Promise.resolve({ tracks: [{ index: 0 }], total: 370, nextOffset: 100, hasMore: true, error: '' });
+        }
+        return Promise.resolve({ tracks: [], total: 370, error: 'PLAYLIST_PAGE_FAILED', message: 'boom' });
+      },
+    });
+    assert.equal(res.error, 'PLAYLIST_PAGE_FAILED', '错误必须冒出来');
+    assert.equal(res.tracks.length, 1, '已取到的部分要保留');
+  });
+
+  await t10.test('游标不前进时中止，避免死循环', async () => {
+    let n = 0;
+    const res = await ALL('p7', {
+      fetchPage: function () {
+        n += 1;
+        return Promise.resolve({ tracks: [{ index: 0 }], total: 370, nextOffset: 0, hasMore: true, error: '' });
+      },
+    });
+    assert.ok(n <= 3, '游标不前进必须尽快中止（实际请求 ' + n + ' 次）');
+  });
+
+  await t10.test('前端必须用 all=1，服务端必须提供该分支', () => {
+    assert.match(MOD, /playlist\/tracks\?id=[\s\S]{0,80}all=1/, '详情页要请求全部曲目');
+    assert.ok(!/playlist\/tracks\?id=[\s\S]{0,80}limit=100/.test(MOD), '不得再写死 limit=100');
+    assert.match(SERVER, /searchParams\.get\('all'\) === '1'/, '服务端要有 all=1 分支');
+  });
+});

@@ -194,6 +194,62 @@ async function handleApplePlaylistTracksWeb(playlistId, opts) {
     message: '',
   };
 }
+// 取**整个歌单**的曲目：按 nextOffset 逐页拉取，直到 hasMore 为假。
+//
+// 为什么需要它：单页上限是 100（Apple 侧的分页上限），只取一页会让 370 首的歌单
+// 显示成 100 首。既有 handler 只负责一页，分页收敛放在这里，保持单页语义不变。
+const APPLE_PLAYLIST_ALL_MAX = 2000;   // 安全上限，避免异常 next 导致无界循环
+const APPLE_PLAYLIST_ALL_MAX_PAGES = 40;
+
+async function handleApplePlaylistTracksAllWeb(playlistId, options) {
+  const opts = options || {};
+  const maxTotal = Math.max(1, Math.min(APPLE_PLAYLIST_ALL_MAX, Number(opts.maxTotal) || APPLE_PLAYLIST_ALL_MAX));
+  // 允许注入单页读取实现：分页收敛逻辑因此可以脱离网络被测试
+  const fetchPage = (typeof opts.fetchPage === 'function') ? opts.fetchPage : handleApplePlaylistTracksWeb;
+  const all = [];
+  let offset = 0;
+  let total = 0;
+  let pages = 0;
+  let error = '';
+  let message = '';
+  while (all.length < maxTotal && pages < APPLE_PLAYLIST_ALL_MAX_PAGES) {
+    let page = null;
+    try {
+      page = await fetchPage(playlistId, { limit: APPLE_PLAYLIST_PAGE_LIMIT, offset });
+    } catch (err) {
+      page = null;
+      error = 'PLAYLIST_PAGE_THREW';
+      message = String((err && err.message) || err);
+      break;
+    }
+    pages += 1;
+    if (!page) { error = 'PLAYLIST_PAGE_NULL'; break; }
+    if (page.error) { error = page.error; message = page.message || ''; break; }
+    const got = Array.isArray(page.tracks) ? page.tracks : [];
+    total = Number(page.total) || total;
+    if (!got.length) break;                       // 没有更多了
+    got.forEach(function (t) { all.push(t); });
+    if (!page.hasMore) break;
+    if (Number(page.nextOffset) <= offset) break;  // 游标没前进 -> 防死循环
+    offset = Number(page.nextOffset);
+    await new Promise(function (res) { setTimeout(res, 80); });
+  }
+  return {
+    provider: 'apple',
+    playlistId: String(playlistId || ''),
+    tracks: all.slice(0, maxTotal),
+    total: Math.max(total, all.length),
+    offset: 0,
+    limit: all.length,
+    nextOffset: all.length,
+    truncated: all.length >= maxTotal,
+    pages: pages,
+    source: 'web',
+    error: error,
+    message: message,
+  };
+}
+
 // ---- Apple account status (WEB axis only) ------------------------------------------------------------
 // The Developer account axis (Team ID / Key ID / P8 -> JWT -> /v1/me/*) is retired: the Apple account IS
 // the web account (media-user-token). This reports that state and nothing else - no credential file, no JWT,
@@ -543,5 +599,7 @@ module.exports = {
   handleAppleAccountStatusWeb,
   handleAppleUserPlaylistsWeb,
   handleApplePlaylistTracksWeb,
+  handleApplePlaylistTracksAllWeb,
+  APPLE_PLAYLIST_PAGE_LIMIT,
   handleAppleAlbumDetailWeb,
 };

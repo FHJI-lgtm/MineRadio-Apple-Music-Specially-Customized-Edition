@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, handleApplePlaylistTracksAllWeb, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5348,6 +5348,11 @@ const server = http.createServer(async (req, res) => {
   if (pn === '/api/apple/playlist/tracks') {
     try {
       const id = url.searchParams.get('id') || url.searchParams.get('playlistId') || '';
+      // all=1：取整个歌单（逐页收敛）。单页上限 100，只看一页会把 370 首显示成 100 首。
+      if (url.searchParams.get('all') === '1') {
+        sendJSON(res, await handleApplePlaylistTracksAllWeb(id, { maxTotal: 2000 }));
+        return;
+      }
       const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '48', 10) || 48));
       const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
       sendJSON(res, await handleApplePlaylistTracksWeb(id, { limit, offset }));

@@ -695,10 +695,13 @@
       plState.status = 'error';
       if (wrap) { wrap.innerHTML = '<div class="am-album-empty">' + esc(message) + '</div>'; wrap.setAttribute('aria-busy', 'false'); }
     };
-    apiJson('/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&limit=100').then(function (data) {
+    // all=1：取整个歌单。单页上限 100，只取一页会让 370 首的歌单显示成 100 首。
+    apiJson('/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1').then(function (data) {
       if (seq !== plSeq) return;
       var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
       if (data && data.error && !tracks.length) { fail(data.message || ('接口返回 ' + data.error)); return; }
+      // 链路自己报了截断才提示，不静默丢歌
+      if (data && data.truncated) plSetStatus('这个歌单曲目较多，已显示前 ' + tracks.length + ' 首', 'warn');
       done(tracks);
     }).catch(function (err) {
       fail('读取歌单曲目失败：' + ((err && err.message) || '未知错误'));
