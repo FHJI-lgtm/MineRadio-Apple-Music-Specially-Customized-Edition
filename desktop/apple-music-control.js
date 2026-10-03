@@ -676,6 +676,7 @@ async function playPlaylistShuffled(payload = {}, opts = {}) {
   } catch (e) { return { ok: false, verified: false, stage: 'TMP_WRITE_FAILED', error: e.message, name }; }
   const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
     '-NameFile', nameFile, '-ScopeFile', scopeFile, '-ShuffleLabelFile', labelFile, '-OutFile', outFile];
+  if (payload.noMinimize) args.push('-NoMinimize');
   const powershell = opts.powershell || 'powershell.exe';
   const result = await new Promise((resolve) => {
     let out = '', err = '', child;

@@ -1,7 +1,7 @@
 # Shuffle-play a LIBRARY playlist: navigate to the playlist page, then invoke the PAGE shuffle button
 # (AutomationId=ShuffleButton WITH InvokePattern; the transport-bar one shares the id but is Toggle).
 # Non-frozen POC wrapper. No coordinates: semantic InvokePattern only. One invoke per run.
-param([string]$NameFile, [string]$ScopeFile, [string]$ShuffleLabelFile, [string]$OutFile)
+param([string]$NameFile, [string]$ScopeFile, [string]$ShuffleLabelFile, [string]$OutFile, [switch]$NoMinimize)
 $ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 function RT([string]$p) { return ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)).Trim() }
@@ -73,7 +73,10 @@ if (-not $pick) { $o.stage = 'AMBIGUOUS_CARD' } else {
     $o.steps.invoke = @{ name = $b.name; rect = ('' + [int]$b.rect.Left + ',' + [int]$b.rect.Top + ' ' + [int]$b.rect.Width + 'x' + [int]$b.rect.Height); calls = 1 }
     try { $b.pattern.Invoke(); $o.ok = $true } catch { $o.stage = 'INVOKE_THREW'; $o.error = [string]$_.Exception.Message }
     Start-Sleep -Seconds 4
+    # Read the toggle state BEFORE minimizing: a minimized window exposes almost no UIA tree.
     $o.steps.shuffleAfter = (Get-TransportShuffleState (Get-AmRoot $app.hwnd).root)
+    # Same post-click hide the verified playlist/song chains perform (frozen Hide-AmAfterClick).
+    $o.steps.minimizedAfterClick = (Hide-AmAfterClick $app.hwnd -NoMinimize:$NoMinimize)
     $s1 = Get-AmSmtcState
     $o.steps.smtcAfter = @{ status = [string]$s1.status; title = [string]$s1.title; artist = [string]$s1.artist }
     $o.shuffleModeConfirmed = ([string]$o.steps.shuffleBefore -eq 'Off' -and [string]$o.steps.shuffleAfter -eq 'On')
