@@ -638,3 +638,38 @@ test('艺人列表排序：A–Z + 其他垫底（中文按拼音）', async (t6
     assert.match(CSS, /\.mlib-artist-divider[\s\S]{0,120}grid-column: 1 \/ -1/, '分界要跨整行');
   });
 });
+;
+// ============================================================
+// 艺人详情：发行卡片也要有悬浮播放按钮
+// ============================================================
+test('艺人详情发行卡片：悬浮播放按钮与专辑/歌单一致', async (t7) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t7.test('发行卡片渲染播放按钮（复用同一套类名）', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderReleaseCard'), MOD.indexOf('function renderArtistDetail'));
+    assert.match(fn, /mlib-play-btn/, '必须用与专辑/歌单相同的按钮类名');
+    assert.match(fn, /data-mlib-play-release/, '要有独立标识，避免与卡片跳转混淆');
+    assert.match(fn, /playGlyphSvg\(\)/, '复用同一套图标');
+  });
+
+  await t7.test('只有能确定资料库专辑时才给按钮（不发明播放行为）', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderReleaseCard'), MOD.indexOf('function renderArtistDetail'));
+    assert.match(fn, /canOpen \?/, '按钮与 canOpen 绑定');
+  });
+
+  await t7.test('点击播放按钮走既有播放入口，且不触发卡片跳转', () => {
+    const i = MOD.indexOf("sections.addEventListener('click'");
+    const block = MOD.slice(i, i + 900);
+    assert.match(block, /data-mlib-play-release/, '要识别播放按钮');
+    assert.match(block, /playLibraryAlbum/, '复用既有播放入口');
+    assert.match(block, /stopPropagation/, '播放与跳转必须互斥');
+    assert.match(block, /\}, true\)/, '必须在捕获阶段，才能先于卡片主体处理');
+  });
+
+  await t7.test('键盘操作不抢播放按钮的语义', () => {
+    const i = MOD.indexOf("sections.addEventListener('keydown'");
+    const block = MOD.slice(i, i + 500);
+    assert.match(block, /data-mlib-play-release/, '键盘路径也要让开播放按钮');
+  });
+});

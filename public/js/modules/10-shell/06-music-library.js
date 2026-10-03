@@ -533,7 +533,12 @@
     return '<article class="mlib-album-card' + (canOpen ? ' is-openable' : '') + '" role="listitem"' +
       (canOpen ? ' tabindex="0" data-mlib-release-album="' + escHtml(release.libraryAlbumId) + '"' +
         ' aria-label="打开专辑：' + escHtml(name) + '"' : ' aria-label="' + escHtml(name) + '"') + '>' +
-      '<div class="mlib-art' + (cover ? '' : ' is-loaded') + '">' + img + '</div>' +
+      '<div class="mlib-art' + (cover ? '' : ' is-loaded') + '">' + img +
+      // 悬浮播放按钮：与专辑卡片/歌单卡片同一套类名与悬停规则。
+      // 只有能确定是哪张资料库专辑时才给按钮（否则不知道要播什么，不发明行为）。
+      (canOpen ? '<button class="mlib-play-btn" type="button" data-mlib-play-release="1"' +
+        ' title="播放专辑" aria-label="播放专辑：' + escHtml(name) + '">' + playGlyphSvg() + '</button>' : '') +
+      '</div>' +
       '<div class="mlib-album-meta">' +
       '<div class="mlib-album-name" title="' + escHtml(name) + '">' + escHtml(name) + '</div>' +
       '<div class="mlib-album-sub">' + escHtml(sub.join(' · ')) + '</div>' +
@@ -903,15 +908,26 @@
     var sections = document.getElementById('mlib-artist-sections');
     if (sections && sections.dataset.mlibReleaseBound !== '1') {
       sections.dataset.mlibReleaseBound = '1';
+      // 挂在捕获阶段：播放按钮与"点卡片主体进详情"是两个动作，不能一次点击同时触发。
       sections.addEventListener('click', function (event) {
-        var card = event.target && event.target.closest ? event.target.closest('[data-mlib-release-album]') : null;
+        var target = event.target;
+        if (!target || !target.closest) return;
+        if (target.closest('[data-mlib-play-release]')) {
+          event.preventDefault();
+          event.stopPropagation();
+          var pid = target.closest('[data-mlib-release-album]');
+          var palbum = pid ? albumPayloads[String(pid.getAttribute('data-mlib-release-album') || '')] : null;
+          if (palbum) playLibraryAlbum(palbum);
+          return;
+        }
+        var card = target.closest('[data-mlib-release-album]');
         if (!card) return;
-        var id = card.getAttribute('data-mlib-release-album');
-        var album = albumPayloads[String(id || '')];
+        var album = albumPayloads[String(card.getAttribute('data-mlib-release-album') || '')];
         if (album && typeof window.openAmAlbumDetail === 'function') window.openAmAlbumDetail(album);
-      });
+      }, true);
       sections.addEventListener('keydown', function (event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.target && event.target.closest && event.target.closest('[data-mlib-play-release]')) return;
         var card = event.target && event.target.closest ? event.target.closest('[data-mlib-release-album]') : null;
         if (!card) return;
         event.preventDefault();
