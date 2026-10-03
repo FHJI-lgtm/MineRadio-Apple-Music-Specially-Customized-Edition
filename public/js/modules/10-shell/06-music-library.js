@@ -592,38 +592,65 @@
         list.map(renderReleaseCard).join('') + '</div></section>';
     });
     sectionsEl.innerHTML = html;
+    // 关键：封面默认 opacity:0，只有挂上 is-loaded 才显示（与专辑墙同一套机制）。
+    // #mlib-artist-sections 之前没有绑定，所以图片其实加载成功却一直是透明的。
+    Array.prototype.forEach.call(sectionsEl.querySelectorAll('.mlib-art img'), bindCover);
     if (!html) {
       sectionsEl.innerHTML = '<div class="am-album-empty">这个艺人在你的资料库里没有可展示的发行。</div>';
     }
   }
 
-  // 简介渲染：正文 + 极小的来源标注（可点进维基条目）
+  // 简介渲染：正文 + 极小的来源标注（可点进维基条目）。
+  // 长简介默认收起为若干行，避免顶部信息区挤占下方作品主体；只有真的溢出才给展开按钮。
   function renderArtistBio(wiki) {
     var box = document.getElementById('mlib-artist-hero-bio');
     var text = document.getElementById('mlib-artist-bio-text');
     var link = document.getElementById('mlib-artist-bio-link');
+    var toggle = document.getElementById('mlib-artist-bio-toggle');
     if (!box || !text) return;
     var extract = wiki && wiki.extract ? String(wiki.extract).trim() : '';
     if (!extract) {
       box.hidden = true;
       text.textContent = '';
+      text.classList.remove('is-expanded');
+      if (toggle) { toggle.hidden = true; toggle.textContent = '展开'; }
       if (link) { link.hidden = true; link.removeAttribute('href'); }
       return;
     }
     box.hidden = false;
     text.textContent = extract;
+    text.classList.remove('is-expanded');
     if (link) {
       if (wiki.url) { link.hidden = false; link.href = wiki.url; }
       else { link.hidden = true; link.removeAttribute('href'); }
     }
+    // 收起态下若没有溢出，则不显示按钮（避免无意义的"展开"）
+    if (toggle) {
+      toggle.textContent = '展开';
+      toggle.hidden = true;
+      requestAnimationFrame(function () {
+        if (box.hidden) return;
+        if (text.scrollHeight - text.clientHeight > 2) toggle.hidden = false;
+      });
+    }
   }
+
+  // 展开/收起简介
+  window.toggleArtistBio = function () {
+    var text = document.getElementById('mlib-artist-bio-text');
+    var toggle = document.getElementById('mlib-artist-bio-toggle');
+    if (!text) return;
+    var expanded = text.classList.toggle('is-expanded');
+    if (toggle) toggle.textContent = expanded ? '收起' : '展开';
+  };
 
   // 详情返回时通常还没有简介（首次要现取）。这里不改动已渲染的页面，
   // 只在后台把结果补上；拿不到就什么都不做。
-  function fetchArtistBioIfMissing(artistId, name) {
-    var box = document.getElementById('mlib-artist-hero-bio');
-    if (box && !box.hidden) return;   // 已经有简介了
+  function fetchArtistBioIfMissing(artistId, name, currentLang) {
     var seq = artistDetailState.seq;
+    // 已有简介且已经是中文 -> 不用再取；
+    // 已有英文简介时仍试一次（中文条目可能通过搜索映射拿到，实测 Abel Tesfaye -> 威肯）。
+    if (currentLang === 'zh') return;
     apiJson('/api/apple/library/artist/wiki?id=' + encodeURIComponent(artistId)
       + '&name=' + encodeURIComponent(name || '')).then(function (data) {
       if (seq !== artistDetailState.seq) return;
@@ -645,7 +672,7 @@
       }
       renderArtistDetail(data);
       // 首次进入时简介还没取到（详情端点为不阻塞返回），后台补齐
-      if (!data.wiki) fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name);
+      fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name, data.wikiLang || (data.wiki && data.wiki.lang));
       // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，
       // scrollTop 被浏览器钳到 0；内容渲染回来后浏览器会恢复旧值，
       // 于是详情页在中途位置打开、看起来叠在导航上。这里补一次置顶。
@@ -699,7 +726,7 @@
 
   window.backToArtistList = function () {
     artistDetailState.seq += 1;   // 让在途请求失效，避免回来后覆盖列表
-    renderArtistBio(null);        // 清掉上一位艺人的简介，避免残留
+    renderArtistBio(null);        // 清掉上一位艺人的简介，避免残留（含展开态）
     setArtistPane(false);
     var sc = document.getElementById('music-library-scroll');
     if (sc) sc.scrollTop = artistDetailState.listScrollTop || 0;

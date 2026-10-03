@@ -805,6 +805,10 @@ function createAppleMusicLibraryCacheService(options) {
   //     所以任何失败都不得影响详情页，只记 negative 缓存。
   // ------------------------------------------------------------
   const WIKI_TIMEOUT_MS = 6000;
+  // 简介的**选择策略**版本。策略变化（例如改为中文优先）时必须递增：
+  // 旧策略写下的记录会被判为陈旧并重新获取，否则会一直显示旧语言的结果。
+  // 只影响 wiki 条目，不触碰 song/artist 缓存。
+  const WIKI_POLICY = 2;
   const WIKI_FACT_KEYS = ['wikimedia', 'wikipedia', 'Wikimedia', 'Wikipedia'];
 
   function hasCjk(s) {
@@ -999,6 +1003,27 @@ function createAppleMusicLibraryCacheService(options) {
     });
   }
 
+  // 用中文维基的搜索把英文名映射到中文条目名（实测 "Abel Tesfaye" -> "威肯"）。
+  // 只取候选标题，最终仍走 summary + 同一套消歧校验 —— 绝不因为"搜到了"就直接采用。
+  // 返回**多个**候选标题：搜索排第一的未必可取（实测 "Abel Tesfaye" 的首个候选
+  // 是「錯愛」这类同名作品，取到 404），所以由调用方逐个尝试。
+  async function searchZhTitles(query) {
+    const url = 'https://zh.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1'
+      + '&srlimit=5&srsearch=' + encodeURIComponent(query);
+    const res = await httpGetJson(url, WIKI_TIMEOUT_MS, 2);
+    if (!res || res.status !== 200 || !res.json) return [];
+    const hits = (res.json.query && res.json.query.search) || [];
+    const out = [];
+    for (let i = 0; i < hits.length; i += 1) {
+      const t = normalizeText(hits[i] && hits[i].title);
+      if (!t) continue;
+      // 跳过明显不是艺人的条目类型
+      if (/(專輯|专辑|歌曲|單曲|单曲|列表|年表|电影|電視劇|电视剧|巡迴演唱會|巡回演唱会)$/.test(t)) continue;
+      if (out.indexOf(t) < 0) out.push(t);
+    }
+    return out;
+  }
+
   async function fetchWikiSummary(title, lang) {
     const url = 'https://' + lang + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title)
       + '?redirect=true';
@@ -1018,23 +1043,70 @@ function createAppleMusicLibraryCacheService(options) {
     const title = normalizeText(name);
     if (!id) return null;
     loadArtistsFromDisk();
-    if (artistState.wiki.has(id)) return artistState.wiki.get(id) || null;
-    if (!title) { artistState.wiki.set(id, null); persistArtists(); return null; }
+    const cached = artistState.wiki.has(id) ? artistState.wiki.get(id) : undefined;
+    // 只有"当前策略"写下的记录才算有效（无 policy 字段 = 旧版本，作废重取）。
+    if (cached && cached.policy === WIKI_POLICY) return cached;
+    if (!title) {
+      artistState.wiki.set(id, { status: 'missing', reason: 'NO_NAME', policy: WIKI_POLICY, fetchedAt: Date.now() });
+      persistArtists();
+      return null;
+    }
 
-    const langs = hasCjk(title) ? ['zh', 'en'] : ['en'];
     let hit = null;
     let lastReason = 'MISS';
-    for (let i = 0; i < langs.length; i += 1) {
-      const r = await fetchWikiSummary(title, langs[i]);
-      if (r.ok) { hit = r.data; break; }
-      lastReason = r.reason || lastReason;
-      // 页面存在但被判定不可用（消歧义/跨领域等）-> 不再回退下一个语言，
-      // 否则真实原因会被另一个语言的 404 覆盖。
-      if (r.found) break;
+    // 诊断暂存（只读自省，供排查语言选择问题）
+    artistState.lastWikiDiag = { title: title, policy: WIKI_POLICY, proxy: systemProxy(), steps: [] };
+
+    // 1) 中文维基直查（中文名，或恰好存在中文条目）
+    const zhDirect = await fetchWikiSummary(title, 'zh');
+    artistState.lastWikiDiag.steps.push({ step: 'zh-direct', ok: zhDirect.ok, found: zhDirect.found, reason: zhDirect.reason });
+    if (zhDirect.ok) hit = zhDirect.data;
+    else {
+      lastReason = zhDirect.reason || lastReason;
+      // 页面存在但不可用（消歧义/跨领域）-> 不再回退，避免真实原因被覆盖
+      if (!zhDirect.found) {
+        // 2) 英文名在中文维基通常没有直接条目 —— 用搜索映射到中文条目名
+        //    （实测 "Abel Tesfaye" -> "威肯"、"Ariana Grande" -> "爱莉安娜·格兰德"）
+        if (!hasCjk(title)) {
+          const candidates = await searchZhTitles(title);
+          artistState.lastWikiDiag.steps.push({ step: 'zh-search', candidates: candidates });
+          for (let ci = 0; ci < candidates.length; ci += 1) {
+            const viaSearch = await fetchWikiSummary(candidates[ci], 'zh');
+            artistState.lastWikiDiag.steps.push({ step: 'zh-cand', title: candidates[ci], ok: viaSearch.ok, reason: viaSearch.reason });
+            if (viaSearch.ok) {
+              hit = viaSearch.data;
+              if (hit && !hit.matchedBy) hit.matchedBy = 'zh-search:' + candidates[ci];
+              break;
+            }
+            lastReason = viaSearch.reason || lastReason;
+          }
+        }
+        // 3) 仍然没有 -> 英文维基（保留英文总比没有好，UI 会标注来源）
+        if (!hit) {
+          const en = await fetchWikiSummary(title, 'en');
+          artistState.lastWikiDiag.steps.push({ step: 'en', ok: en.ok, reason: en.reason });
+          if (en.ok) hit = en.data;
+          else lastReason = en.reason || lastReason;
+        }
+      }
     }
-    const record = hit
-      ? Object.assign({ status: 'ok' }, hit)
-      : { status: 'missing', reason: lastReason, fetchedAt: Date.now() };
+    if (hit) {
+      const record = Object.assign({ status: 'ok', policy: WIKI_POLICY }, hit);
+      artistState.wiki.set(id, record);
+      persistArtists();
+      return record;
+    }
+    // 失败分两类（关键）：
+    //   永久性（404/消歧义/跨领域）—— 记负缓存，避免反复请求。
+    //   临时性（网络错误/超时）—— **不写缓存**，下次进入详情时重试；
+    //     否则一次网络抖动会把这位艺人永久钉成"没有简介"，
+    //     而且会一直压着旧的（可能是英文的）结果不让它更新。
+    const transient = /HTTP_ERR|HTTP_0$/.test(String(lastReason));
+    const record = { status: 'missing', reason: lastReason, policy: WIKI_POLICY, fetchedAt: Date.now() };
+    if (transient) {
+      // 保留旧记录（若有）但不覆盖；直接返回本次结果供本次展示使用。
+      return record;
+    }
     artistState.wiki.set(id, record);
     persistArtists();
     return record;
@@ -1049,6 +1121,8 @@ function createAppleMusicLibraryCacheService(options) {
     loadArtistsFromDisk();
     return artistState.wiki.get(normalizeText(artistId)) || null;
   }
+
+  function getWikiDiag() { return artistState.lastWikiDiag || null; }
 
   function getArtistCacheInfo() {
     loadArtistsFromDisk();
@@ -1107,6 +1181,7 @@ function createAppleMusicLibraryCacheService(options) {
     resolveArtistWiki,
     resolveArtistWikiAsync,
     getArtistWiki,
+    getWikiDiag,
     // 测试用
     setHttpGetJsonImpl,
     rebuildDerived,

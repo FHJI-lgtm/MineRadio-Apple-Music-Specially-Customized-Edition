@@ -241,15 +241,15 @@ test('艺人简介：只接受可确认的条目，且失败也要记缓存', as
   await t3.test('正常条目：取回正文与来源链接', async () => {
     const h = makeService(function (url) {
       if (url.indexOf('zh.wikipedia.org') >= 0) {
-        return { status: 200, json: { type: 'standard', title: '张杰', description: '中国内地男歌手', extract: '张杰，中国内地男歌手。', lang: 'zh', content_urls: { desktop: { page: 'https://zh.wikipedia.org/wiki/张杰' } } } };
+        return { status: 200, json: { type: 'standard', title: '周杰伦', description: '台湾男歌手', extract: '周杰倫，臺灣男歌手。', lang: 'zh', content_urls: { desktop: { page: 'https://zh.wikipedia.org/wiki/周杰伦' } } } };
       }
       return { status: 404, json: null };
     });
-    const rec = await h.svc.resolveArtistWiki('111', '张杰');
+    const rec = await h.svc.resolveArtistWiki('111', '周杰伦');
     assert.equal(rec.status, 'ok');
     assert.match(rec.extract, /男歌手/);
     assert.match(rec.url, /zh\.wikipedia\.org/);
-    assert.equal(h.calls.length, 1, '中文名应只查一次中文维基');
+    assert.equal(h.calls.length, 1, '中文名一次命中，不该有多余请求');
     assert.ok(h.calls[0].indexOf('zh.wikipedia.org') >= 0, '中文名优先中文维基');
   });
 
@@ -285,23 +285,35 @@ test('艺人简介：只接受可确认的条目，且失败也要记缓存', as
     assert.match(rec.reason, /HTTP_/);
   });
 
-  await t3.test('负缓存：同一个艺人不会反复请求', async () => {
-    const h = makeService(function () { return null; });
+  await t3.test('永久失败（404/消歧义）记负缓存，不反复请求', async () => {
+    const h = makeService(function () { return { status: 404, json: null }; });
     await h.svc.resolveArtistWiki('666', 'Nobody');
     const first = h.calls.length;
     await h.svc.resolveArtistWiki('666', 'Nobody');
-    assert.equal(h.calls.length, first, '第二次必须命中缓存，不再发请求');
+    assert.equal(h.calls.length, first, '永久失败必须命中负缓存，不再发请求');
     assert.equal(h.svc.getArtistWiki('666').status, 'missing');
   });
 
-  await t3.test('非中文名只查英文维基（不做多余请求）', async () => {
+  await t3.test('临时网络错误不写缓存，下次仍会重试（避免一次抖动永久钉死）', async () => {
+    const h = makeService(function () { return null; });   // null = 网络不可达
+    await h.svc.resolveArtistWiki('667', 'Someone');
+    const first = h.calls.length;
+    assert.ok(first > 0, '第一次应当尝试过');
+    // 临时错误不落盘 -> 第二次仍会重试
+    await h.svc.resolveArtistWiki('667', 'Someone');
+    assert.ok(h.calls.length > first, '临时失败后应允许重试');
+    assert.equal(h.svc.getArtistWiki('667'), null, '临时失败不得写进缓存');
+  });
+
+  await t3.test('非中文名：中文维基无条目时回退英文维基', async () => {
     const h = makeService(function (url) {
-      assert.ok(url.indexOf('en.wikipedia.org') >= 0, '英文名应查英文维基');
-      return { status: 404, json: null };
+      return { status: 404, json: null };   // 中文、搜索、英文全部取不到
     });
     const rec = await h.svc.resolveArtistWiki('777', 'Ariana Grande');
     assert.equal(rec.status, 'missing');
-    assert.equal(h.calls.length, 1);
+    // 中文优先策略下会依次尝试：中文直查 -> 中文搜索 -> 英文
+    assert.ok(h.calls[0].indexOf('zh.wikipedia.org') >= 0, '首选中文维基');
+    assert.ok(h.calls.some(function (u) { return u.indexOf('en.wikipedia.org') >= 0; }), '最终回退英文');
   });
 
   await t3.test('结果为 missing 时 title 为空也不发请求', async () => {
@@ -360,5 +372,152 @@ test('艺人简介：端点与 UI 契约', async (t3) => {
   await t3.test('返回列表时清掉简介，避免残留到别的艺人', () => {
     const back = MOD.slice(MOD.indexOf('window.backToArtistList'), MOD.indexOf('window.backToArtistList') + 400);
     assert.match(back, /renderArtistBio\(null\)/, '返回列表要清简介');
+  });
+});
+;
+// ============================================================
+// 艺人简介：中文优先 + 英文名到中文条目的搜索映射
+// ============================================================
+test('艺人简介：优先中文条目，英文名经搜索映射', async (t4) => {
+  const os = require('node:os');
+  const fsp = require('node:fs');
+  const { createAppleMusicLibraryCacheService } = require(path.join(APP_ROOT, 'desktop', 'apple-music-library-cache.js'));
+
+  function makeService(handler) {
+    const dir = fsp.mkdtempSync(path.join(os.tmpdir(), 'wikizh-'));
+    const svc = createAppleMusicLibraryCacheService({ cachePath: path.join(dir, 'idx.json') });
+    const calls = [];
+    svc.setHttpGetJsonImpl(function (url) {
+      calls.push(url);
+      return Promise.resolve(handler(url));
+    });
+    return { svc, calls };
+  }
+  const ZH_OK = {
+    status: 200,
+    json: { type: 'standard', title: '威肯', description: '加拿大歌手', extract: '亞柏·馬科南·特斯法耶，藝名威肯…', lang: 'zh', content_urls: { desktop: { page: 'https://zh.wikipedia.org/wiki/威肯' } } },
+  };
+  const EN_OK = {
+    status: 200,
+    json: { type: 'standard', title: 'The Weeknd', description: 'Canadian singer', extract: 'Abel Makkonen Tesfaye…', lang: 'en', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/The_Weeknd' } } },
+  };
+
+  await t4.test('英文名：中文直查 404 时用中文搜索映射到中文条目', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0 && url.indexOf('srsearch=Abel') >= 0) {
+        return { status: 200, json: { query: { search: [{ title: '錯愛' }, { title: '威肯' }] } } };
+      }
+      if (url.indexOf('zh.wikipedia.org/api/rest_v1/page/summary/') >= 0) {
+        if (url.indexOf(encodeURIComponent('威肯')) >= 0) return ZH_OK;
+        return { status: 404, json: null };
+      }
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('z1', 'Abel Tesfaye');
+    assert.equal(rec.status, 'ok');
+    assert.equal(rec.lang, 'zh', '必须优先给出中文条目');
+    assert.match(rec.matchedBy || '', /^zh-search:/, '要记录是通过搜索映射得到的');
+    // 不能因为搜索命中就直接采用 —— 必须再经 summary + 校验
+    assert.match(rec.extract, /藝名威肯/);
+    // 排第一但取不到的候选要跳过，继续试下一个（实测 "錯愛" 就是这种）
+    assert.ok(h.calls.some(function (u) { return u.indexOf(encodeURIComponent('錯愛')) >= 0; }), '应尝试过首个候选');
+    assert.ok(h.calls.some(function (u) { return u.indexOf(encodeURIComponent('威肯')) >= 0; }), '首个失败后要继续试下一个候选');
+  });
+
+  await t4.test('搜索候选全部取不到时，回退英文', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0) {
+        return { status: 200, json: { query: { search: [{ title: '錯愛' }, { title: '不存在条目' }] } } };
+      }
+      if (url.indexOf('en.wikipedia.org') >= 0) return EN_OK;
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('z1b', 'Some Name');
+    assert.equal(rec.status, 'ok');
+    assert.equal(rec.lang, 'en', '中文候选都不可用时应回退英文');
+  });
+
+  await t4.test('搜索候选里的专辑名要被跳过', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0) {
+        return { status: 200, json: { query: { search: [{ title: '某專輯' }, { title: '某單曲' }, { title: '威肯' }] } } };
+      }
+      if (url.indexOf(encodeURIComponent('某專輯')) >= 0 || url.indexOf(encodeURIComponent('某單曲')) >= 0) {
+        return { status: 404, json: null };
+      }
+      return ZH_OK;
+    });
+    const rec = await h.svc.resolveArtistWiki('z2', 'Some Artist');
+    assert.equal(rec.status, 'ok');
+    assert.equal(rec.title, '威肯', '应跳过 專輯/單曲 类候选');
+  });
+
+  await t4.test('中文条目为消歧义时丢弃，且不再回退英文', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0) return { status: 200, json: { query: { search: [] } } };
+      if (url.indexOf('zh.wikipedia.org') >= 0) {
+        return { status: 200, json: { type: 'disambiguation', title: '张杰', extract: '张杰可以指…' } };
+      }
+      return { status: 200, json: EN_OK.json };
+    });
+    const rec = await h.svc.resolveArtistWiki('z3', '张杰');
+    assert.equal(rec.status, 'missing');
+    assert.equal(rec.reason, 'DISAMBIGUATION');
+    // 不得回退英文：真实原因不能被覆盖
+    assert.ok(!h.calls.some(function (u) { return u.indexOf('en.wikipedia.org') >= 0; }), '消歧义后不得再查英文');
+  });
+
+  await t4.test('中文不可用且无搜索命中时，回退英文', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0) return { status: 200, json: { query: { search: [] } } };
+      if (url.indexOf('zh.wikipedia.org') >= 0) return { status: 404, json: null };
+      if (url.indexOf('en.wikipedia.org') >= 0) return EN_OK;
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('z4', 'Nobody Here');
+    assert.equal(rec.status, 'ok');
+    assert.equal(rec.lang, 'en', '没有中文时保留英文，而不是什么都不显示');
+  });
+
+  await t4.test('中文名不做搜索映射（本来就是中文）', async () => {
+    const h = makeService(function (url) {
+      if (url.indexOf('action=query') >= 0) return { status: 200, json: { query: { search: [{ title: '不该被用' }] } } };
+      if (url.indexOf('zh.wikipedia.org') >= 0) return ZH_OK;
+      return { status: 404, json: null };
+    });
+    const rec = await h.svc.resolveArtistWiki('z5', '周杰伦');
+    assert.equal(rec.status, 'ok');
+    assert.ok(!h.calls.some(function (u) { return u.indexOf('action=query') >= 0; }), '中文名不该发搜索请求');
+  });
+});
+
+test('艺人详情：发行封面必须挂上 is-loaded 才会显示', async (t4) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  await t4.test('渲染发行分区后要绑定封面显隐', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderArtistDetail'), MOD.indexOf('function loadArtistDetail'));
+    assert.match(fn, /bindCover/, '发行卡片的封面必须走 bindCover');
+    assert.match(fn, /mlib-art img/, '要对发行分区里的封面图绑定');
+  });
+});
+
+test('艺人简介：长文默认收起且可展开', async (t4) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const CSS = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'css', 'index.css'), 'utf8');
+  const HTML = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'index.html'), 'utf8');
+
+  await t4.test('默认收起（line-clamp）且展开态可覆盖', () => {
+    assert.match(CSS, /\.mlib-artist-bio-text[\s\S]{0,240}-webkit-line-clamp:\s*4/, '默认限制行数');
+    assert.match(CSS, /\.mlib-artist-bio-text\.is-expanded/, '必须有展开态');
+  });
+  await t4.test('有展开/收起按钮，且只在真的溢出时显示', () => {
+    assert.match(HTML, /mlib-artist-bio-toggle/, '必须有切换按钮');
+    const fn = MOD.slice(MOD.indexOf('function renderArtistBio'), MOD.indexOf('window.toggleArtistBio'));
+    assert.match(fn, /scrollHeight - text\.clientHeight > 2/, '只有溢出才显示按钮');
+  });
+  await t4.test('返回列表时清掉展开态', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderArtistBio'), MOD.indexOf('window.toggleArtistBio'));
+    assert.match(fn, /classList\.remove\('is-expanded'\)/, '切换艺人时要重置展开态');
   });
 });

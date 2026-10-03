@@ -2913,7 +2913,32 @@ html.mlib-has-hover .mlib-artist-card:hover .mlib-artist-art img {
   margin: 0;
   font-size: 13px;
   line-height: 1.62;
-  color: rgba(255, 255, 255, .62)
+  color: rgba(255, 255, 255, .62);
+  /* 默认收起：最多 4 行，避免顶部信息区把下方作品挤出首屏 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden
+}
+
+.mlib-artist-bio-text.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible
+}
+
+.mlib-artist-bio-toggle {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, .55);
+  font: 500 12px inherit;
+  cursor: pointer
+}
+
+.mlib-artist-bio-toggle:hover {
+  color: #fff
 }
 
 /* 发行分区：沿用专辑墙的封面尺寸与文字规范 */

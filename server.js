@@ -133,12 +133,31 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
 } = require('./cuefield/feedback-log');
 const { planCuefieldTransitionFromCache } = require('./cuefield/mineradio-bridge');
+
+// 维基简介统一出参形状：只有 status==='ok' 才给正文，其余一律 null（前端不显示）。
+// 放在模块作用域：放进请求处理器会在每次请求重复声明。
+function wikiPayload(rec) {
+  if (!rec || rec.status !== 'ok' || !rec.extract) return null;
+  return {
+    extract: rec.extract,
+    title: rec.title || '',
+    url: rec.url || '',
+    description: rec.description || '',
+    lang: rec.lang || '',
+    source: 'Wikipedia',
+  };
+}
+
+// 当前简介的语言（供前端判断是否需要改用中文重取）
+function wikiLangOf(rec) {
+  return (rec && rec.status === 'ok' && rec.lang) ? String(rec.lang) : '';
+}
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -5341,19 +5360,6 @@ const server = http.createServer(async (req, res) => {
   // 顺序语义由读取层负责：handler 读完整库后按 dateAdded 新→旧排序，再按 limit/offset 切片。
   // 前端只负责按返回顺序展示，不自己排序（否则分页时每个组件都会各排各的）。
   // 资料库专辑曲目（只含库内已保存曲目）。按 library album id 读取，不使用名称搜索。
-  // 维基简介统一出参形状：只有 status==='ok' 才给正文，其余一律 null（前端不显示）。
-  function wikiPayload(rec) {
-    if (!rec || rec.status !== 'ok' || !rec.extract) return null;
-    return {
-      extract: rec.extract,
-      title: rec.title || '',
-      url: rec.url || '',
-      description: rec.description || '',
-      lang: rec.lang || '',
-      source: 'Wikipedia',
-    };
-  }
-
   // 资料库艺人：**以 catalog artist ID 为实体唯一键**归组。
   //
   // 为什么不能在端点里按 artistName 分组：同一个艺人在库里会以多种合作串出现
@@ -5578,14 +5584,18 @@ const server = http.createServer(async (req, res) => {
       // 简介（Wikipedia）：**不阻塞**详情返回。
       // 该源在部分网络下不可达（实测本机 zh/en 均超时），绝不能因此让详情页变慢或失败 ——
       // 这里只是启动解析，本次响应带上**已有缓存**；下一次进入会拿到结果。
-      const cachedWiki = typeof getArtistWiki === 'function' ? getArtistWiki(artistId) : null;
-      if (!cachedWiki && detail && detail.name && typeof resolveArtistWikiAsync === 'function') {
+      // 用**原始记录**判断是否已解析过：wikiPayload() 会把非 ok 也返回 null，
+      // 用它判断会导致"已确认失败"的艺人每次进详情都重复请求。
+      const rawWiki = typeof getArtistWiki === 'function' ? getArtistWiki(artistId) : null;
+      const cachedWiki = wikiPayload(rawWiki);
+      if (!rawWiki && detail && detail.name && typeof resolveArtistWikiAsync === 'function') {
         try { resolveArtistWikiAsync(artistId, detail.name); } catch (_) { }
       }
       sendJSON(res, {
         ok: true,
         artistId: artistId,
-        wiki: wikiPayload(cachedWiki),
+        wiki: cachedWiki,
+        wikiLang: wikiLangOf(rawWiki),
         name: (detail && detail.name) || '',
         genres: (detail && Array.isArray(detail.genres)) ? detail.genres : [],
         image: (detail && detail.image) || '',
@@ -5616,7 +5626,8 @@ const server = http.createServer(async (req, res) => {
       if (!rec && name && typeof resolveArtistWiki === 'function') {
         rec = await resolveArtistWiki(artistId, name);
       }
-      sendJSON(res, { ok: true, artistId: artistId, wiki: wikiPayload(rec) });
+      sendJSON(res, { ok: true, artistId: artistId, wiki: wikiPayload(rec),
+        diag: (typeof getWikiDiag === 'function' ? getWikiDiag() : null) });
     } catch (err) {
       console.error('[AppleMusicArtistWiki]', err);
       sendJSON(res, { ok: false, error: err.message, wiki: null }, 500);

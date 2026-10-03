@@ -506,6 +506,7 @@ function getArtistDetail(artistId) {
 function resolveArtistWiki(artistId, name) { return libraryCache.resolveArtistWiki(artistId, name); }
 function resolveArtistWikiAsync(artistId, name) { return libraryCache.resolveArtistWikiAsync(artistId, name); }
 function getArtistWiki(artistId) { return libraryCache.getArtistWiki(artistId); }
+function getWikiDiag() { return libraryCache.getWikiDiag(); }
 
 async function rebuildAlbumTracks(libraryAlbum) {
   const songs = libraryCache.getSongs();
@@ -530,6 +531,7 @@ module.exports = {
   resolveArtistWiki,
   resolveArtistWikiAsync,
   getArtistWiki,
+  getWikiDiag,
   rebuildAlbumTracks,
   handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,
