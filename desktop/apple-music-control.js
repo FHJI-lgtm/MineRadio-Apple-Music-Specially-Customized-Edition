@@ -40,6 +40,9 @@ const DEFAULT_CHAIN_SCRIPT = path.join(
 const DEFAULT_PLAYLIST_SCRIPT = path.join(
   __dirname, '..', 'experiment', 'apple-music-windows-control', 'poc', 'play-playlist.ps1'
 );
+const DEFAULT_SHUFFLE_SCRIPT = path.join(
+  __dirname, '..', 'experiment', 'apple-music-windows-control', 'poc', 'shuffle-playlist.ps1'
+);
 
 // ---------------------------------------------------------------------------
 // search plane
@@ -649,6 +652,51 @@ async function __runChainForTest(cfg) {
   return runChainWithDeadline(Object.assign({ powershell: 'powershell.exe', args: [] }, cfg || {}));
 }
 
+/**
+ * Shuffle-play a LIBRARY playlist: navigate to its page, then invoke the PAGE shuffle button
+ * (AutomationId=ShuffleButton with InvokePattern). The transport-bar button shares that AutomationId
+ * but exposes TogglePattern instead, so the wrapper matches on the pattern, not just the id.
+ * Labels travel through UTF-8 files (never on the command line). One invoke per run, no coordinates.
+ */
+async function playPlaylistShuffled(payload = {}, opts = {}) {
+  const name = String(payload.name || payload.playlist || '').trim();
+  if (!name) return { ok: false, verified: false, stage: 'BAD_INPUT', name: '', shuffleModeConfirmed: false };
+  const scopeLabel = String((payload.scopeLabel != null ? payload.scopeLabel : opts.scopeLabel) || '你的资料库').trim();
+  const shuffleLabel = String((payload.shuffleLabel != null ? payload.shuffleLabel : opts.shuffleLabel) || '随机播放').trim();
+  const script = opts.shuffleScript || DEFAULT_SHUFFLE_SCRIPT;
+  const os = require('os');
+  const fs = require('fs');   // local require: this module has no top-level fs binding
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-shuffle-'));
+  const nameFile = path.join(dir, 'name.txt'), scopeFile = path.join(dir, 'scope.txt');
+  const labelFile = path.join(dir, 'label.txt'), outFile = path.join(dir, 'out.json');
+  try {
+    fs.writeFileSync(nameFile, name, 'utf8');
+    fs.writeFileSync(scopeFile, scopeLabel, 'utf8');
+    fs.writeFileSync(labelFile, shuffleLabel, 'utf8');
+  } catch (e) { return { ok: false, verified: false, stage: 'TMP_WRITE_FAILED', error: e.message, name }; }
+  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+    '-NameFile', nameFile, '-ScopeFile', scopeFile, '-ShuffleLabelFile', labelFile, '-OutFile', outFile];
+  const powershell = opts.powershell || 'powershell.exe';
+  const result = await new Promise((resolve) => {
+    let out = '', err = '', child;
+    try { child = spawn(powershell, args, { windowsHide: true }); }
+    catch (e) { resolve({ stage: 'SPAWN_FAILED', detail: e.message }); return; }
+    const killer = setTimeout(() => { try { child.kill(); } catch (_) {} resolve({ stage: 'CHAIN_TIMEOUT' }); }, opts.timeoutMs || DEFAULT_CHAIN_TIMEOUT_MS);
+    child.stdout.on('data', (d) => { out += String(d); });
+    child.stderr.on('data', (d) => { err += String(d); });
+    child.on('close', () => { clearTimeout(killer); resolve({ code: 'closed', stdout: out, stderr: err }); });
+    child.on('error', (e) => { clearTimeout(killer); resolve({ stage: 'SPAWN_ERROR', detail: e.message }); });
+  });
+  let parsed = null;
+  try { if (fs.existsSync(outFile)) parsed = JSON.parse(fs.readFileSync(outFile, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
+  if (!parsed) {
+    const m = String(result.stdout || '').match(/\{[\s\S]*\}\s*$/);
+    if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} }
+  }
+  if (!parsed) return { ok: false, verified: false, stage: result.stage || 'NO_RESULT', name, shuffleModeConfirmed: false, detail: String(result.detail || (result.stderr || '')).slice(0, 400) };
+  return Object.assign({ name, playVia: 'shuffle-playlist-page' }, parsed);
+}
+
 module.exports = {
   __runChainForTest,
   searchTracks,
@@ -663,6 +711,8 @@ module.exports = {
   DEFAULT_CHAIN_SCRIPT,
   playPlaylist,
   playAlbumInLibrary,
+  playPlaylistShuffled,
   DEFAULT_ALBUM_SCRIPT,
   DEFAULT_PLAYLIST_SCRIPT,
+  DEFAULT_SHUFFLE_SCRIPT,
 };

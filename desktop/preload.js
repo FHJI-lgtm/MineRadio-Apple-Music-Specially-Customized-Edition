@@ -209,6 +209,7 @@ contextBridge.exposeInMainWorld('mineradio', {
     playTrack: (payload) => ipcRenderer.invoke('amc:play', payload || {}),
     playPlaylist: (payload) => ipcRenderer.invoke('amc:play-playlist', payload || {}),
     playAlbum: (payload) => ipcRenderer.invoke('amc:play-album', payload || {}),
+    playPlaylistShuffled: (payload) => ipcRenderer.invoke('amc:play-playlist-shuffled', payload || {}),
     openLogin: () => ipcRenderer.invoke('amc:open-login'),
     getPlaylistCounts: () => ipcRenderer.invoke('amc:playlist-counts-get'),
     setPlaylistCounts: (counts) => ipcRenderer.invoke('amc:playlist-counts-set', { counts: counts || {} }),
