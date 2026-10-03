@@ -620,6 +620,9 @@
     box.hidden = false;
     text.textContent = extract;
     text.classList.remove('is-expanded');
+    // 来源如实标注（维基 / 国内源），不写死
+    var srcEl = document.getElementById('mlib-artist-bio-source-text');
+    if (srcEl) srcEl.textContent = '来源: ' + (wiki.source || 'Wikipedia');
     if (link) {
       if (wiki.url) { link.hidden = false; link.href = wiki.url; }
       else { link.hidden = true; link.removeAttribute('href'); }

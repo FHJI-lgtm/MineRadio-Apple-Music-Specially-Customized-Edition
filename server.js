@@ -150,7 +150,9 @@ function wikiPayload(rec) {
     url: rec.url || '',
     description: rec.description || '',
     lang: rec.lang || '',
-    source: 'Wikipedia',
+    // 来源如实取记录自身（维基 / 国内源），不写死
+    source: rec.source || 'Wikipedia',
+    neteaseArtistId: rec.neteaseArtistId || '',
   };
 }
 

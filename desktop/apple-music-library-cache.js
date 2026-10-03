@@ -225,6 +225,11 @@ function createAppleMusicLibraryCacheService(options) {
     artists: new Map(),
     // artistId -> { status:'ok', extract, url, ... } 或 { status:'missing', reason }
     wiki: new Map(),
+    // 国内源（网易云）简介，独立存放，便于"维基失败再国内"的顺序与各自缓存
+    netease: new Map(),
+    // 维基不可达的熔断截止时间（0 = 未熔断）与最近一次的真实原因
+    wikiDownUntil: 0,
+    wikiDownReason: '',
     persistedAt: 0,
   };
 
@@ -521,6 +526,7 @@ function createAppleMusicLibraryCacheService(options) {
       artistState.songToArtists = new Map(Array.isArray(payload.songToArtists) ? payload.songToArtists : []);
       artistState.artists = new Map(Array.isArray(payload.artists) ? payload.artists : []);
       artistState.wiki = new Map(Array.isArray(payload.wiki) ? payload.wiki : []);
+      artistState.netease = new Map(Array.isArray(payload.netease) ? payload.netease : []);
       artistState.persistedAt = Number(payload.savedAt) || 0;
       return true;
     } catch (_) {
@@ -539,6 +545,7 @@ function createAppleMusicLibraryCacheService(options) {
         songToArtists: Array.from(artistState.songToArtists.entries()),
         artists: Array.from(artistState.artists.entries()),
         wiki: Array.from(artistState.wiki.entries()),
+        netease: Array.from(artistState.netease.entries()),
       };
       fs.writeFileSync(p, JSON.stringify(payload), 'utf8');
       artistState.persistedAt = payload.savedAt;
@@ -805,6 +812,8 @@ function createAppleMusicLibraryCacheService(options) {
   //     所以任何失败都不得影响详情页，只记 negative 缓存。
   // ------------------------------------------------------------
   const WIKI_TIMEOUT_MS = 6000;
+  // 维基不可达后的冷却时长：期间直接走国内源，避免每位艺人都等一次连接超时。
+  const WIKI_DOWN_COOLDOWN_MS = 10 * 60 * 1000;
   // 简介的**选择策略**版本。策略变化（例如改为中文优先）时必须递增：
   // 旧策略写下的记录会被判为陈旧并重新获取，否则会一直显示旧语言的结果。
   // 只影响 wiki 条目，不触碰 song/artist 缓存。
@@ -1043,9 +1052,14 @@ function createAppleMusicLibraryCacheService(options) {
     const title = normalizeText(name);
     if (!id) return null;
     loadArtistsFromDisk();
-    const cached = artistState.wiki.has(id) ? artistState.wiki.get(id) : undefined;
-    // 只有"当前策略"写下的记录才算有效（无 policy 字段 = 旧版本，作废重取）。
-    if (cached && cached.policy === WIKI_POLICY) return cached;
+    const wikiCached = artistState.wiki.has(id) ? artistState.wiki.get(id) : undefined;
+    const cnCached = artistState.netease.has(id) ? artistState.netease.get(id) : undefined;
+    // 1) 中文结果优先返回（无论来自维基中文条目还是国内源）
+    if (cnCached && cnCached.policy === WIKI_POLICY && cnCached.extract) return cnCached;
+    if (wikiCached && wikiCached.policy === WIKI_POLICY && wikiCached.lang === 'zh') return wikiCached;
+    // 2) **已确认的失败**也要返回，否则负缓存形同虚设、每次进详情都重发请求。
+    //    注意：只认当前策略写入的记录；旧策略（如英文优先时代）的记录一律作废重取。
+    if (wikiCached && wikiCached.policy === WIKI_POLICY && wikiCached.status === 'missing') return wikiCached;
     if (!title) {
       artistState.wiki.set(id, { status: 'missing', reason: 'NO_NAME', policy: WIKI_POLICY, fetchedAt: Date.now() });
       persistArtists();
@@ -1058,9 +1072,26 @@ function createAppleMusicLibraryCacheService(options) {
     artistState.lastWikiDiag = { title: title, policy: WIKI_POLICY, proxy: systemProxy(), steps: [] };
 
     // 1) 中文维基直查（中文名，或恰好存在中文条目）
-    const zhDirect = await fetchWikiSummary(title, 'zh');
+    // 维基不可达的熔断窗口：网络类失败后一段时间内**直接跳过维基**。
+    // 否则每位艺人都要白等一次连接超时（实测维基不可达时 6 秒）。
+    const now = Date.now();
+    const wikiSkip = artistState.wikiDownUntil > now;
+    const zhDirect = wikiSkip
+      ? { ok: false, found: false, reason: 'SKIPPED_WIKI_DOWN' }
+      : await fetchWikiSummary(title, 'zh');
     artistState.lastWikiDiag.steps.push({ step: 'zh-direct', ok: zhDirect.ok, found: zhDirect.found, reason: zhDirect.reason });
+    // 网络类失败（连接被拒/超时/无代理）：整个维基都不可达，
+    // 不要再逐个语言重试 —— 那会让每位艺人白等好几秒（实测 10~15 秒）。
+    const wikiDown = /HTTP_ERR|HTTP_0$|SKIPPED_WIKI_DOWN/.test(String(zhDirect.reason));
+    // 真·网络失败才开熔断；SKIPPED 只是沿用已有窗口，不刷新它。
+    if (/HTTP_ERR|HTTP_0$/.test(String(zhDirect.reason))) {
+      artistState.wikiDownUntil = Date.now() + WIKI_DOWN_COOLDOWN_MS;
+      artistState.wikiDownReason = zhDirect.reason;
+    }
     if (zhDirect.ok) hit = zhDirect.data;
+    else if (wikiDown) {
+      artistState.lastWikiDiag.steps.push({ step: 'wiki-down', note: '跳过其余维基语言，直接走国内源' });
+    }
     else {
       lastReason = zhDirect.reason || lastReason;
       // 页面存在但不可用（消歧义/跨领域）-> 不再回退，避免真实原因被覆盖
@@ -1094,6 +1125,17 @@ function createAppleMusicLibraryCacheService(options) {
       const record = Object.assign({ status: 'ok', policy: WIKI_POLICY }, hit);
       artistState.wiki.set(id, record);
       persistArtists();
+      // 拿到的是英文简介时，仍试一次国内源 —— 目标语言是中文，
+      // 而中文维基可能没有这位艺人的条目（实测英文条目占多数）。
+      if (record.lang !== 'zh') {
+        const cn = await resolveNeteaseBio(title);
+        if (cn.ok) {
+          const cnRec = Object.assign({ status: 'ok', policy: WIKI_POLICY }, cn.data);
+          artistState.netease.set(id, cnRec);
+          persistArtists();
+          return cnRec;
+        }
+      }
       return record;
     }
     // 失败分两类（关键）：
@@ -1101,10 +1143,22 @@ function createAppleMusicLibraryCacheService(options) {
     //   临时性（网络错误/超时）—— **不写缓存**，下次进入详情时重试；
     //     否则一次网络抖动会把这位艺人永久钉成"没有简介"，
     //     而且会一直压着旧的（可能是英文的）结果不让它更新。
+    // 维基不可用（无论永久还是临时）-> 走国内源兜底。国内源直连、不需要代理。
+    const cn = await resolveNeteaseBio(title);
+    if (cn.ok) {
+      const cnRec = Object.assign({ status: 'ok', policy: WIKI_POLICY }, cn.data);
+      artistState.netease.set(id, cnRec);
+      persistArtists();
+      return cnRec;
+    }
+    // 熔断跳过时沿用上一次的真实原因，避免把"跳过"当成失败类型。
+    if (/SKIPPED_WIKI_DOWN/.test(String(lastReason))) lastReason = artistState.wikiDownReason || 'MISS';
     const transient = /HTTP_ERR|HTTP_0$/.test(String(lastReason));
-    const record = { status: 'missing', reason: lastReason, policy: WIKI_POLICY, fetchedAt: Date.now() };
+    // 只用维基侧的原因作为对外原因；国内源没拿到属于兜底失败，不污染原因文案。
+    const reason = lastReason;
+    const record = { status: 'missing', reason: reason, policy: WIKI_POLICY, fetchedAt: Date.now() };
     if (transient) {
-      // 保留旧记录（若有）但不覆盖；直接返回本次结果供本次展示使用。
+      // 临时错误不写缓存，下次仍会重试（避免一次抖动永久钉死）
       return record;
     }
     artistState.wiki.set(id, record);
@@ -1117,12 +1171,97 @@ function createAppleMusicLibraryCacheService(options) {
     return resolveArtistWiki(artistId, name).catch(function () { return null; });
   }
 
+  function getNeteaseBio(artistId) {
+    loadArtistsFromDisk();
+    return artistState.netease.get(normalizeText(artistId)) || null;
+  }
+
   function getArtistWiki(artistId) {
     loadArtistsFromDisk();
     return artistState.wiki.get(normalizeText(artistId)) || null;
   }
 
   function getWikiDiag() { return artistState.lastWikiDiag || null; }
+
+  // ------------------------------------------------------------
+  // 国内源兜底：网易云音乐艺人简介
+  //
+  // 为什么要它：维基在**没有代理**的网络下完全不可达（实测直连 zh/en 均超时），
+  // 而国内源直连约 48ms。所以按"先维基、失败再国内"的顺序兜底。
+  //
+  // 两步：搜索艺人名 -> 取 artist id -> 取简介。
+  // **严格名称匹配**：搜索会返回大量同名/高仿账号（实测"周杰伦"返回
+  // 「周杰伦.」「周杰伦♚」），必须只接受 name 完全相等（或别名完全相等）的条目，
+  // 否则会把别人的简介贴到这位艺人身上。
+  // ------------------------------------------------------------
+  const NETEASE_TIMEOUT_MS = 6000;
+  let neteaseSearchImpl = null;
+  function setNeteaseSearchImpl(fn) { neteaseSearchImpl = typeof fn === 'function' ? fn : null; }
+
+  function neteaseSearchArtists(name) {
+    if (neteaseSearchImpl) return neteaseSearchImpl(name);
+    return new Promise(function (resolve) {
+      let settled = false;
+      const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+      let body = null;
+      try {
+        const u = 'https://music.163.com/api/search/get/web?csrf_token=&type=100&offset=0&total=true&limit=5&s='
+          + encodeURIComponent(name);
+        const req = https.request({
+          hostname: 'music.163.com', path: u.slice(u.indexOf('/api')), method: 'GET',
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://music.163.com/' },
+        }, function (res) {
+          const chunks = [];
+          res.on('data', function (ch) { chunks.push(ch); });
+          res.on('end', function () {
+            try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_) { body = null; }
+            done(body);
+          });
+        });
+        req.setTimeout(NETEASE_TIMEOUT_MS, function () { try { req.destroy(); } catch (_) { } done(null); });
+        req.on('error', function () { done(null); });
+        req.end();
+      } catch (_) { done(null); }
+    });
+  }
+
+  async function fetchNeteaseArtistDetail(artistId) {
+    let artist_detail = null;
+    try { artist_detail = require('NeteaseCloudMusicApi').artist_detail; } catch (_) { artist_detail = null; }
+    if (typeof artist_detail !== 'function') return { ok: false, reason: 'NO_LIB' };
+    let res = null;
+    try { res = await artist_detail({ id: String(artistId), timestamp: Date.now() }); } catch (_) { res = null; }
+    if (!res) return { ok: false, reason: 'NETEASE_ERR' };
+    const b = res.body || res;
+    if (!b || Number(b.code || 0) !== 200) return { ok: false, reason: 'NETEASE_CODE_' + (b && b.code) };
+    const a = b.artist || (b.data && (b.data.artist || b.data)) || {};
+    const brief = normalizeText(a.briefDesc || a.description || a.desc);
+    if (!brief) return { ok: false, reason: 'NETEASE_NO_BRIEF' };
+    return { ok: true, data: { extract: brief, title: normalizeText(a.name), description: '', url: 'https://music.163.com/#/artist?id=' + artistId, lang: 'zh', source: '网易云音乐', neteaseArtistId: String(artistId) } };
+  }
+
+  let neteaseBioImpl = null;
+  function setNeteaseBioImpl(fn) { neteaseBioImpl = typeof fn === 'function' ? fn : null; }
+
+  async function resolveNeteaseBio(name) {
+    if (neteaseBioImpl) return neteaseBioImpl(name);
+    const q = normalizeText(name);
+    if (!q) return { ok: false, found: false, reason: 'NO_NAME' };
+    const body = await neteaseSearchArtists(q);
+    if (!body) return { ok: false, found: false, reason: 'NETEASE_SEARCH_ERR' };
+    const artists = (body.result && body.result.artists) || [];
+    let hit = null;
+    for (let i = 0; i < artists.length; i += 1) {
+      const a = artists[i] || {};
+      const nm = normalizeText(a.name);
+      const alias = normalizeText(a.alias || a.alia);
+      // 严格匹配：完全相等才用；别名数组里任一完全相等也算（中英文名互查）
+      const aliasList = alias ? alias.split(/[、,，/|]/).map(function (s) { return s.trim(); }) : [];
+      if (nm === q || aliasList.indexOf(q) >= 0) { hit = a; break; }
+    }
+    if (!hit) return { ok: false, found: false, reason: 'NETEASE_NO_EXACT_MATCH' };
+    return fetchNeteaseArtistDetail(hit.id);
+  }
 
   function getArtistCacheInfo() {
     loadArtistsFromDisk();
@@ -1181,7 +1320,10 @@ function createAppleMusicLibraryCacheService(options) {
     resolveArtistWiki,
     resolveArtistWikiAsync,
     getArtistWiki,
+    getNeteaseBio,
     getWikiDiag,
+    setNeteaseSearchImpl,
+    setNeteaseBioImpl,
     // 测试用
     setHttpGetJsonImpl,
     rebuildDerived,
