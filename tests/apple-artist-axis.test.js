@@ -710,3 +710,66 @@ test('艺人详情发行分区：只分 Single / EP，其余归专辑', async (t
     assert.match(SERVER, /unknown: \[\]/, '保留 unknown 键以兼容旧调用方，但不再产生条目');
   });
 });
+;
+// ============================================================
+// 艺人头像：国内源兜底（只补"艺人代表图像"，不用作品封面）
+// ============================================================
+test('艺人头像：Apple 判据优先，国内源头像兜底', async (t9) => {
+  const os = require('node:os');
+  const fsp = require('node:fs');
+  const { createAppleMusicLibraryCacheService } = require(path.join(APP_ROOT, 'desktop', 'apple-music-library-cache.js'));
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+
+  function make(bioHandler) {
+    const dir = fsp.mkdtempSync(path.join(os.tmpdir(), 'av-'));
+    const svc = createAppleMusicLibraryCacheService({ cachePath: path.join(dir, 'idx.json') });
+    svc.setHttpGetJsonImpl(function () { return Promise.resolve({ status: 404, json: null }); });
+    svc.setNeteaseBioImpl(bioHandler);
+    return svc;
+  }
+
+  await t9.test('有头像无简介时，头像仍要保留（头像本身有价值）', async () => {
+    const svc = make(function () {
+      return Promise.resolve({ ok: true, data: { extract: '', title: '周杰伦', lang: 'zh', source: '网易云音乐', neteaseAvatar: 'https://p4.music.126.net/x.jpg?param=300y300' } });
+    });
+    await svc.warmNetease([{ artistId: 'a1', name: '周杰伦' }]);
+    const av = svc.getNeteaseAvatar('a1');
+    assert.equal(av, 'https://p4.music.126.net/x.jpg?param=300y300', '头像必须被缓存下来');
+  });
+
+  await t9.test('缓存未命中时返回空串，而不是抛错', () => {
+    const svc = make(function () { return Promise.resolve({ ok: false, found: false, reason: 'NETEASE_NO_EXACT_MATCH' }); });
+    assert.equal(svc.getNeteaseAvatar('nope'), '');
+  });
+
+  await t9.test('预热去重：同一艺人解析一次，已解析过的不再请求', async () => {
+    let calls = 0;
+    const svc = make(function () {
+      calls += 1;
+      return Promise.resolve({ ok: true, data: { extract: 'x', title: 'A', lang: 'zh', neteaseAvatar: 'https://a/b.jpg' } });
+    });
+    await svc.warmNetease([{ artistId: 'd1', name: 'A' }, { artistId: 'd1', name: 'A' }]);
+    assert.equal(calls, 1, '同一批里的重复项只能解析一次');
+    const before = calls;
+    await svc.warmNetease([{ artistId: 'd1', name: 'A' }]);
+    assert.equal(calls, before, '已解析过的艺人不再请求');
+  });
+
+  await t9.test('列表与详情的头像优先级一致（都是 Apple > 国内源 > 首字母）', () => {
+    const listBlock = SERVER.slice(SERVER.indexOf('image: (detail && detail.image) || cnAvatarOf(aid)'),
+      SERVER.indexOf('image: (detail && detail.image) || cnAvatarOf(aid)') + 40);
+    assert.ok(listBlock.length > 0, '列表要有国内源兜底');
+    const detailBlock = SERVER.slice(SERVER.indexOf('image: (detail && detail.image) || cnAvatar'),
+      SERVER.indexOf('image: (detail && detail.image) || cnAvatar') + 40);
+    assert.ok(detailBlock.length > 0, '详情也要有同样的兜底');
+  });
+
+  await t9.test('国内源头像不得来自作品封面字段', () => {
+    const CACHE = require('node:fs').readFileSync(
+      path.join(APP_ROOT, 'desktop', 'apple-music-library-cache.js'), 'utf8');
+    const i = CACHE.indexOf('const rawAvatar =');
+    const line = CACHE.slice(i, i + 220);
+    assert.match(line, /a\.avatar \|\| a\.picUrl \|\| a\.img1v1Url/, '只能用艺人头像字段');
+    assert.ok(!/artwork|album|cover/i.test(line), '不得用作品封面字段当头像');
+  });
+});

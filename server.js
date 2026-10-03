@@ -133,7 +133,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -5436,6 +5436,10 @@ const server = http.createServer(async (req, res) => {
         });
       });
 
+      // 国内源头像查询：只读缓存，不联网
+      const cnAvatarOf = function (aid) {
+        try { return typeof getNeteaseAvatar === 'function' ? (getNeteaseAvatar(aid) || '') : ''; } catch (_) { return ''; }
+      };
       const artists = Object.keys(byArtistId).map(function (aid) {
         const a = byArtistId[aid];
         // 名称优先级：catalog 的 name → 该艺人出现过的串（取最短的，最接近原名）→ 未解析
@@ -5449,9 +5453,11 @@ const server = http.createServer(async (req, res) => {
           name: catalogName || fallback || '(未解析艺人)',
           bucket: artistBucket(catalogName || fallback || ''),
           nameSource: catalogName ? 'catalog' : (fallback ? 'credit' : 'none'),
-          image: (detail && detail.image) || '',
-          imageRule: (detail && detail.imageRule) || '',
-          hasImage: !!(detail && detail.hasImage),
+          // 头像优先级：Apple 的高置信判据 > 国内源头像 > 首字母占位。
+          // 国内源头像是**艺人头像**（不是作品封面），所以不违反"不用专辑封面冒充"的规则。
+          image: (detail && detail.image) || cnAvatarOf(aid),
+          imageRule: (detail && detail.image) ? (detail.imageRule || '') : (cnAvatarOf(aid) ? 'netease-avatar' : ''),
+          hasImage: !!((detail && detail.hasImage) || cnAvatarOf(aid)),
           status: (detail && detail.status) || 'missing',
           genres: (detail && Array.isArray(detail.genres)) ? detail.genres : [],
           credits: a.credits.slice(0, 4),
@@ -5488,6 +5494,21 @@ const server = http.createServer(async (req, res) => {
         const u = unresolved[credit];
         return { credit: credit, songCount: u.songCount, albumCount: Object.keys(u.albums).length };
       });
+
+      // 后台预热国内源（简介 + 头像），只对仍缺头像且没解析过的艺人发起。
+      // **不阻塞本次返回** —— 列表先出，头像下次进页面就有了。
+      try {
+        if (typeof warmNetease === 'function') {
+          // 首次可能有两三百位缺头像 —— 一次全量预热会给国内源造成不必要的压力，
+          // 也会让这些请求挤在一起。改为每轮只推进一批（首次几十秒内补齐大部分，
+          // 剩余的在后续进入时继续），已解析过的会命中缓存不再请求。
+          const WARM_PER_REQUEST = 40;
+          const need = artists.filter(function (a) { return !a.hasImage; })
+            .slice(0, WARM_PER_REQUEST)
+            .map(function (a) { return { artistId: a.artistId, name: a.name }; });
+          if (need.length) warmNetease(need, { concurrency: 3 }).catch(function () { });
+        }
+      } catch (_) { }
 
       sendJSON(res, {
         ok: true,
@@ -5614,6 +5635,8 @@ const server = http.createServer(async (req, res) => {
       if (!rawWiki && detail && detail.name && typeof resolveArtistWikiAsync === 'function') {
         try { resolveArtistWikiAsync(artistId, detail.name); } catch (_) { }
       }
+      // 头像与列表保持同一优先级：Apple 高置信判据 > 国内源头像 > 首字母占位
+      const cnAvatar = (typeof getNeteaseAvatar === 'function') ? (getNeteaseAvatar(artistId) || '') : '';
       sendJSON(res, {
         ok: true,
         artistId: artistId,
@@ -5621,9 +5644,9 @@ const server = http.createServer(async (req, res) => {
         wikiLang: wikiLangOf(rawWiki),
         name: (detail && detail.name) || '',
         genres: (detail && Array.isArray(detail.genres)) ? detail.genres : [],
-        image: (detail && detail.image) || '',
-        imageRule: (detail && detail.imageRule) || '',
-        hasImage: !!(detail && detail.hasImage),
+        image: (detail && detail.image) || cnAvatar,
+        imageRule: (detail && detail.image) ? (detail.imageRule || '') : (cnAvatar ? 'netease-avatar' : ''),
+        hasImage: !!((detail && detail.hasImage) || cnAvatar),
         status: (detail && detail.status) || 'missing',
         songTotal: mine.length,
         releaseTotal: releases.length,

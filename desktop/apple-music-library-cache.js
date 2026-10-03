@@ -227,6 +227,8 @@ function createAppleMusicLibraryCacheService(options) {
     wiki: new Map(),
     // 国内源（网易云）简介，独立存放，便于"维基失败再国内"的顺序与各自缓存
     netease: new Map(),
+    // 国内源在途请求（去重）
+    neteaseInflight: new Map(),
     // 维基不可达的熔断截止时间（0 = 未熔断）与最近一次的真实原因
     wikiDownUntil: 0,
     wikiDownReason: '',
@@ -1176,12 +1178,69 @@ function createAppleMusicLibraryCacheService(options) {
     return artistState.netease.get(normalizeText(artistId)) || null;
   }
 
+  // 缓存里的国内头像（不联网）。列表先用它把已有头像补上。
+  function getNeteaseAvatar(artistId) {
+    const rec = getNeteaseBio(artistId);
+    return (rec && rec.neteaseAvatar) || '';
+  }
+
   function getArtistWiki(artistId) {
     loadArtistsFromDisk();
     return artistState.wiki.get(normalizeText(artistId)) || null;
   }
 
+  // 维基解析过程的自省信息（排查语言选择 / 代理问题时用）
   function getWikiDiag() { return artistState.lastWikiDiag || null; }
+
+  // 国内源预热：为一批 artist 拉取国内详情（简介 + 头像），写缓存。
+  // **后台执行、不阻塞调用方**；同一批对象内的重复项与在途项都会去重。
+  async function warmNetease(entries, options) {
+    const opts = options || {};
+    const list = Array.isArray(entries) ? entries : [];
+    const conc = Math.max(1, Math.min(4, Number(opts.concurrency) || 3));
+    loadArtistsFromDisk();
+    const todo = [];
+    list.forEach(function (e) {
+      const id = normalizeText(e && e.artistId);
+      const name = normalizeText(e && e.name);
+      if (!id || !name) return;
+      if (artistState.netease.has(id)) return;             // 已解析过（含负缓存）
+      if (artistState.neteaseInflight.has(id)) return;      // 在途，别重复
+      if (todo.indexOf(id) >= 0) return;
+      todo.push(id);
+      artistState.neteaseInflight.set(id, { artistId: id, name: name });
+    });
+    const stats = { requested: todo.length, ok: 0, miss: 0, avatar: 0 };
+    let cursor = 0;
+    async function worker() {
+      while (cursor < todo.length) {
+        const id = todo[cursor]; cursor += 1;
+        const meta = artistState.neteaseInflight.get(id) || {};
+        const name = meta.name || '';
+        let rec = null;
+        try { rec = await resolveNeteaseBio(name); } catch (_) { rec = null; }
+        if (rec && rec.ok) {
+          const stored = Object.assign({ status: 'ok', policy: WIKI_POLICY, fetchedAt: Date.now() }, rec.data);
+          artistState.netease.set(id, stored);
+          stats.ok += 1;
+          if (stored.neteaseAvatar) stats.avatar += 1;
+        } else {
+          // 永久性"没找到"才记负缓存；网络类失败留待下次重试
+          const reason = String((rec && rec.reason) || 'NETEASE_ERR');
+          if (!/ERR$/.test(reason) || reason === 'NETEASE_NO_EXACT_MATCH') {
+            artistState.netease.set(id, { status: 'missing', reason: reason, policy: WIKI_POLICY, fetchedAt: Date.now() });
+          }
+          stats.miss += 1;
+        }
+        artistState.neteaseInflight.delete(id);
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < conc; i += 1) workers.push(worker());
+    await Promise.all(workers);
+    if (stats.ok || stats.miss) persistArtists();
+    return stats;
+  }
 
   // ------------------------------------------------------------
   // 国内源兜底：网易云音乐艺人简介
@@ -1236,8 +1295,27 @@ function createAppleMusicLibraryCacheService(options) {
     if (!b || Number(b.code || 0) !== 200) return { ok: false, reason: 'NETEASE_CODE_' + (b && b.code) };
     const a = b.artist || (b.data && (b.data.artist || b.data)) || {};
     const brief = normalizeText(a.briefDesc || a.description || a.desc);
-    if (!brief) return { ok: false, reason: 'NETEASE_NO_BRIEF' };
-    return { ok: true, data: { extract: brief, title: normalizeText(a.name), description: '', url: 'https://music.163.com/#/artist?id=' + artistId, lang: 'zh', source: '网易云音乐', neteaseArtistId: String(artistId) } };
+    // 头像：网易云给的是 http 且尺寸小，统一换成 https 并带上尺寸参数。
+    // 有实测：https + ?param=300y300 正常返回（185KB），不带参数会拿到 1.8MB 原图。
+    const rawAvatar = normalizeText(a.avatar || a.picUrl || a.img1v1Url);
+    const avatar = rawAvatar
+      ? rawAvatar.replace(/^http:/i, 'https:') + (rawAvatar.indexOf('?') >= 0 ? '' : '?param=300y300')
+      : '';
+    // 没有简介但有头像时也要保留记录（头像同样有价值）
+    if (!brief && !avatar) return { ok: false, reason: 'NETEASE_EMPTY' };
+    return {
+      ok: true,
+      data: {
+        extract: brief,
+        title: normalizeText(a.name),
+        description: '',
+        url: 'https://music.163.com/#/artist?id=' + artistId,
+        lang: 'zh',
+        source: '网易云音乐',
+        neteaseArtistId: String(artistId),
+        neteaseAvatar: avatar,
+      },
+    };
   }
 
   let neteaseBioImpl = null;
@@ -1321,6 +1399,8 @@ function createAppleMusicLibraryCacheService(options) {
     resolveArtistWikiAsync,
     getArtistWiki,
     getNeteaseBio,
+    getNeteaseAvatar,
+    warmNetease,
     getWikiDiag,
     setNeteaseSearchImpl,
     setNeteaseBioImpl,

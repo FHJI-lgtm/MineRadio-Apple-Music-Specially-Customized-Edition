@@ -507,6 +507,8 @@ function resolveArtistWiki(artistId, name) { return libraryCache.resolveArtistWi
 function resolveArtistWikiAsync(artistId, name) { return libraryCache.resolveArtistWikiAsync(artistId, name); }
 function getArtistWiki(artistId) { return libraryCache.getArtistWiki(artistId); }
 function getWikiDiag() { return libraryCache.getWikiDiag(); }
+function getNeteaseAvatar(artistId) { return libraryCache.getNeteaseAvatar(artistId); }
+function warmNetease(entries, options) { return libraryCache.warmNetease(entries, options); }
 
 async function rebuildAlbumTracks(libraryAlbum) {
   const songs = libraryCache.getSongs();
@@ -532,6 +534,8 @@ module.exports = {
   resolveArtistWikiAsync,
   getArtistWiki,
   getWikiDiag,
+  getNeteaseAvatar,
+  warmNetease,
   rebuildAlbumTracks,
   handleAppleLibraryAlbumTracksWeb,
   ensureCredentialSource,
