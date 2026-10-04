@@ -2747,26 +2747,26 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 
 /* 子菜单：0fr -> 1fr 的高度过渡，不需要测量高度，也不引动画库 */
 .mlib-nav-children {
-  display: grid;
-  grid-template-rows: 1fr;
+  /* 折叠用 max-height + overflow:hidden。
+     不用 grid-template-rows: 0fr —— 容器高度仍会被内容撑开，收起态会留一大块空白
+     （实测收起后仍占 178px）。max-height 直接作用于高度本身，行为确定。 */
+  display: block;
+  overflow: hidden;
+  max-height: 640px;
   margin: 6px 0 0 6px;
   padding-left: 10px;
   border-left: 1px solid rgba(255, 255, 255, .08);
-  transition: grid-template-rows .24s cubic-bezier(.16, 1, .3, 1),
+  transition: max-height .26s cubic-bezier(.16, 1, .3, 1),
     opacity .2s ease,
-    margin-top .24s cubic-bezier(.16, 1, .3, 1);
+    margin-top .26s cubic-bezier(.16, 1, .3, 1);
   opacity: 1
 }
 
 .mlib-nav-children.is-collapsed {
-  grid-template-rows: 0fr;
+  max-height: 0;
   opacity: 0;
   margin-top: 0;
   pointer-events: none
-}
-
-.mlib-nav-children > * {
-  min-height: 0
 }
 
 .mlib-nav-item {
