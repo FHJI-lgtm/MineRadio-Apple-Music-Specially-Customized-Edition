@@ -133,7 +133,16 @@
   // 实测各源封面：Apple / 网易云 / 酷狗 都返回 Access-Control-Allow-Origin: *，
   // **QQ 的 y.qq.com 不返回** —— 所以只有这类源走本地代理 /api/cover
   //（那个端点本来就带 CORS 头，注释写明「给 canvas 提取像素用」）。
-  var COVER_THEME_PROXY_HOSTS = ['y.qq.com', 'y.gtimg.cn', 'qpic.cn', 'qq.com'];
+  // 实测**不返回** Access-Control-Allow-Origin 的封面域名（都需走代理）：
+  //   y.qq.com / *.gtimg.cn / *.qpic.cn  -> QQ 音乐
+  //   *.douyinpic.com / *.douyin.com     -> 汽水音乐
+  // 实测**返回** * 的（保持直连，不增加无谓开销）：
+  //   is1-ssl.mzstatic.com（Apple）、*.music.126.net（网易云）、imge.kugou.com（酷狗）
+  // 新增源时先量一次 ACAO，再决定是否加进来。
+  var COVER_THEME_PROXY_HOSTS = [
+    'y.qq.com', 'y.gtimg.cn', 'qpic.cn', 'qq.com',
+    'douyinpic.com', 'douyin.com', 'bytedance.com', 'byteimg.com',
+  ];
   function coverThemeSource(coverUrl) {
     var u = String(coverUrl || '').trim();
     if (!u) return u;
@@ -497,15 +506,18 @@
     }
     // 非 Apple 源：id 带源前缀（ne: / kg:），走该源的取数端点。
     // 不能落到 Apple 端点上 —— 那会拿不到任何曲目，看起来就像"点不开"。
-    if (/^(ne|kg|qq):/.test(albumId)) {
+    if (/^(ne|kg|qq|qs):/.test(albumId)) {
       try {
         var isKugouAlbum = /^kg:/.test(albumId);
         var isQQAlbum = /^qq:/.test(albumId);
+        var isQishuiAlbum = /^qs:/.test(albumId);
         var albumTracksUrl = isKugouAlbum
           ? '/api/kugou/library/album/tracks?id=' + encodeURIComponent(albumId)
           : (isQQAlbum
             ? '/api/qq/library/album/tracks?id=' + encodeURIComponent(albumId)
-            : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId));
+            : (isQishuiAlbum
+              ? '/api/qishui/library/album/tracks?id=' + encodeURIComponent(albumId)
+              : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId)));
         var neData = await apiJson(albumTracksUrl);
         if (seq !== reqSeq) return;
         var neSongs = (neData && Array.isArray(neData.tracks)) ? neData.tracks : [];
@@ -529,13 +541,13 @@
         }
         renderInfo(state.album, neSongs);
         renderTracks(neSongs);
-        var srcName = isKugouAlbum ? '酷狗音乐' : (isQQAlbum ? 'QQ 音乐' : '网易云音乐');
+        var srcName = isKugouAlbum ? '酷狗音乐' : (isQQAlbum ? 'QQ 音乐' : (isQishuiAlbum ? '汽水音乐' : '网易云音乐'));
         setStatus(neSongs.length ? '' : '这张专辑在' + srcName + '没有返回曲目。');
         return;
       } catch (err) {
         if (seq !== reqSeq) return;
         state.status = 'error';
-        renderTracksError('读取' + (isKugouAlbum ? '酷狗' : (isQQAlbum ? 'QQ 音乐' : '网易云')) + '专辑曲目失败：' + ((err && err.message) || '未知错误'));
+        renderTracksError('读取' + (isKugouAlbum ? '酷狗' : (isQQAlbum ? 'QQ 音乐' : (isQishuiAlbum ? '汽水音乐' : '网易云'))) + '专辑曲目失败：' + ((err && err.message) || '未知错误'));
         return;
       }
     }
@@ -930,6 +942,7 @@
     var isNetease = /^ne:/.test(id) || prov === 'netease';
     var isKugou = /^kg:/.test(id) || prov === 'kugou';
     var isQQ = /^qq:/.test(id) || prov === 'qq';
+    var isQishui = /^qs:/.test(id) || prov === 'qishui';
     // 酷狗：走自己的端点按歌单原始顺序取全（内部逐页取全，实测 475/475）。
     // 不用 /api/playlist/tracks 是因为那个端点额外做了"最近添加在前"的排序与适配，
     // 而歌单详情应当保持歌单自身顺序。
@@ -937,9 +950,11 @@
       ? '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^kg:/, ''))
       : (isQQ
         ? '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^qq:/, ''))
-        : (isNetease
-          ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
-          : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1'));
+        : (isQishui
+          ? '/api/qishui/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^qs:/, ''))
+          : (isNetease
+            ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
+            : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1')));
     apiJson(url).then(function (data) {
       if (seq !== plSeq) return;
       var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];

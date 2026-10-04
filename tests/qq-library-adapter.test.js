@@ -157,7 +157,7 @@ test('QQ 接入的接线（端点与源登记）', async (t) => {
   });
 
   await t.test('专辑/歌单详情按源分流到 QQ，不落到 Apple', () => {
-    assert.ok(DETAIL.indexOf('(ne|kg|qq):') >= 0, '专辑/歌单的前缀判定要含 qq');
+    assert.ok(DETAIL.indexOf('(ne|kg|qq|qs):') >= 0, '专辑/歌单的前缀判定要含 qq（以及后续源）');
     assert.ok(DETAIL.indexOf('/api/qq/library/album/tracks?id=') >= 0, '专辑曲目走 QQ 端点');
     assert.ok(DETAIL.indexOf('/api/qq/library/playlist/tracks?id=') >= 0, '歌单曲目走 QQ 端点');
     const i2 = DETAIL.indexOf('var isQQ = /^qq:/.test(id)');

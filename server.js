@@ -95,6 +95,7 @@ const {
   kugouAudioReferer,
 } = require('./kugou-api');
 const qqLibrary = require('./qq-library-adapter');
+const qishuiLibrary = require('./qishui-library-adapter');
 const kugouLibrary = require('./kugou-library-adapter');
 const {
   getQishuiStatus,
@@ -463,6 +464,30 @@ function serveStatic(res, filePath) {
     res.end(data);
   });
 }
+// ---- 汽水艺人头像跨源补齐的缓存（**模块级**：必须跨请求存活） ----
+// 教训：这些声明一度写在某个路由分支里，于是每个请求都重新建一份缓存，
+// 结果永远不命中（实测 set 之后立刻 get 仍是 MISS）。路由内的状态一律放模块级。
+const qishuiArtistAvatarCache = new Map();
+const QISHUI_AVATAR_TTL_MS = 24 * 60 * 60 * 1000;
+// 艺人列表（含跨源头像）的整体结果缓存
+const qishuiArtistsResultCache = (function () {
+  const map = new Map();
+  const TTL = 60 * 60 * 1000;
+  return {
+    get: function (k) {
+      const hit = map.get(String(k || ''));
+      if (!hit) return null;
+      if (Date.now() - hit.at > TTL) { map.delete(String(k || '')); return null; }
+      return hit.payload;
+    },
+    set: function (k, payload) { map.set(String(k || ''), { at: Date.now(), payload: payload }); },
+  };
+})();
+
+// 网易云艺人名单只在进程内取一次（按名字查头像时复用）——
+// 否则每个汽水艺人都要拉一次几百条的列表，实测 12 位要 21.9 秒。
+let neteaseArtistIndexCache = { at: 0, map: null };
+
 function sendJSON(res, data, status) {
   res.writeHead(status || 200, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -7423,6 +7448,331 @@ const server = http.createServer(async (req, res) => {
     const value = { rawPlaylists: rawPls, songs: songs, ids: seen };
     kugouLibraryCache.set(key, { at: Date.now(), value: value });
     return value;
+  }
+
+  // 汽水个人库曲目聚合（带缓存）。
+  // 个人库 = **自己的**歌单曲目（owned）；「汽水推荐 / 最近播放」是系统 virtual 条目，不算收藏。
+  const qishuiLibraryCache = new Map();
+  const QISHUI_LIB_TTL_MS = 5 * 60 * 1000;
+
+  // 汽水的歌单曲目端点**每页硬上限 50 首**（limit 被 clamp 到 50），必须翻页取全。
+  // 实测「李601喜欢的音乐」声明 131 首，只取第一页会丢 81 首。
+  async function fetchAllQishuiPlaylistTracks(pid) {
+    const out = [];
+    const seen = new Set();
+    let offset = 0;
+    for (let guard = 0; guard < 40; guard += 1) {
+      let page = null;
+      try { page = await handleQishuiPlaylistTracks(String(pid), { limit: 50, offset: offset }, qishuiCookie); } catch (_) { page = null; }
+      if (!page) break;
+      const raw = (page.tracks || page.songs) || [];
+      if (!raw.length) break;
+      for (const one of qishuiLibrary.toLibrarySongs(raw)) {
+        if (seen.has(one.librarySongId)) continue;
+        seen.add(one.librarySongId);
+        out.push(one);
+      }
+      const total = Number(page.total) || 0;
+      if (total && out.length >= total) break;
+      if (!page.hasMore) break;
+      const next = Number(page.nextOffset);
+      const advance = (Number.isFinite(next) && next > offset) ? next : (offset + raw.length);
+      if (advance <= offset) break;      // 不前进就停，避免死循环
+      offset = advance;
+    }
+    return out;
+  }
+
+  async function collectQishuiLibrary() {
+    const status = getQishuiStatus(qishuiCookie);
+    if (!status || !status.loggedIn) return { loggedIn: false, songs: [], rawPlaylists: [] };
+    const key = String(status.userId || 'web');
+    const hit = qishuiLibraryCache.get(key);
+    if (hit && Date.now() - hit.at < QISHUI_LIB_TTL_MS) return hit.value;
+    const pRes = await handleQishuiUserPlaylists(qishuiCookie);
+    const rawPlaylists = (pRes && pRes.playlists) || [];
+    const owned = rawPlaylists.filter(function (pl) {
+      const mapped = qishuiLibrary.toLibraryPlaylist(pl);
+      // 只收个人库：owned 或 shelfPane==='mine'；系统 virtual 条目（推荐/最近播放）不收
+      return mapped && (mapped.owned || String(pl.shelfPane || '') === 'mine');
+    });
+    const seen = new Set();
+    const songs = [];
+    for (const pl of owned) {
+      for (const one of await fetchAllQishuiPlaylistTracks(pl.id)) {
+        if (seen.has(one.librarySongId)) continue;
+        seen.add(one.librarySongId);
+        songs.push(one);
+      }
+    }
+    const value = { loggedIn: true, userId: status.userId, rawPlaylists: owned, songs: songs, ids: seen };
+    qishuiLibraryCache.set(key, { at: Date.now(), value: value });
+    return value;
+  }
+
+  // 汽水 → 音乐资料库（只读）。
+  if (pn === '/api/qishui/library/index') {
+    try {
+      const lib = await collectQishuiLibrary();
+      if (!lib.loggedIn) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'qishui', albums: [], playlists: [], songs: 0 });
+        return;
+      }
+      const playlists = lib.rawPlaylists.map(pl => qishuiLibrary.toLibraryPlaylist(pl)).filter(Boolean);
+      const songs = lib.songs;
+      const albums = qishuiLibrary.albumsFromSongs(songs).map(qishuiLibrary.toAppleShapedAlbumCard).filter(Boolean);
+      sendJSON(res, {
+        ok: true,
+        provider: 'qishui',
+        userId: lib.userId,
+        playlists: playlists,
+        songs: songs.length,
+        savedSongIds: Array.from(lib.ids),
+        albums: albums,
+        counts: { playlists: playlists.length, songs: songs.length, albums: albums.length },
+      });
+    } catch (err) {
+      console.error('[QishuiLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qishui', albums: [], playlists: [], songs: 0 }, 500);
+    }
+    return;
+  }
+
+  // 汽水歌单曲目（只读）
+  if (pn === '/api/qishui/library/playlist/tracks') {
+    try {
+      const pid = String(url.searchParams.get('id') || '').replace(/^qs:/, '').trim();
+      if (!pid) { sendJSON(res, { ok: false, error: 'MISSING_PLAYLIST_ID', tracks: [] }, 400); return; }
+      // 翻页取全（每页硬上限 50）
+      const tracks = await fetchAllQishuiPlaylistTracks(pid);
+      let plName = '';
+      let declared = 0;
+      try {
+        const head = await handleQishuiPlaylistTracks(pid, { limit: 1, offset: 0 }, qishuiCookie);
+        plName = (head && head.playlist && head.playlist.name) || '';
+        declared = Number(head && head.total) || 0;
+      } catch (_) { /* 拿不到名称就不填 */ }
+      sendJSON(res, {
+        ok: true,
+        provider: 'qishui',
+        playlist: { id: 'qs:' + pid, name: plName, trackCount: tracks.length },
+        tracks: tracks,
+        total: declared || tracks.length,
+        // 取回的比声明的少才是真的截断，如实标注
+        truncated: declared > 0 && tracks.length < declared,
+      });
+    } catch (err) {
+      console.error('[QishuiPlaylistTracksLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qishui', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // 汽水专辑曲目（只读）。汽水没有专辑详情接口，专辑曲目取自已收藏曲目里属于该专辑的。
+  if (pn === '/api/qishui/library/album/tracks') {
+    try {
+      const slug = String(url.searchParams.get('id') || '').replace(/^qs:/, '').trim();
+      if (!slug) { sendJSON(res, { error: 'MISSING_ALBUM_ID', tracks: [] }, 400); return; }
+      const lib2 = await collectQishuiLibrary();
+      const mine = (lib2.songs || []).filter(function (sg) { return String(sg.albumId) === slug; });
+      sendJSON(res, {
+        ok: true,
+        provider: 'qishui',
+        album: {
+          id: 'qs:' + slug,
+          name: mine.length ? mine[0].albumName : '',
+          artist: mine.length ? mine[0].artist : '',
+          cover: mine.length ? mine[0].cover : '',
+          // 汽水不给发行日期，也没有专辑简介 -> 都留空，界面整块隐藏
+          releaseDate: '',
+          description: '',
+        },
+        tracks: mine,
+        albumTotal: mine.length,
+        savedTotal: mine.length,
+        total: mine.length,
+      });
+    } catch (err) {
+      console.error('[QishuiAlbumTracksLib]', err);
+      sendJSON(res, { error: err.message, provider: 'qishui', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // 汽水**不提供艺人头像**（无艺人详情接口，曲目的 artists 只有 id/name/mid，实测）。
+  // 按你说的做法：拿艺人名到其它已接入源去补。
+  //   1) QQ：走已验证的 /api/qq/search 拿 songs[].artists[].mid，再 /api/qq/artist/detail 取头像
+  //   2) 网易云：QQ 找不到时，用网易云资料库艺人里同名且有头像的直接取
+  // 重要：**只用它做头像**，不参与艺人身份判定（那会把不同源的艺人混为一谈）。
+  async function neteaseArtistIndex() {
+    if (neteaseArtistIndexCache.map && Date.now() - neteaseArtistIndexCache.at < 30 * 60 * 1000) {
+      return neteaseArtistIndexCache.map;
+    }
+    const map = new Map();
+    try {
+      const nr = await fetchJsonLocal('/api/netease/library/artists?enrich=0');
+      ((nr && nr.artists) || []).forEach(function (a) {
+        if (a && a.hasImage && a.image && a.name) map.set(String(a.name).trim().toLowerCase(), a.image);
+      });
+    } catch (_) { /* 拿不到就空表 */ }
+    neteaseArtistIndexCache = { at: Date.now(), map: map };
+    return map;
+  }
+
+  async function fetchJsonLocal(pathAndQuery) {
+    // 用模块级 PORT 常量，与 server.listen 保持一致
+  const r = await fetch('http://127.0.0.1:' + PORT + pathAndQuery);
+    if (!r.ok) return null;
+    try { return await r.json(); } catch (_) { return null; }
+  }
+
+  async function resolveQishuiArtistAvatar(name) {
+  const key = String(name || '').trim().toLowerCase();
+    if (!key) return { image: '', from: '' };
+    const hit = qishuiArtistAvatarCache.get(key);
+    if (hit && Date.now() - hit.at < QISHUI_AVATAR_TTL_MS) return hit.value;
+    const norm = function (v) { return String(v || '').trim().toLowerCase(); };
+    let out = { image: '', from: '' };
+    // 1) QQ
+    try {
+      const sr = await fetchJsonLocal('/api/qq/search?limit=10&keywords=' + encodeURIComponent(name));
+      const songs = (sr && sr.songs) || [];
+      let mid = '';
+      for (const sg of songs) {
+        const hitA = (sg.artists || []).find(function (a) { return a && a.mid && norm(a.name) === key; });
+        if (hitA) { mid = hitA.mid; break; }
+      }
+      if (mid) {
+        const d = await fetchJsonLocal('/api/qq/artist/detail?limit=10&mid=' + encodeURIComponent(mid));
+        const av = (d && d.artist && d.artist.avatar) || '';
+        if (av) out = { image: String(av).replace(/^http:/i, 'https:'), from: 'qq' };
+      }
+    } catch (_) { /* 继续下一个源 */ }
+    // 2) 网易云：用**进程内缓存过的**名单查同名且有头像的艺人。
+    // 直接每次拉全量列表的话，每位汽水艺人都会打一次几百条的接口（实测 12 位要 21.9 秒）。
+    if (!out.image) {
+      try {
+        const idx = await neteaseArtistIndex();
+        const img = idx.get(key);
+        if (img) out = { image: String(img).replace(/^http:/i, 'https:'), from: 'netease' };
+      } catch (_) { /* 拿不到就算了 */ }
+    }
+    qishuiArtistAvatarCache.set(key, { at: Date.now(), value: out });
+    return out;
+  }
+
+  // 汽水资料库艺人（只读）
+  if (pn === '/api/qishui/library/artists') {
+    try {
+      const lib3 = await collectQishuiLibrary();
+      if (!lib3.loggedIn) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'qishui', artists: [], total: 0 });
+        return;
+      }
+      const artists = qishuiLibrary.artistsFromSongs(lib3.songs);
+      // 汽水自己不给艺人头像 -> 按名字到其它已接入源补（只用于显示，不参与身份判定）
+      // 结果整体缓存：跨源按名查头像较慢（QQ 搜索每艺人约 0.6 秒），
+      // 但头像基本不变 —— 首次构建后重用，避免每次打开艺人都重跑。
+      const cacheKey = String(lib3.userId || 'web');
+      const cached = String(url.searchParams.get('refresh') || '') === '1'
+        ? null : qishuiArtistsResultCache.get(cacheKey);
+      if (cached) {
+        sendJSON(res, Object.assign({}, cached, { fromCache: true }));
+        return;
+      }
+      const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      const CONC = 12;   // 跨源查询是 IO 等待，适当提高并发；有整体缓存兜底
+      let cursor = 0;
+      async function enrichQishuiAvatars() {
+        while (cursor < ENRICH) {
+          const idx = cursor; cursor += 1;
+          const a = artists[idx];
+          if (!a || a.hasImage) continue;
+          try {
+            const got = await resolveQishuiArtistAvatar(a.name);
+            if (got && got.image) {
+              a.image = got.image;
+              a.hasImage = true;
+              // 如实标注头像来源：不是汽水自己给的
+              a.imageRule = 'avatar-from-' + got.from;
+              a.imageFrom = got.from;
+            }
+          } catch (_) { /* 取不到就保持无头像 */ }
+        }
+      }
+      const wsA = [];
+      for (let i = 0; i < Math.min(CONC, ENRICH); i += 1) wsA.push(enrichQishuiAvatars());
+      await Promise.all(wsA);
+      const payload = {
+        ok: true,
+        provider: 'qishui',
+        artists: artists,
+        total: artists.length,
+        withImage: artists.filter(function (x) { return x.hasImage; }).length,
+        songTotal: lib3.songs.length,
+        imageNote: '汽水音乐未提供艺人头像接口；头像按艺人名从其它已接入源补齐（仅用于显示）',
+      };
+      qishuiArtistsResultCache.set(cacheKey, payload);
+      sendJSON(res, Object.assign({}, payload, { fromCache: false }));
+    } catch (err) {
+      console.error('[QishuiLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qishui', artists: [], total: 0 }, 500);
+    }
+    return;
+  }
+
+  // 汽水艺人详情（只读）。作品只含个人库里确实有的。
+  if (pn === '/api/qishui/library/artist/detail') {
+    try {
+      const aid = String(url.searchParams.get('id') || '').replace(/^qs:/, '').trim();
+      if (!aid) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID' }, 400); return; }
+      const lib4 = await collectQishuiLibrary();
+      const mine = (lib4.songs || []).filter(function (sg) {
+        if (String(sg.artistId || '') === aid) return true;
+        return (sg.artists || []).some(function (a) { return String(a && a.id) === aid; });
+      });
+      const byAlbum = new Map();
+      mine.forEach(function (sg) {
+        const key = String(sg.albumId || '');
+        if (!key) return;
+        if (!byAlbum.has(key)) byAlbum.set(key, { id: key, name: sg.albumName || '未命名专辑', cover: sg.cover || '', songs: [] });
+        const rec = byAlbum.get(key);
+        rec.songs.push(sg);
+        if (!rec.cover && sg.cover) rec.cover = sg.cover;
+      });
+      const releases = Array.from(byAlbum.values()).map(function (r) {
+        return {
+          libraryAlbumId: 'qs:' + r.id,
+          name: r.name,
+          cover: r.cover,
+          releaseDate: '',
+          songCount: r.songs.length,
+          type: 'album',
+        };
+      });
+      let qsName = String(url.searchParams.get('name') || '');
+      if (!qsName) qsName = (mine[0] && mine[0].artist) || '';
+      sendJSON(res, {
+        ok: true,
+        provider: 'qishui',
+        artistId: 'qs:' + aid,
+        name: qsName,
+        genres: [],
+        image: '',
+        hasImage: false,
+        imageRule: '',
+        // 汽水没有艺人简介接口 -> 不编造
+        wiki: null,
+        wikiLang: '',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: { album: releases, single: [], ep: [], unknown: [] },
+      });
+    } catch (err) {
+      console.error('[QishuiArtistDetailLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qishui' }, 500);
+    }
+    return;
   }
 
   // QQ 个人库曲目聚合（带缓存）。多个端点共用。
