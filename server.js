@@ -3547,6 +3547,31 @@ async function handleQQArtistDetail(mid, limit) {
   };
 }
 
+// QQ 专辑简介（独立的"大字段"接口）。
+// 主接口（c.y.qq.com 的 album detail）为了响应速度**不返回**简介；
+// 简介在 musicu 的 music.musichallAlbum.AlbumInfoServer / GetAlbumDetail -> basicInfo.desc。
+// 实测：自传（五月天）有长文本、Never Going Back 为空 —— 没有就如实留空。
+async function fetchQQAlbumDesc(albumMid) {
+  const mid = String(albumMid || '').trim();
+  if (!mid) return '';
+  try {
+    const json = await qqMusicRequest({
+      comm: { ct: 24, cv: 0 },
+      album: {
+        module: 'music.musichallAlbum.AlbumInfoServer',
+        method: 'GetAlbumDetail',
+        param: { albumMid: mid },
+      },
+    }, { cookie: true });
+    const blk = json && json.album;
+    if (!blk || Number(blk.code || 0) !== 0) return '';
+    const bi = (blk.data && blk.data.basicInfo) || {};
+    return typeof bi.desc === 'string' ? bi.desc : '';
+  } catch (_) {
+    return '';   // 取不到就不显示，不编造
+  }
+}
+
 async function handleQQAlbumDetail(mid, limit) {
   const albumMid = String(mid || '').trim();
   const num = Math.max(10, Math.min(120, parseInt(limit || '80', 10) || 80));
@@ -7501,6 +7526,9 @@ const server = http.createServer(async (req, res) => {
         ? allTracks.filter(function (t) { return savedIds.has(String(t.librarySongId)); })
         : allTracks;
       const a = (aRes && aRes.album) || {};
+      // 专辑简介是独立接口（主接口为了响应速度不返回大文本）
+      let qqAlbumDesc = '';
+      try { qqAlbumDesc = await fetchQQAlbumDesc(amid); } catch (_) { qqAlbumDesc = ''; }
       sendJSON(res, {
         ok: true,
         provider: 'qq',
@@ -7513,8 +7541,8 @@ const server = http.createServer(async (req, res) => {
           cover: a.cover || '',
           // QQ 专辑端点提供发行日期（实测形如 2017-09-08）
           releaseDate: a.releaseDate || '',
-          // 简介：QQ 该端点没有提供，且未实测到可靠来源 -> 留空，前端整块隐藏
-          description: '',
+          // 简介：主接口不返回，走独立的 GetAlbumDetail -> basicInfo.desc
+          description: qqAlbumDesc,
         },
         tracks: tracks,
         total: allTracks.length,

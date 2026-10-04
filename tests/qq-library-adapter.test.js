@@ -252,3 +252,43 @@ test('QQ 艺人简介（在 singer_brief，不在 singer_info）', async (t3) =>
       '非字符串一律空串，不猜');
   });
 });
+
+test('QQ 专辑简介：独立的"大字段"接口', async (t4) => {
+  const SERVER = require('node:fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+  await t4.test('必须走 GetAlbumDetail 的独立接口，而不是主接口', () => {
+    assert.ok(SERVER.indexOf('async function fetchQQAlbumDesc(') > 0, '要有专门的取简介函数');
+    const i = SERVER.indexOf('async function fetchQQAlbumDesc(');
+    const end = SERVER.indexOf('async function handleQQAlbumDetail', i);
+    const fn = SERVER.slice(i, end > i ? end : i + 1600);
+    assert.ok(fn.indexOf('music.musichallAlbum.AlbumInfoServer') > 0,
+      '主接口（c.y.qq.com 的 album detail）为了响应速度不返回大文本，简介在 musicu 的这个模块');
+    assert.ok(fn.indexOf('GetAlbumDetail') > 0, '方法名');
+    assert.ok(fn.indexOf('basicInfo') > 0, '简介在 basicInfo.desc');
+    assert.ok(fn.indexOf('bi.desc') > 0, '取 desc 字段');
+  });
+
+  await t4.test('非字符串一律空串，不编造', () => {
+    const i = SERVER.indexOf('async function fetchQQAlbumDesc(');
+    const end = SERVER.indexOf('async function handleQQAlbumDetail', i);
+    const fn = SERVER.slice(i, end > i ? end : i + 1600);
+    assert.ok(/typeof bi\.desc === 'string' \? bi\.desc : ''/.test(fn), '只采纳字符串');
+    assert.ok(/catch \(_\) \{[\s\S]{0,120}return ''/.test(fn), '异常时返回空串，不抛错不猜');
+  });
+
+  await t4.test('资料库专辑端点带上简介，且在使用前定义', () => {
+    assert.ok(SERVER.indexOf('description: qqAlbumDesc,') > 0, '要接到 album.description');
+    const defAt = SERVER.indexOf("let qqAlbumDesc = '';");
+    const useAt = SERVER.indexOf('description: qqAlbumDesc,');
+    assert.ok(defAt > 0 && defAt < useAt, '变量必须先定义后使用');
+    assert.ok(SERVER.indexOf('await fetchQQAlbumDesc(amid)') > 0, '用专辑 mid 取简介');
+  });
+
+  await t4.test('该模块只被真正调用一次（注释里说明用途不算重复实现）', () => {
+    // 用带 module: 前缀的实际调用计数，避免把注释里的名字也算进去
+    const calls = SERVER.split("module: 'music.musichallAlbum.AlbumInfoServer'").length - 1;
+    assert.equal(calls, 1, '实际调用只应有一处（实际 ' + calls + ' 处）');
+    const defs = SERVER.split('async function fetchQQAlbumDesc(').length - 1;
+    assert.equal(defs, 1, '取简介的函数只应定义一次（实际 ' + defs + ' 处）');
+  });
+});
