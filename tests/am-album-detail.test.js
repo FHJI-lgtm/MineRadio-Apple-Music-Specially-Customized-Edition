@@ -299,4 +299,46 @@ test('album detail: integration with the library page', async (t) => {
     const trOpen = HTML.indexOf('<div id="top-right"');
     assert.ok(navClose > 0 && trOpen > navClose, 'nav must close before #top-right opens (sibling, not child)');
   });
+});;
+
+// ============================================================
+// Apple 资料库专辑简介（editorialNotes）
+// ============================================================
+test('Apple 专辑简介：文案与曲目列表相互独立，且要去掉 HTML', async (t30) => {
+  const DETAIL = MOD;                              // 本文件顶部已读入
+  const SERVER = read('server.js');
+
+  await t30.test('拿到文案就用，不得绑定在"是否走了重建路径"上', () => {
+    // 原先的条件是 usedRebuild && rebuilt.albumNotes -> 走普通曲目端点的专辑即使取到文案也被丢掉
+    const i = DETAIL.indexOf('var notes = (rebuilt && rebuilt.albumNotes) || null;');
+    assert.ok(i > 0, '文案应独立取出');
+    const seg = DETAIL.slice(i - 200, i + 900);
+    assert.ok(!/if \(usedRebuild && rebuilt\.albumNotes\)/.test(seg), '不得再用 usedRebuild 作前置条件');
+    assert.ok(/editorialNotes: stripEditorialHtml/.test(seg), '渲染前要去 HTML');
+  });
+
+  await t30.test('去 HTML 的函数存在且处理了换行与实体', () => {
+    const i = DETAIL.indexOf('function stripEditorialHtml(');
+    assert.ok(i > 0, '要有 stripEditorialHtml');
+    const fn = DETAIL.slice(i, i + 900);
+    assert.ok(/<br/.test(fn), 'br 要变换行');
+    assert.ok(/<\[\^>\]\+>/g.test(fn) || fn.indexOf('<[^>]+>') > 0, '其余标签要去掉');
+    assert.ok(fn.indexOf('&amp;') > 0, '常见实体要还原');
+    assert.ok(fn.indexOf('standard') > 0 && fn.indexOf('short') > 0, 'standard 优先、退到 short');
+  });
+
+  await t30.test('服务端仍只回文案、不回曲目（职责单一）', () => {
+    const i = SERVER.indexOf("pn === '/api/apple/library/album/notes'");
+    assert.ok(i > 0, '端点应存在');
+    const fn = SERVER.slice(i, i + 600);
+    assert.ok(fn.indexOf('albumNotesFor') > 0, '走既有解析');
+    // 不得出现重复实现（本轮我一度多建了一个同名端点，已删）
+    const dup = SERVER.split("pn === '/api/apple/library/album/notes'").length - 1;
+    assert.equal(dup, 1, '该端点不得重复实现（实际 ' + dup + ' 处）');
+  });
+
+  await t30.test('不得残留本轮误加的临时缓存常量', () => {
+    assert.ok(SERVER.indexOf('appleAlbumNotesCache') < 0, '重复端点用的缓存应已移除');
+    assert.ok(SERVER.indexOf('APPLE_STOREFRONT_FOR_NOTES') < 0, '同上');
+  });
 });

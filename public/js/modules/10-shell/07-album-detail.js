@@ -239,6 +239,24 @@
 
   // 曲目 -> 播放器可消费的形状。
   // 播放器用 song.id 取流、用 provider 选源，两者都必须有。
+  // Apple 的专辑文案是 HTML（含 <b>/<i>/<br> 等）；资料库里的简介按纯文本渲染，
+  // 所以先转成纯文本：<br> 与 </p> 变换行，其余标签去掉，顺带还原常见实体。
+  function stripEditorialHtml(notes) {
+    if (!notes) return '';
+    var raw = '';
+    if (typeof notes === 'string') raw = notes;
+    else if (typeof notes === 'object') raw = String(notes.standard || notes.short || '');
+    if (!raw) return '';
+    return raw
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   function toPlayableSong(song, provider) {
     return {
       id: String((song && (song.id || song.sourceSongId)) || ''),
@@ -565,15 +583,18 @@
           if (notesRes && notesRes.albumNotes) rebuilt = Object.assign({}, rebuilt || {}, { albumNotes: notesRes.albumNotes });
         } catch (_) { }
       }
-      if (usedRebuild && rebuilt.albumNotes) {
+      // 简介与曲目列表**相互独立**：只要拿到了文案就用，不要绑定在「是否走了重建路径」上。
+      // （原先的条件是 usedRebuild && ...，于是走普通曲目端点的专辑即使文案已取到也会被丢掉。）
+      var notes = (rebuilt && rebuilt.albumNotes) || null;
+      if (notes) {
         state.album = Object.assign({}, album, {
-          editorialNotes: rebuilt.albumNotes.editorialNotes || null,
-          copyright: rebuilt.albumNotes.copyright || ''
+          // Apple 的 editorialNotes.standard 带 HTML（<b>/<i>/<br>），渲染前去掉标签
+          editorialNotes: stripEditorialHtml(notes.editorialNotes) || null,
+          copyright: String(notes.copyright || '').trim()
         });
       } else {
         state.album = album;
       }
-      renderInfo(state.album, songs);
       renderTracks(songs);
       if (usedRebuild) {
         // 重建成功：如实报告校验结果与未能验证的曲目（不猜归属、不并入）。
