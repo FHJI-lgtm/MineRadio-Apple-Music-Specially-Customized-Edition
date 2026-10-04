@@ -2661,9 +2661,12 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   background: rgba(255, 255, 255, .38)
 }
 
+/* 当前源的高亮点。
+   刻意用**固定色**而不是 var(--home-accent)：后者会随主题变化，
+   实测曾解析成 #ffffff —— 于是"高亮"与普通点几乎一样，等于没有提示。 */
 .mlib-nav-item.is-active .mlib-nav-dot {
-  background: var(--home-accent, #00f5d4);
-  box-shadow: 0 0 10px rgba(0, 245, 212, .65)
+  background: #00f5d4;
+  box-shadow: 0 0 10px rgba(0, 245, 212, .75)
 }
 
 /* 未接入的源：明确不可选，并写明原因 —— 不用"点了没反应"表达不可用 */

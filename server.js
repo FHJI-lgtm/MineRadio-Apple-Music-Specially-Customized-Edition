@@ -7150,6 +7150,45 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---------- 歌单曲目详情 ----------
+  // 网易云专辑曲目（只读）。
+  // 音乐资料库列表里的网易云专辑 id 形如 "ne:<albumId>"，详情页据此取曲目。
+  // 曲目字段经适配层转成资料库 schema，与 Apple 的 /tracks 同形。
+  // **注意**：这里给的是该专辑在网易云的曲目表，不等于"已保存到资料库的曲目" ——
+  // 本源的资料库概念就是"收藏/喜欢"，专辑曲目按目录给出，这是如实反映源的行为。
+  if (pn === '/api/netease/library/album/tracks') {
+    try {
+      const rawId = String(url.searchParams.get('id') || '');
+      const albumId = rawId.replace(/^ne:/, '').trim();
+      if (!albumId) { sendJSON(res, { error: 'MISSING_ALBUM_ID', tracks: [] }, 400); return; }
+      const cookie = typeof userCookie === 'string' ? userCookie : '';
+      const res2 = await album({ id: albumId, cookie, timestamp: Date.now() });
+      const body = (res2 && res2.body) || {};
+      const albumObj = body.album || {};
+      const rawSongs = Array.isArray(body.songs) ? body.songs : [];
+      const mapped = rawSongs.map(mapSongRecord).filter(t => t.id);
+      const tracks = neteaseLibrary.toLibrarySongs(mapped);
+      sendJSON(res, {
+        ok: true,
+        provider: 'netease',
+        album: {
+          id: 'ne:' + albumId,
+          name: albumObj.name || '',
+          artist: (albumObj.artist && albumObj.artist.name) || '',
+          cover: albumObj.picUrl || '',
+          // 发行日期：网易云 album 对象里有 publishTime，但那是**毫秒时间戳**，
+          // 与资料库的 YYYY-MM-DD 语义不同；没有把握就不转，留空。
+          releaseDate: '',
+        },
+        tracks: tracks,
+        total: Number(body.album && body.album.size) || tracks.length,
+      });
+    } catch (err) {
+      console.error('[NeteaseAlbumTracks]', err);
+      sendJSON(res, { error: err.message, provider: 'netease', tracks: [] }, 500);
+    }
+    return;
+  }
+
   // 网易云 → 音乐资料库（只读）。
   // 产出与 /api/apple/library/index 的 albums 同形数据 + 歌单列表 + 曲目统计，
   // 这样音乐资料库切源时不必改渲染代码。

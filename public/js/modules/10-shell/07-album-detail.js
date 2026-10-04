@@ -337,6 +337,29 @@
       renderTracksError('这张专辑缺少资料库 ID，无法加载曲目。');
       return;
     }
+    // 非 Apple 源：id 带 "ne:" 前缀，走该源的取数端点。
+    // 不能落到 Apple 端点上 —— 那会拿不到任何曲目，看起来就像"点不开"。
+    if (/^ne:/.test(albumId)) {
+      try {
+        var neData = await apiJson('/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId));
+        if (seq !== reqSeq) return;
+        var neSongs = (neData && Array.isArray(neData.tracks)) ? neData.tracks : [];
+        if (neData && neData.error && !neSongs.length) {
+          state.status = 'error';
+          renderTracksError(neData.message || ('接口返回 ' + neData.error));
+          return;
+        }
+        state.songs = neSongs;
+        renderTracks(neSongs);
+        setStatus(neSongs.length ? '' : '这张专辑在网易云没有返回曲目。');
+        return;
+      } catch (err) {
+        if (seq !== reqSeq) return;
+        state.status = 'error';
+        renderTracksError('读取网易云专辑曲目失败：' + ((err && err.message) || '未知错误'));
+        return;
+      }
+    }
     try {
       // 数据来源始终是本地资料库索引（只含已加入资料库的歌曲）。
       // 白名单内的专辑走重建（本地归组 + catalogId 校验归属），修复关联端点的系统性漏报；

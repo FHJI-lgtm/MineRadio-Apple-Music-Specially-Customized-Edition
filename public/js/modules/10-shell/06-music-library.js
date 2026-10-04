@@ -430,6 +430,9 @@
       return;
     }
     mlibActiveSource = name;
+    // 必须**重新渲染源列表**：选中态（.is-active / 高亮点）是 renderSourceList 写进 DOM 的，
+    // 只调 applyNavViewLabel 的话标题会变、但高亮仍留在上一个源上（看起来像没切换）。
+    renderSourceList();
     applyNavViewLabel();
     if (opts.persist !== false) writePref(MLIB_SOURCE_KEY, name);
     // 视图名在源之间保持不变；计数与列表都必须**换成新源的数据**，

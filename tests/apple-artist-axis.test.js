@@ -1114,3 +1114,35 @@ test('06-music-library.js：调用的函数必须存在（防 ReferenceError 中
       'applySourceOpen 确实已不存在，因此任何残留调用都必须报错');
   });
 });
+;
+// ============================================================
+// 当前源的高亮必须真的看得见
+// ============================================================
+test('音乐资料库：当前源的高亮点不依赖会变的主题变量', async (t14) => {
+  const CSS = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'css', 'index.css'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t14.test('高亮点用固定色，不用 var(--home-accent)', () => {
+    const i = CSS.indexOf('.mlib-nav-item.is-active .mlib-nav-dot');
+    const block = CSS.slice(i, i + 260);
+    assert.ok(!/var\(--home-accent/.test(block),
+      '--home-accent 会随主题变化（实测曾解析成 #ffffff，高亮等于看不见），必须用固定色');
+    assert.match(block, /#00f5d4/, '固定强调色');
+    assert.match(block, /box-shadow/, '再加一层辉光，弱色背景下也能看出');
+  });
+
+  await t14.test('普通点与高亮点视觉上必须可区分', () => {
+    const plain = CSS.slice(CSS.indexOf('.mlib-nav-dot {'), CSS.indexOf('.mlib-nav-dot {') + 200);
+    const activeIdx = CSS.indexOf('.mlib-nav-item.is-active .mlib-nav-dot');
+    const active = CSS.slice(activeIdx, activeIdx + 260);
+    assert.match(plain, /rgba\(255, 255, 255, \.38\)/, '普通点是低透明度白');
+    assert.ok(active.indexOf('#00f5d4') >= 0, '高亮点是强调色 —— 两者色相不同，必然可辨');
+  });
+
+  await t14.test('切换源时必须重新渲染源列表，否则高亮留在上一个源上', () => {
+    const fn = MOD.slice(MOD.indexOf('function setMlibSource'), MOD.indexOf('function setMlibView'));
+    assert.match(fn, /renderSourceList\(\)/,
+      '选中态是 renderSourceList 写进 DOM 的；只改标题而不重渲染，高亮会留在旧源上');
+  });
+});
