@@ -3538,6 +3538,9 @@ async function handleQQArtistDetail(mid, limit) {
       musicSize: totalSong,
       albumSize: Number(data.total_album || 0) || 0,
       mvSize: Number(data.total_mv || 0) || 0,
+      // 简介在 singer_brief（**不在** singer_info 里，实测 The Score 648 字）。
+      // 部分艺人确实没有，那就如实返回空串，由界面整块隐藏。
+      introduction: typeof data.singer_brief === 'string' ? data.singer_brief : '',
     },
     total: totalSong,
     songs,
@@ -7583,9 +7586,9 @@ const server = http.createServer(async (req, res) => {
         const ar = (d && d.artist) || {};
         if (ar.name) qName = ar.name;
         if (ar.avatar) qImage = String(ar.avatar).replace(/^http:/i, 'https:');
-        if (ar.introduction || ar.desc) {
+        if (ar.introduction) {
           qBio = {
-            extract: String(ar.introduction || ar.desc),
+            extract: String(ar.introduction),
             title: ar.name || qName,
             url: 'https://y.qq.com/n/ryqq/singer/' + amid,
             description: '',

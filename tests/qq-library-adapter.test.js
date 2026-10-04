@@ -218,3 +218,37 @@ test('QQ 封面取色要走本地代理（y.qq.com 不返回 CORS 头）', async
     assert.ok(!/kugou/.test(fn), '酷狗域名不该进名单');
   });
 });
+
+test('QQ 艺人简介（在 singer_brief，不在 singer_info）', async (t3) => {
+  const SERVER = require('node:fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+  await t3.test('handleQQArtistDetail 必须解析 singer_brief', () => {
+    const i = SERVER.indexOf('async function handleQQArtistDetail');
+    assert.ok(i > 0, '函数应存在');
+    // 取到下一个函数声明为止，避免越界误判
+    const end = SERVER.indexOf('async function handleQQAlbumDetail', i);
+    const fn = SERVER.slice(i, end > i ? end : i + 3000);
+    assert.ok(fn.indexOf('singer_brief') >= 0,
+      '简介在 data.singer_brief（实测 The Score 648 字）；只看 singer_info 会永远拿不到');
+    assert.ok(fn.indexOf('introduction') >= 0, '要把它暴露成 introduction');
+  });
+
+  await t3.test('资料库艺人详情把它接成 wiki 并标注来源', () => {
+    // 该端点的 wiki 字段在片段较靠后处，切片要够长（否则误判为"没接线"）
+    const i = SERVER.indexOf("pn === '/api/qq/library/artist/detail'");
+    const fn = SERVER.slice(i, i + 4200);
+    assert.ok(fn.indexOf('ar.introduction') >= 0, '要读 introduction');
+    assert.ok(fn.indexOf("source: 'QQ 音乐'") >= 0, '来源如实标注');
+    // 拿不到就不显示（wiki 为 null），不编造
+    assert.ok(/wiki: qBio/.test(fn), 'wiki 由简介决定');
+  });
+
+  await t3.test('简介为空时不编造', () => {
+    const i = SERVER.indexOf('async function handleQQArtistDetail');
+    const end = SERVER.indexOf('async function handleQQAlbumDetail', i);
+    const fn = SERVER.slice(i, end > i ? end : i + 3000);
+    // 只有 string 类型才采纳，其余给空串
+    assert.ok(/typeof data\.singer_brief === 'string' \? data\.singer_brief : ''/.test(fn),
+      '非字符串一律空串，不猜');
+  });
+});
