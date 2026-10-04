@@ -1146,3 +1146,40 @@ test('音乐资料库：当前源的高亮点不依赖会变的主题变量', as
       '选中态是 renderSourceList 写进 DOM 的；只改标题而不重渲染，高亮会留在旧源上');
   });
 });
+;
+// ============================================================
+// 切换音乐源：专辑墙必须换成新源的数据（不能残留上一个源）
+// ============================================================
+test('音乐资料库：切源后专辑墙必须重渲染，不残留上一个源', async (t15) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t15.test('记住当前网格属于哪个源，切源即视为"首次"', () => {
+    assert.match(MOD, /albumsRenderedSource/, '必须记录网格当前渲染自哪个源');
+    const fn = MOD.slice(MOD.indexOf('function loadLibraryAlbums'), MOD.indexOf('function loadArtistsView'));
+    assert.match(fn, /albumsRenderedSource !== mlibActiveSource/,
+      '源变了就要按首次处理 —— 否则 changed 标记为假时不重渲染，会留着上一个源的列表');
+    assert.match(fn, /albumsRenderedSource = requestedSource/, '渲染后要记住数据来源');
+  });
+
+  await t15.test('切源重渲染不依赖 changed 标记', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadLibraryAlbums'), MOD.indexOf('function loadArtistsView'));
+    assert.match(fn, /var changed = first \|\| libraryIndexChanged\(data\)/,
+      'first 为真时必须渲染（changed 只作为额外条件）');
+    assert.match(fn, /if \(!changed\) return data;/, '仅在既非首次又无变化时才跳过渲染');
+  });
+
+  await t15.test('切源过程中又切回时，丢弃过期响应', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadLibraryAlbums'), MOD.indexOf('function loadArtistsView'));
+    assert.match(fn, /requestedSource !== mlibActiveSource/,
+      '请求期间用户又切源了，就不能把旧源的结果画到新源下');
+  });
+
+  await t15.test('视图状态也带来源标记（艺人/歌单同理不能串源）', () => {
+    assert.match(MOD, /artistsState = \{[^}]*source:/, '艺人视图要记录来源');
+    assert.match(MOD, /playlistsState = \{[^}]*source:/, '歌单视图要记录来源');
+    assert.match(MOD, /playlistsState\.source = mlibActiveSource/, '加载成功时写入来源');
+    assert.match(MOD, /playlistsState\.loaded && playlistsState\.source === mlibActiveSource/,
+      '只有同一来源的已加载状态才可复用');
+  });
+});

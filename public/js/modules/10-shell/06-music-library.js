@@ -217,6 +217,10 @@
     return !!(data && data.changed);
   }
 
+  // 当前专辑网格里的数据来自哪个源。
+  // 切源时**必须无条件重渲染** —— 不能交给 changed 标记决定，否则会留着上一个源的列表。
+  var albumsRenderedSource = '';
+
   function pickAlbums(data, limit) {
     var all = (data && Array.isArray(data.albums)) ? data.albums : [];
     // 索引里的顺序就是 dateAdded 新→旧（同步时按同一规则排好），这里只切片。
@@ -236,12 +240,18 @@
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
     var snap = getLibraryIndexSnapshot();
-    var first = !(snap && snap.albums);
+    // 网格是空的、或当前网格属于**别的源**时，都按"首次"处理并渲染
+    var sourceChanged = albumsRenderedSource !== mlibActiveSource;
+    var first = !(snap && snap.albums) || sourceChanged;
     if (first) { albumsSection.begin(); }
-    return fetchLibraryIndex(mlibActiveSource).then(function (data) {
+    var requestedSource = mlibActiveSource;
+    return fetchLibraryIndex(requestedSource).then(function (data) {
+      // 期间用户又切了源：丢弃这次结果，别把旧源的数据画到新源下
+      if (requestedSource !== mlibActiveSource) return data;
       var changed = first || libraryIndexChanged(data);
       if (!changed) return data;
       albumsSection.apply(data);
+      albumsRenderedSource = requestedSource;
       syncNavAlbumCount();
       return data;
     }).catch(function (err) {
