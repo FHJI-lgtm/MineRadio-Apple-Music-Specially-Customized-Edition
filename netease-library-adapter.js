@@ -155,6 +155,42 @@ function toAppleShapedAlbumCard(album) {
   };
 }
 
+// 从曲目列表聚合艺人（与 Apple 资料库同一语义：艺人来自己保存的曲目）。
+// 身份键用**网易云 artistId**，不用名字 —— 同名不同人是常见情况。
+function artistsFromSongs(songs) {
+  var byId = new Map();
+  (Array.isArray(songs) ? songs : []).forEach(function (s) {
+    var artists = Array.isArray(s && s.artists) ? s.artists : [];
+    if (!artists.length && s && s.artistId) {
+      artists = [{ id: s.artistId, name: s.artist }];
+    }
+    artists.forEach(function (a) {
+      var id = validId(a && a.id);
+      var name = normalizeText(a && a.name);
+      if (!id || !name) return;                 // 缺 id 或名字的条目直接丢弃，不占位
+      if (!byId.has(id)) {
+        byId.set(id, { artistId: id, name: name, songCount: 0, albumIds: {}, cover: '' });
+      }
+      var rec = byId.get(id);
+      rec.songCount += 1;
+      if (s && s.albumId) rec.albumIds[s.albumId] = 1;
+      if (!rec.cover && s && s.cover) rec.cover = s.cover;   // 仅作占位，最终头像以 artist_detail 为准
+    });
+  });
+  return Array.from(byId.values()).map(function (r) {
+    return {
+      artistId: r.artistId,
+      provider: 'netease',
+      name: r.name,
+      songCount: r.songCount,
+      albumCount: Object.keys(r.albumIds).length,
+      // 曲目封面**不是艺人头像**，这里不冒充。头像由 artist_detail 提供，取不到就留空。
+      image: '',
+      hasImage: false,
+    };
+  });
+}
+
 module.exports = {
   NETEASE_ID_PREFIX,
   NETEASE_SPECIAL_LIKED,
@@ -165,5 +201,6 @@ module.exports = {
   toLibraryAlbum,
   albumsFromSongs,
   toAppleShapedAlbumCard,
+  artistsFromSongs,
   validId,
 };

@@ -2182,6 +2182,25 @@ const NETEASE_PLAYLIST_TRACK_INDEX_MAX_ENTRIES = 8;
 const neteasePlaylistTrackIndexCache = new Map();
 const neteasePlaylistTrackIndexInflight = new Map();
 
+// 已收藏曲目 id 集合的缓存（按 userId）。
+// 索引接口算一次，专辑详情直接读 —— 避免每打开一张专辑就重扫个人库，
+// 也避免把几百个 id 塞进 URL。
+const neteaseSavedSongCache = { userId: '', ids: null, at: 0 };
+const NETEASE_SAVED_TTL_MS = 5 * 60 * 1000;
+
+function rememberNeteaseSavedSongs(userId, ids) {
+  neteaseSavedSongCache.userId = String(userId || '');
+  neteaseSavedSongCache.ids = new Set(ids || []);
+  neteaseSavedSongCache.at = Date.now();
+}
+
+function recallNeteaseSavedSongs(userId) {
+  const uid = String(userId || '');
+  if (!uid || neteaseSavedSongCache.userId !== uid || !neteaseSavedSongCache.ids) return null;
+  if (Date.now() - neteaseSavedSongCache.at > NETEASE_SAVED_TTL_MS) return null;
+  return neteaseSavedSongCache.ids;
+}
+
 function mapNeteasePlaylistMeta(pl, fallbackId) {
   pl = pl || {};
   return {
@@ -7166,10 +7185,26 @@ const server = http.createServer(async (req, res) => {
       const albumObj = body.album || {};
       const rawSongs = Array.isArray(body.songs) ? body.songs : [];
       const mapped = rawSongs.map(mapSongRecord).filter(t => t.id);
-      const tracks = neteaseLibrary.toLibrarySongs(mapped);
+      const allTracks = neteaseLibrary.toLibrarySongs(mapped);
+      // 只显示**已收藏的曲目** —— 与 Apple 资料库同一语义（Apple 侧也只显示已保存的歌曲）。
+      // 已收藏集合由调用方（索引接口）给出，避免每打开一张专辑就重扫整个个人库。
+      const savedParam = String(url.searchParams.get('savedIds') || '');
+      let savedIds = savedParam ? new Set(savedParam.split(',').filter(Boolean)) : null;
+      if (!savedIds) {
+        try {
+          const info3 = await getLoginInfo();
+          if (info3 && info3.userId) savedIds = recallNeteaseSavedSongs(info3.userId);
+        } catch (_) { savedIds = null; }
+      }
+      // 只保留确实进了个人库的曲目
+      const tracks = savedIds
+        ? allTracks.filter(function (t) { return savedIds.has(String(t.sourceSongId)); })
+        : allTracks;
       sendJSON(res, {
         ok: true,
         provider: 'netease',
+        albumTotal: allTracks.length,
+        savedTotal: tracks.length,
         album: {
           id: 'ne:' + albumId,
           name: albumObj.name || '',
@@ -7185,6 +7220,136 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[NeteaseAlbumTracks]', err);
       sendJSON(res, { error: err.message, provider: 'netease', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // 从个人库聚出「按专辑Id」的曲目（艺人详情与专辑过滤共用）。
+  // 与 Apple 资料库同一语义：**只含确实收藏了的曲目**。
+  async function collectNeteaseLibrarySongs(uid) {
+    const pls = await fetchAllNeteaseUserPlaylists(uid, 0);
+    const seen = new Set();
+    const songs = [];
+    for (const pl of pls) {
+      const d = await fetchAllNeteasePlaylistTracks(String(pl.id));
+      for (const one of neteaseLibrary.toLibrarySongs(((d && d.rawTracks) || []).map(mapSongRecord))) {
+        if (seen.has(one.sourceSongId)) continue;
+        seen.add(one.sourceSongId);
+        songs.push(one);
+      }
+    }
+    return { songs: songs, ids: seen };
+  }
+
+  // 网易云资料库艺人详情（只读）。与 /api/apple/library/artist/detail 同形。
+  // 只展示**个人库里确实有的**作品 —— 与 Apple 侧同一条规则。
+  if (pn === '/api/netease/library/artist/detail') {
+    try {
+      const aid = String(url.searchParams.get('id') || '').replace(/^ne:/, '').trim();
+      if (!aid) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID' }, 400); return; }
+      const info5 = await getLoginInfo();
+      if (!info5.loggedIn || !info5.userId) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN' }, 400); return; }
+      const cookie5 = typeof userCookie === 'string' ? userCookie : '';
+      // 艺人元数据（头像/简介）
+      let name = String(url.searchParams.get('name') || '');
+      let image = '';
+      let genres = [];
+      try {
+        const ad = await artist_detail({ id: aid, cookie: cookie5, timestamp: Date.now() });
+        const ab = (ad && ad.body) || {};
+        const av = ab.artist || (ab.data && ab.data.artist) || {};
+        if (av.name) name = av.name;
+        const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
+        if (raw) image = raw.replace(/^http:/i, 'https:');
+      } catch (_) { /* 取不到就留空，由前端用首字母占位 */ }
+      // 个人库里该艺人的曲目
+      const lib = await collectNeteaseLibrarySongs(info5.userId);
+      const mine = lib.songs.filter(function (sg) {
+        if (String(sg.artistId || '') === aid) return true;
+        return (sg.artists || []).some(function (a) { return String(a && a.id) === aid; });
+      });
+      // 按专辑归并成「发行」
+      const byAlbum = new Map();
+      mine.forEach(function (sg) {
+        const key = String(sg.albumId || '');
+        if (!key) return;
+        if (!byAlbum.has(key)) byAlbum.set(key, { id: key, name: sg.albumName || '未命名专辑', cover: sg.cover || '', songs: [] });
+        const rec = byAlbum.get(key);
+        rec.songs.push(sg);
+        if (!rec.cover && sg.cover) rec.cover = sg.cover;
+      });
+      const releases = Array.from(byAlbum.values()).map(function (r) {
+        return {
+          libraryAlbumId: 'ne:' + r.id,
+          name: r.name,
+          cover: r.cover,
+          // 发行日期留空：没有可靠来源就不填
+          releaseDate: '',
+          songCount: r.songs.length,
+          type: 'album',
+        };
+      });
+      sendJSON(res, {
+        ok: true,
+        provider: 'netease',
+        artistId: 'ne:' + aid,
+        name: name,
+        genres: genres,
+        image: image,
+        hasImage: !!image,
+        imageRule: image ? 'netease-avatar' : '',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: { album: releases, single: [], ep: [], unknown: [] },
+      });
+    } catch (err) {
+      console.error('[NeteaseArtistDetail]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'netease' }, 500);
+    }
+    return;
+  }
+
+  // 网易云资料库艺人（只读）。与 /api/apple/library/artists 同形。
+  // 身份键用 artistId；艺人来自**已收藏的曲目**（与 Apple 从已保存曲目聚合同一语义）。
+  // 头像用 artist_detail 的 avatar，**绝不用曲目封面冒充**。
+  if (pn === '/api/netease/library/artists') {
+    try {
+      const info4 = await getLoginInfo();
+      if (!info4.loggedIn || !info4.userId) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'netease', artists: [], total: 0 });
+        return;
+      }
+      const libAll = await collectNeteaseLibrarySongs(info4.userId);
+      const allSongs4 = libAll.songs;
+      const artists = neteaseLibrary.artistsFromSongs(allSongs4);
+      // 头像：只对缺头像的抓 artist_detail。限量以免一次打太多请求。
+      const LIMIT = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || '60', 10) || 60));
+      for (let i = 0; i < LIMIT; i += 1) {
+        const a = artists[i];
+        try {
+          const cookieNow = typeof userCookie === 'string' ? userCookie : '';
+          const rr = await artist_detail({ id: a.artistId, cookie: cookieNow, timestamp: Date.now() });
+          const ab = (rr && rr.body) || {};
+          const av = ab.artist || (ab.data && ab.data.artist) || {};
+          const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
+          if (raw) {
+            a.image = raw.replace(/^http:/i, 'https:');
+            a.hasImage = true;
+            a.imageRule = 'netease-avatar';
+          }
+        } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+      }
+      sendJSON(res, {
+        ok: true,
+        provider: 'netease',
+        artists: artists,
+        total: artists.length,
+        withImage: artists.filter(function (x) { return x.hasImage; }).length,
+        songTotal: allSongs4.length,
+      });
+    } catch (err) {
+      console.error('[NeteaseLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'netease', artists: [], total: 0 }, 500);
     }
     return;
   }
@@ -7209,16 +7374,27 @@ const server = http.createServer(async (req, res) => {
         .filter(Boolean);
       // 「喜欢的音乐」在网易云就是一个 specialType=5 的歌单，不需要单独接口
       const liked = playlists.filter(pl => pl.isLiked);
+      // 个人库 = **所有**「喜欢」歌单的曲目（去重）。
+      // 之前只取第一个，实测该账号有三个喜欢歌单（8/251/286 首），会漏掉大量曲目。
       const targetId = String(url.searchParams.get('playlistId') || '') || (liked[0] && liked[0].id) || (playlists[0] && playlists[0].id) || '';
       let songs = [];
       let truncated = false;
-      if (targetId) {
-        const data = await fetchAllNeteasePlaylistTracks(targetId);
-        const rawTracks = (data && data.rawTracks) || [];
-        songs = neteaseLibrary.toLibrarySongs(rawTracks.map(mapSongRecord));
-        const total = Number((data && data.playlistMeta && data.playlistMeta.trackCount) || 0);
-        truncated = total > 0 && songs.length < total;
+      // 个人库 = 用户**全部歌单**的曲目（去重），与 Apple 的"已保存曲目"同一语义。
+      // 只取 specialType=5 会严重漏歌 —— 实测该账号三个歌单里只有一个是 5，
+      // 但另外两个（251/286 首）同样是他自己的资料库。
+      const explicit = String(url.searchParams.get('playlistId') || '');
+      if (explicit) {
+        const dEx = await fetchAllNeteasePlaylistTracks(explicit);
+        const rawEx = (dEx && dEx.rawTracks) || [];
+        const totalEx = Number((dEx && dEx.playlistMeta && dEx.playlistMeta.trackCount) || 0);
+        truncated = totalEx > 0 && rawEx.length < totalEx;
+        songs = neteaseLibrary.toLibrarySongs(rawEx.map(mapSongRecord));
+      } else {
+        const libAll2 = await collectNeteaseLibrarySongs(info.userId);
+        songs = libAll2.songs;
       }
+      const seenSongIds = new Set(songs.map(function (x) { return x.sourceSongId; }));
+      rememberNeteaseSavedSongs(info.userId, seenSongIds);
       const albums = neteaseLibrary.albumsFromSongs(songs).map(neteaseLibrary.toAppleShapedAlbumCard).filter(Boolean);
       sendJSON(res, {
         ok: true,
@@ -7229,6 +7405,8 @@ const server = http.createServer(async (req, res) => {
         activePlaylistId: targetId,
         songs: songs.length,
         truncated: truncated,
+        // 已收藏曲目的 id 集合：专辑详情据此只显示"确实进了个人库"的那几首
+        savedSongIds: Array.from(seenSongIds),
         albums: albums,
         counts: {
           playlists: playlists.length,

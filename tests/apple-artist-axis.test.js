@@ -1288,3 +1288,49 @@ test('多源播放：歌单播放按源分流，时长单位正确', async (t17)
       'duration 必须由毫秒换算成秒');
   });
 });
+;
+// ============================================================
+// 艺人轴：按源取数，只含已收藏
+// ============================================================
+test('音乐资料库：艺人轴按源取数且只含已收藏曲目', async (t18) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+
+  await t18.test('艺人列表按源选端点', () => {
+    assert.match(MOD, /'\/api\/netease\/library\/artists'/, '网易云艺人端点');
+    assert.match(MOD, /'\/api\/apple\/library\/artists\?resolve=1'/, 'Apple 艺人端点');
+    assert.match(MOD, /artistsState\.source = mlibActiveSource/, '记录来源，切源后必须重取');
+  });
+
+  await t18.test('艺人详情按源选端点，且非 Apple 不拿 Apple 的简介充数', () => {
+    assert.match(MOD, /'\/api\/netease\/library\/artist\/detail\?id='/, '网易云艺人详情端点');
+    const fn = MOD.slice(MOD.indexOf('function loadArtistDetail'), MOD.indexOf('function scrollLibraryToTop'));
+    assert.match(fn, /mlibActiveSource === 'apple'/, '简介只在 Apple 源下走 wiki 端点');
+    assert.match(fn, /renderArtistBio\(null\)/, '非 Apple 源如实不显示简介');
+  });
+
+  await t18.test('未接入的源仍如实提示，不显示别的源的艺人', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadArtistsView'), MOD.indexOf('function ensureViewData'));
+    assert.match(fn, /if \(!srcCfg\.ready\)/, '未接入的源要拦在取数之前');
+    assert.match(fn, /的艺人资料尚未接入/, '要写明原因');
+  });
+
+  await t18.test('网易云艺人/详情都从个人库聚合，不返回目录全量', () => {
+    assert.match(SERVER, /async function collectNeteaseLibrarySongs\(uid\)/, '要有个人库聚合函数');
+    const fn = SERVER.slice(SERVER.indexOf("pn === '/api/netease/library/artist/detail'"),
+      SERVER.indexOf("pn === '/api/netease/library/artists'"));
+    assert.match(fn, /collectNeteaseLibrarySongs/, '详情用个人库聚合');
+    assert.match(fn, /lib\.songs\.filter/, '只保留该艺人在个人库里的曲目');
+    assert.ok(!/artist_songs|artist_album/.test(fn.replace(/\/\/[^\n]*/g, '')),
+      '不得改用目录接口 —— 那会混入未收藏的内容');
+  });
+
+  await t18.test('专辑详情只显示已收藏曲目', () => {
+    const fn = SERVER.slice(SERVER.indexOf("pn === '/api/netease/library/album/tracks'"),
+      SERVER.indexOf("async function collectNeteaseLibrarySongs"));
+    assert.match(fn, /savedIds/, '要有已收藏集合');
+    assert.match(fn, /allTracks\.filter/, '按集合过滤');
+    assert.match(fn, /recallNeteaseSavedSongs/, '复用索引算好的集合，避免每开一张专辑重扫个人库');
+  });
+});

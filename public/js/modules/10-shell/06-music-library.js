@@ -570,12 +570,10 @@
     if (tone) el.setAttribute('data-tone', tone); else el.removeAttribute('data-tone');
   }
   function loadArtistsView() {
-    // 艺人轴目前只有 Apple 接入。切到其它源时必须**如实说明未接入**，
-    // 不能继续显示 Apple 的艺人 —— 那会让人以为看到的是该源的艺人。
-    // 这个判断必须在 early return 之前，否则已经加载过时就什么都不做了。
-    if (mlibActiveSource !== 'apple') {
-      var srcLabel = (MLIB_SOURCES[mlibActiveSource] || {}).label || mlibActiveSource;
-      setViewState('artists', srcLabel + ' 的艺人资料尚未接入。', 'warn');
+    // 未接入资料库的源：如实说明，不能显示别的源的艺人。
+    var srcCfg = MLIB_SOURCES[mlibActiveSource] || {};
+    if (!srcCfg.ready) {
+      setViewState('artists', (srcCfg.label || mlibActiveSource) + ' 的艺人资料尚未接入。', 'warn');
       var g0 = document.getElementById('mlib-artists-grid');
       if (g0) g0.innerHTML = '';
       artistsState.loaded = false;
@@ -589,9 +587,11 @@
     var seq = ++artistsState.seq;
     artistsState.loading = true;
     if (grid) grid.setAttribute('aria-busy', 'true');
-    // 首次是**完整解析**：要把资料库里出现过的艺人全部向 Apple 解析一次并写入本地缓存，
-    // 后续打开只读缓存。signed 进度与"可能耗时"要如实告知，不要静默转圈。
-    setViewState('artists', '正在获取艺人信息，这可能需要一些时间（首次会从 Apple 完整解析并缓存，之后打开会很快）…');
+    // 两个源都从**已收藏的曲目**聚合艺人（与 Apple 同一语义），只是取数端点不同。
+    var isNetease2 = mlibActiveSource === 'netease';
+    setViewState('artists', isNetease2
+      ? '正在从已收藏曲目聚合艺人（首次需要逐位取头像，请稍候）…'
+      : '正在获取艺人信息，这可能需要一些时间（首次会从 Apple 完整解析并缓存，之后打开会很快）…');
 
     // 看门狗：第一次解析确实可能持续数分钟。超过阈值就把"还在进行"如实说出来，
     // 但不取消请求、也不谎报失败。
@@ -599,10 +599,15 @@
     var watchdog = setTimeout(function () {
       if (seq !== artistsState.seq || !artistsState.loading) return;
       stillWorking = true;
-      setViewState('artists', '仍在获取艺人信息…首次解析需要逐首向 Apple 查询，请稍候（完成前不会写入不完整的结果）');
+      setViewState('artists', isNetease2
+        ? '仍在聚合艺人信息…正在逐位取头像，请稍候'
+        : '仍在获取艺人信息…首次解析需要逐首向 Apple 查询，请稍候（完成前不会写入不完整的结果）');
     }, 45000);
 
-    apiJson('/api/apple/library/artists?resolve=1').then(function (data) {
+    var artistsUrl = isNetease2
+      ? '/api/netease/library/artists'
+      : '/api/apple/library/artists?resolve=1';
+    apiJson(artistsUrl).then(function (data) {
       clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;            // 旧请求不得覆盖新视图
       artistsState.loading = false;
@@ -624,6 +629,7 @@
       }
       setNavItemCount('artists', list.length ? String(list.length) : '');
       artistsState.loaded = true;
+      artistsState.source = mlibActiveSource;
       if (!list.length) {
         setViewState('artists', (data && data.message) || '资料库里还没有可用的艺人信息。');
         return;
@@ -818,7 +824,12 @@
     var seq = ++artistDetailState.seq;
     artistDetailState.loading = true;
     setViewState('artist-detail', '正在读取艺人作品…');
-    apiJson('/api/apple/library/artist/detail?id=' + encodeURIComponent(artistId)).then(function (data) {
+    // 按源取详情：非 Apple 源走它自己的端点，不能落到 Apple 上。
+    var detailUrl = mlibActiveSource === 'netease'
+      ? '/api/netease/library/artist/detail?id=' + encodeURIComponent(String(artistId).replace(/^ne:/, ''))
+        + '&name=' + encodeURIComponent(artistDetailState.name || '')
+      : '/api/apple/library/artist/detail?id=' + encodeURIComponent(artistId);
+    apiJson(detailUrl).then(function (data) {
       if (seq !== artistDetailState.seq) return;
       artistDetailState.loading = false;
       if (!data || data.ok === false) {
@@ -827,8 +838,13 @@
         return;
       }
       renderArtistDetail(data);
-      // 首次进入时简介还没取到（详情端点为不阻塞返回），后台补齐
-      fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name, data.wikiLang || (data.wiki && data.wiki.lang));
+      // 首次进入时简介还没取到（详情端点为不阻塞返回），后台补齐。
+      // 非 Apple 源不走 Apple 的 wiki 端点（那会让来源标注与实际不符）。
+      if (mlibActiveSource === 'apple') {
+        fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name, data.wikiLang || (data.wiki && data.wiki.lang));
+      } else {
+        renderArtistBio(null);   // 本源的简介接入前如实不显示，不拿 Apple 的充数
+      }
       // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，
       // scrollTop 被浏览器钳到 0；内容渲染回来后浏览器会恢复旧值，
       // 于是详情页在中途位置打开、看起来叠在导航上。这里补一次置顶。

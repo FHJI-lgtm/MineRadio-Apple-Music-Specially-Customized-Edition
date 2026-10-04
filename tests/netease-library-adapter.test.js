@@ -113,3 +113,40 @@ test('网易云适配：输出成 Apple 资料库索引兼容形状', async (t) 
     assert.equal(A.toAppleShapedAlbumCard(null), null);
   });
 });
+
+test('网易云适配：从曲目聚合艺人（身份键为 artistId）', async (t) => {
+  await t.test('按 artistId 归并，统计曲目数与专辑数', () => {
+    const songs = A.toLibrarySongs([
+      { id: 1, name: 'a', artist: 'X', artists: [{ id: 10, name: 'X' }], album: 'A', albumId: 100, duration: 1000 },
+      { id: 2, name: 'b', artist: 'X', artists: [{ id: 10, name: 'X' }], album: 'A', albumId: 100, duration: 1000 },
+      { id: 3, name: 'c', artist: 'X / Y', artists: [{ id: 10, name: 'X' }, { id: 20, name: 'Y' }], album: 'B', albumId: 101, duration: 1000 },
+    ]);
+    const artists = A.artistsFromSongs(songs);
+    assert.equal(artists.length, 2, 'X 与 Y 两位');
+    const x = artists.filter(function (v) { return v.artistId === '10'; })[0];
+    assert.equal(x.name, 'X');
+    assert.equal(x.songCount, 3, '合作曲目两边都算');
+    assert.equal(x.albumCount, 2);
+    const y = artists.filter(function (v) { return v.artistId === '20'; })[0];
+    assert.equal(y.songCount, 1);
+  });
+
+  await t.test('同名不同 id 不得合并（身份键不是名字）', () => {
+    const songs = A.toLibrarySongs([
+      { id: 1, name: 'a', artist: '同名', artists: [{ id: 1, name: '同名' }], album: 'A', albumId: 9, duration: 1000 },
+      { id: 2, name: 'b', artist: '同名', artists: [{ id: 2, name: '同名' }], album: 'A', albumId: 9, duration: 1000 },
+    ]);
+    assert.equal(A.artistsFromSongs(songs).length, 2, '同名但 id 不同 -> 两个人');
+  });
+
+  await t.test('缺 id 或名字的艺人不占位；头像不得用曲目封面冒充', () => {
+    const songs = A.toLibrarySongs([
+      { id: 1, name: 'a', artist: 'X', artists: [{ name: '无名无 id' }], album: 'A', albumId: 9, duration: 1000, cover: 'cover-x' },
+      { id: 2, name: 'b', artist: 'X', artists: [{ id: 10, name: 'X' }], album: 'A', albumId: 9, duration: 1000, cover: 'cover-x' },
+    ]);
+    const artists = A.artistsFromSongs(songs);
+    assert.equal(artists.length, 1, '缺 id 的被丢弃');
+    assert.equal(artists[0].image, '', '曲目封面不是艺人头像，必须留空');
+    assert.equal(artists[0].hasImage, false);
+  });
+});
