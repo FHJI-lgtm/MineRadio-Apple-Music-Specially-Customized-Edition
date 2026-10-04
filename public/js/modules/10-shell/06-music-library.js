@@ -239,6 +239,14 @@
   // 已有数据且 Apple 无变化时不重复渲染，避免无谓的 DOM 重建与滚动位置丢失。
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
+    // 未接入的源不去取数（按钮虽然是 disabled，但这是结构性要求：
+    // 不允许任何未接入的源悄悄落到 Apple 端点）。
+    var cfg = MLIB_SOURCES[mlibActiveSource] || {};
+    if (!cfg.ready) {
+      albumsSection.begin();
+      albumsSection.fail({ message: (cfg.label || mlibActiveSource) + ' 的资料库尚未接入。' });
+      return null;
+    }
     var snap = getLibraryIndexSnapshot();
     // 网格是空的、或当前网格属于**别的源**时，都按"首次"处理并渲染
     var sourceChanged = albumsRenderedSource !== mlibActiveSource;
@@ -998,7 +1006,17 @@
       '</div></article>';
   }
   function loadPlaylistsView() {
-    // 与艺人视图同理：数据只对**当时那个源**有效，切源后必须重取。
+    // 与艺人视图同理：未接入的源如实说明，不显示别的源的歌单。
+    var plCfg = MLIB_SOURCES[mlibActiveSource] || {};
+    if (!plCfg.ready) {
+      setViewState('playlists', (plCfg.label || mlibActiveSource) + ' 的歌单尚未接入。', 'warn');
+      var gp0 = document.getElementById('mlib-playlists-grid');
+      if (gp0) gp0.innerHTML = '';
+      playlistsState.loaded = false;
+      playlistsState.source = '';
+      return;
+    }
+    // 数据只对**当时那个源**有效，切源后必须重取。
     if (playlistsState.loaded && playlistsState.source === mlibActiveSource) return;
     if (playlistsState.loading) return;
     if (typeof apiJson !== 'function') { setViewState('playlists', '页面脚本尚未就绪，稍后重试。', 'warn'); return; }
@@ -1060,7 +1078,28 @@
   function playLibraryPlaylist(playlist) {
     var name = String((playlist && playlist.name) || '').trim();
     if (!name) {
-      if (typeof showToast === 'function') showToast('这个歌单没有可用的名称，无法交给 Apple Music');
+      if (typeof showToast === 'function') showToast('这个歌单没有可用的名称，无法播放');
+      return;
+    }
+    // 非 Apple 源：走 MineRadio 自有播放器，**不碰 UIA**（与 playLibraryAlbum 同一规则）。
+    var plProvider = String((playlist && playlist.provider) || 'apple');
+    if (plProvider !== 'apple') {
+      var plId = String((playlist && (playlist.libraryId || playlist.id)) || '');
+      if (!plId) { if (typeof showToast === 'function') showToast('这个歌单缺少 ID，无法播放'); return; }
+      if (typeof showToast === 'function') showToast('正在读取曲目…');
+      var plUrl = plProvider === 'kugou'
+        ? '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(plId)
+        : '/api/playlist/tracks?id=' + encodeURIComponent(String(plId).replace(/^ne:/, ''));
+      apiJson(plUrl).then(function (data) {
+        var songs = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+        if (!songs.length) {
+          if (typeof showToast === 'function') showToast('这个歌单没有可播放的曲目');
+          return;
+        }
+        playSongsInApp(songs, 0, plProvider, name);
+      }).catch(function (err) {
+        if (typeof showToast === 'function') showToast('读取曲目失败：' + ((err && err.message) || '未知错误'));
+      });
       return;
     }
     var amc = window.mineradio && window.mineradio.amc;

@@ -1536,3 +1536,90 @@ test('音乐资料库：切源强制隔离与非 Apple 播放路由', async (t22
     assert.ok(!/amc/.test(fn), '不得触碰 UIA');
   });
 });
+;
+// ============================================================
+// 结构性不变量：非 Apple 源强制 MineRadio 内部播放，绝不碰 UIA
+// ============================================================
+test('不变量：任何 amc（UIA）调用点之前必须有"非 Apple 源提前返回"的守卫', async (t23) => {
+  const FILES = [
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'),
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'),
+  ];
+  // 守卫的几种合法写法（都必须出现在 amc 引用之前，且是提前 return）
+  const GUARDS = [
+    /isNonAppleSource\s*\(/,                       // 统一判定函数
+    /Provider\s*(?:!==|===)\s*['"]apple['"]/,      // 显式比较 provider
+    /mlibActiveSource\s*(?:!==|===)\s*['"]apple['"]/,
+  ];
+
+  function enclosingFunctionStart(lines, idx) {
+    for (let i = idx; i >= 0; i -= 1) {
+      if (/^\s*(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(/.test(lines[i])) return i;
+      if (/^\s*(?:window\.|module\.exports\.)?[A-Za-z_$][\w$.]*\s*=\s*(?:async\s+)?function\s*\(/.test(lines[i])) return i;
+    }
+    return -1;
+  }
+
+  await t23.test('逐个 amc 调用点检查', () => {
+    const problems = [];
+    let checked = 0;
+    FILES.forEach(function (file) {
+      const src = require('node:fs').readFileSync(file, 'utf8');
+      const lines = src.split('\n');
+      lines.forEach(function (line, i) {
+        // 只看真正调用 UIA 的行（跳过把 amc 取出来做能力检测的那行也行，但取出来也必须已经过守卫）
+        if (!/\bamc\b/.test(line)) return;
+        if (/^\s*(\/\/|\*)/.test(line)) return;
+        const start = enclosingFunctionStart(lines, i);
+        if (start < 0) { problems.push(file + ':' + (i + 1) + ' 找不到所属函数'); return; }
+        checked += 1;
+        const head = lines.slice(start, i).join('\n');
+        const code = head.replace(/\/\/[^\n]*/g, '');
+        const hasGuard = GUARDS.some(function (re) { return re.test(code); });
+        // 守卫必须带提前 return（否则只是算了算没拦）
+        const hasEarlyReturn = /return\s*;/.test(code);
+        if (!hasGuard) {
+          problems.push(file.split('\\').pop() + ':' + (i + 1) + ' 的 amc 调用前没有非 Apple 源守卫');
+        } else if (!hasEarlyReturn) {
+          problems.push(file.split('\\').pop() + ':' + (i + 1) + ' 的守卫没有提前 return');
+        }
+      });
+    });
+    assert.ok(checked >= 4, '至少要覆盖到 4 个 UIA 调用点（实际 ' + checked + '）');
+    assert.deepEqual(problems, [], '这些 UIA 调用点没拦住非 Apple 源：\n  ' + problems.join('\n  '));
+  });
+
+  await t23.test('未接入的源不得被静默当成 Apple 处理', () => {
+    // 只对"未接入"的源做要求：accessor 必须先看 ready，未就绪就如实说明并 return，
+    // 不能悄悄落到 Apple 端点/通道。仅用 ready 就够，不预设任何具体源名。
+    const LIB = require('node:fs').readFileSync(
+      path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+    ['loadArtistsView', 'loadPlaylistsView', 'loadLibraryAlbums'].forEach(function (fn) {
+      const at = LIB.indexOf('function ' + fn + '(');
+      assert.ok(at > 0, fn + ' 应存在');
+      const fnSrc = LIB.slice(at, at + 1800);
+      assert.match(fnSrc, /srcCfg\.ready|\.ready\b/, fn + ' 必须检查该源是否已接入');
+    });
+  });
+
+  await t23.test('每个已接入源都能命中至少一个应用内播放入口', () => {
+    const DETAIL = require('node:fs').readFileSync(
+      path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+    const LIB = require('node:fs').readFileSync(
+      path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+    // 应用内入口存在，且不触碰 UIA
+    const entry = DETAIL.slice(DETAIL.indexOf('window.playSongsInApp = function'),
+      DETAIL.indexOf('function playInApp'));
+    assert.match(entry, /playQueueAt\(/, '走应用内取流');
+    assert.ok(!/amc/.test(entry), '应用内入口不得触碰 UIA');
+    // 专辑卡、歌单卡、发行卡三个播放入口都要按源分流
+    ['playLibraryAlbum', 'playLibraryPlaylist'].forEach(function (fnName) {
+      const fn = LIB.slice(LIB.indexOf('function ' + fnName + '('),
+        LIB.indexOf('function ' + fnName + '(') + 2400);
+      assert.match(fn, /Provider !== 'apple'/, fnName + ' 要按源分流');
+      const branch = fn.slice(fn.indexOf("Provider !== 'apple'"), fn.indexOf('var amc ='));
+      assert.ok(branch.length > 0 && !/amc\./.test(branch), fnName + ' 的非 Apple 分支不得触碰 UIA');
+      assert.match(branch, /playSongsInApp/, fnName + ' 非 Apple 走应用内播放');
+    });
+  });
+});

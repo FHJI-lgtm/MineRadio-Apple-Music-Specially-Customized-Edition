@@ -927,9 +927,23 @@
   // 随机播放入口。**真正的随机播放行为由 UIA 侧实现** —— 这里只负责触发，
   // 并把"点击发生了"如实反馈到状态区（不谎报已开始播放）。
   window.playAmPlaylistShuffled = function () {
-    var amc = window.mineradio && window.mineradio.amc;
     var name = String((plState.playlist && plState.playlist.name) || '').trim();
     if (!name) { plSetStatus('这个歌单没有可用的名称', 'warn'); return; }
+    // 非 Apple 源：随机播放同样走 MineRadio 自有播放器，**不碰 UIA**。
+    // "随机"由我们自己在本地打乱曲序实现（UIA 那条通道只对 Apple 有效）。
+    var plProv = String((plState.playlist && plState.playlist.provider) || 'apple');
+    if (isNonAppleSource(plProv)) {
+      var list = (plState.tracks || []).slice();
+      if (!list.length) { plSetStatus('这个歌单还没有可播放的曲目', 'warn'); return; }
+      for (var i = list.length - 1; i > 0; i -= 1) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+      }
+      plSetStatus('正在随机播放…', '');
+      playInApp(list, 0, { playlistName: name, shuffled: true }, plProv);
+      return;
+    }
+    var amc = window.mineradio && window.mineradio.amc;
     if (!amc || typeof amc.playPlaylistShuffled !== 'function') {
       plSetStatus('随机播放通道尚未接入', 'warn');
       return;
