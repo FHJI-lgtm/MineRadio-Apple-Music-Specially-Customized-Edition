@@ -8,6 +8,9 @@ const { execFile, spawn } = require('child_process');
 const systemMemory = require('./system-memory');
 const appleMusicControl = require('./apple-music-control');
 const { createAlphaStealth } = require('./apple-music-alpha-stealth');
+// 出网代理：Spotify / Wikipedia / GitHub 直连不通，需要本地代理；
+// Node 的 fetch 不会自动走系统代理，必须在加载 server.js **之前**设好环境变量。
+const outboundProxy = require('./outbound-proxy');
 
 // ------------------------------------------------------------
 // Apple Music stealth mode: Alpha=1 + WS_EX_LAYERED + WS_EX_TRANSPARENT, maintained by a
@@ -6746,6 +6749,10 @@ async function ensureLocalServerStarted() {
     configureLocalServerEnvironment(port);
     migrateLegacyAuthStorage();
     await initializeLoginEasterEggGate();
+
+    // 必须在 require server.js 之前：server.js 内部会立刻用 fetch 出网。
+    // 只在探测到本地代理端口真的在监听时才启用（Clash 没开就走直连，避免连到死端口）。
+    await outboundProxy.setupProxy((line) => { try { console.log(line); } catch (_) {} });
 
     const serverModulePath = path.join(__dirname, '..', 'server.js');
     try { delete require.cache[require.resolve(serverModulePath)]; } catch (_) {}
