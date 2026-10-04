@@ -155,8 +155,26 @@ function stripKugouFileName(raw, fallbackArtist) {
   let name = stripKugouHtml(raw || '');
   name = name.replace(/\.(mp3|flac|m4a|wav|ape|ogg)$/i, '').trim();
   const artist = stripKugouHtml(fallbackArtist || '');
-  if (artist && name.indexOf(artist) === 0) {
-    name = name.slice(artist.length).replace(/^[\s\-–—]+/, '').trim();
+  if (!artist) return name || stripKugouHtml(raw || '');
+  // 先试整串前缀
+  if (name.indexOf(artist) === 0) {
+    const cut = name.slice(artist.length).replace(/^[\s\-–—]+/, '').trim();
+    if (cut) return cut;
+  }
+  // 再逐个歌手剥：酷狗标题里常写成「歌手A、歌手B - 标题」，而 artists 是用 / 连接的，
+  // 整串前缀匹配必然失败。这里逐个命中，命中即剥。
+  const parts = artist.split(/\s*\/\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
+  if (parts.length) {
+    let rest = name;
+    let matched = false;
+    for (let guard = 0; guard < 8; guard += 1) {
+      let hit = '';
+      for (const p of parts) { if (rest.indexOf(p) === 0) { hit = p; break; } }
+      if (!hit) break;
+      matched = true;
+      rest = rest.slice(hit.length).replace(/^[\s、,，\-–—]+/, '').trim();
+    }
+    if (matched && rest) return rest;
   }
   return name || stripKugouHtml(raw || '');
 }
@@ -1699,7 +1717,12 @@ function mapKugouPlaylistItem(item) {
 function mapKugouPlaylistTrack(item) {
   item = item || {};
   const singers = Array.isArray(item.singerinfo) ? item.singerinfo : (Array.isArray(item.Singers) ? item.Singers : []);
-  const artistLabel = singers.map(s => s.name || s.SingerName).filter(Boolean).join(' / ');
+  // 兜底：部分接口（实测 /user/playlists 的曲目）直接给已映射的 artists 数组，
+  // 而不是 singerinfo/Singers。取不到时 artistLabel 会为空，
+  // 于是 SongName 里的「歌手、歌手 - 标题」前缀就剥不掉，标题会带上歌手名。
+  const artistLabel = singers.map(s => s.name || s.SingerName).filter(Boolean).join(' / ')
+    || (Array.isArray(item.artists) ? item.artists.map(a => a && a.name).filter(Boolean).join(' / ') : '')
+    || String(item.artist || '').trim();
   const mixSongId = item.mixsongid != null ? String(item.mixsongid) : (item.MixSongID != null ? String(item.MixSongID) : (item.album_audio_id != null ? String(item.album_audio_id) : ''));
   const mapped = mapKugouSearchItem(Object.assign({}, item, {
     FileHash: item.hash || item.FileHash,

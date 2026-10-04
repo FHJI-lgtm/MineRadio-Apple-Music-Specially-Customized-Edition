@@ -87,9 +87,12 @@ const {
   normalizeKugouCookieInput,
   clearKugouSessionCaches,
   kugouCookieHasPlayback,
+  kugouCookieHasLogin,
+  kugouCookieUserId,
   extractKugouAuth,
   kugouAudioReferer,
 } = require('./kugou-api');
+const kugouLibrary = require('./kugou-library-adapter');
 const {
   getQishuiStatus,
   handleQishuiStatus,
@@ -7360,6 +7363,183 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[NeteaseArtistDetail]', err);
       sendJSON(res, { ok: false, error: err.message, provider: 'netease' }, 500);
+    }
+    return;
+  }
+
+  // 酷狗个人库曲目聚合（带缓存）。三个端点共用，避免各自重扫一遍歌单。
+  const kugouLibraryCache = new Map();
+  const KUGOU_LIB_TTL_MS = 5 * 60 * 1000;
+
+  async function collectKugouLibrary(kgCookie) {
+    const key = String(kgCookie || '').slice(-24);
+    const hit = kugouLibraryCache.get(key);
+    if (hit && Date.now() - hit.at < KUGOU_LIB_TTL_MS) return hit.value;
+    const pRes = await handleKugouUserPlaylists(kgCookie);
+    const rawPls = (pRes && (pRes.playlists || pRes.data)) || [];
+    const seen = new Set();
+    const songs = [];
+    for (const pl of rawPls) {
+      let tRes = null;
+      try { tRes = await handleKugouPlaylistTracks(String(pl.id), kgCookie, {}); } catch (_) { tRes = null; }
+      const raw = (tRes && (tRes.tracks || tRes.songs || tRes.data)) || [];
+      for (const one of kugouLibrary.toLibrarySongs(raw)) {
+        if (seen.has(one.librarySongId)) continue;
+        seen.add(one.librarySongId);
+        songs.push(one);
+      }
+    }
+    const value = { rawPlaylists: rawPls, songs: songs, ids: seen };
+    kugouLibraryCache.set(key, { at: Date.now(), value: value });
+    return value;
+  }
+
+  // 酷狗 → 音乐资料库（只读）。与网易云端点**同形**，前端切源即可复用渲染。
+  // 个人库 = 全部歌单的曲目（去重），只显示确实收藏了的内容。
+  if (pn === '/api/kugou/library/index') {
+    try {
+      const kgCookie = typeof kugouCookie === 'string' ? kugouCookie : '';
+      if (!kgCookie || !kugouCookieHasLogin(kgCookie)) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'kugou', albums: [], playlists: [], songs: 0 });
+        return;
+      }
+      const kgUid = kugouCookieUserId(kgCookie) || '';
+      const lib = await collectKugouLibrary(kgCookie);
+      const playlists = lib.rawPlaylists.map(pl => kugouLibrary.toLibraryPlaylist(pl)).filter(Boolean);
+      const seen = lib.ids;
+      const songs = lib.songs;
+      const albums = kugouLibrary.albumsFromSongs(songs)
+        .map(kugouLibrary.toAppleShapedAlbumCard).filter(Boolean);
+      sendJSON(res, {
+        ok: true,
+        provider: 'kugou',
+        userId: kgUid,
+        playlists: playlists,
+        songs: songs.length,
+        savedSongIds: Array.from(seen),
+        albums: albums,
+        counts: { playlists: playlists.length, songs: songs.length, albums: albums.length },
+      });
+    } catch (err) {
+      console.error('[KugouLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'kugou', albums: [], playlists: [], songs: 0 }, 500);
+    }
+    return;
+  }
+
+  // 酷狗资料库艺人（只读）。与网易云/Apple 同形。
+  // 身份键用 artistId；艺人从已收藏曲目聚合。
+  // 头像：酷狗没有艺人详情接口，所以**不编造头像** —— 留空由前端用首字母占位。
+  if (pn === '/api/kugou/library/artists') {
+    try {
+      const kgCookie3 = typeof kugouCookie === 'string' ? kugouCookie : '';
+      if (!kgCookie3 || !kugouCookieHasLogin(kgCookie3)) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'kugou', artists: [], total: 0 });
+        return;
+      }
+      const lib3 = await collectKugouLibrary(kgCookie3);
+      const all3 = lib3.songs;
+      const artists = kugouLibrary.artistsFromSongs(all3);
+      sendJSON(res, {
+        ok: true,
+        provider: 'kugou',
+        artists: artists,
+        total: artists.length,
+        withImage: 0,
+        songTotal: all3.length,
+        imageNote: '酷狗没有艺人详情接口，头像留空（界面用首字母占位）',
+      });
+    } catch (err) {
+      console.error('[KugouLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'kugou', artists: [], total: 0 }, 500);
+    }
+    return;
+  }
+
+  // 酷狗艺人详情（只读）。与网易云同形；作品只含个人库里确实有的。
+  if (pn === '/api/kugou/library/artist/detail') {
+    try {
+      const aid = String(url.searchParams.get('id') || '').replace(/^kg:/, '').trim();
+      if (!aid) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID' }, 400); return; }
+      const kgCookie4 = typeof kugouCookie === 'string' ? kugouCookie : '';
+      const lib4 = await collectKugouLibrary(kgCookie4);
+      const all4 = lib4.songs;
+      const mine = all4.filter(function (sg) {
+        if (String(sg.artistId || '') === aid) return true;
+        return (sg.artists || []).some(function (a) { return String(a && a.id) === aid; });
+      });
+      const byAlbum = new Map();
+      mine.forEach(function (sg) {
+        const key = String(sg.albumId || '');
+        if (!key) return;
+        if (!byAlbum.has(key)) byAlbum.set(key, { id: key, name: sg.albumName || '未命名专辑', cover: sg.cover || '', songs: [] });
+        const rec = byAlbum.get(key);
+        rec.songs.push(sg);
+        if (!rec.cover && sg.cover) rec.cover = sg.cover;
+      });
+      const releases = Array.from(byAlbum.values()).map(function (r) {
+        return {
+          libraryAlbumId: 'kg:' + r.id,
+          name: r.name,
+          cover: r.cover,
+          releaseDate: '',
+          songCount: r.songs.length,
+          type: 'album',
+        };
+      });
+      sendJSON(res, {
+        ok: true,
+        provider: 'kugou',
+        artistId: 'kg:' + aid,
+        name: String(url.searchParams.get('name') || '') || (mine[0] && mine[0].artist) || '',
+        genres: [],
+        image: '',
+        hasImage: false,
+        imageRule: '',
+        // 酷狗没有艺人简介接口 -> 不编造
+        wiki: null,
+        wikiLang: '',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: { album: releases, single: [], ep: [], unknown: [] },
+      });
+    } catch (err) {
+      console.error('[KugouArtistDetail]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'kugou' }, 500);
+    }
+    return;
+  }
+
+  // 酷狗专辑曲目（只读）。与网易云同形与同一过滤规则。
+  // 酷狗没有独立的专辑详情接口，所以专辑曲目取自已收藏曲目里属于该专辑的那些。
+  if (pn === '/api/kugou/library/album/tracks') {
+    try {
+      const rawId = String(url.searchParams.get('id') || '').replace(/^kg:/, '').trim();
+      if (!rawId) { sendJSON(res, { error: 'MISSING_ALBUM_ID', tracks: [] }, 400); return; }
+      const kgCookie2 = typeof kugouCookie === 'string' ? kugouCookie : '';
+      const lib2 = await collectKugouLibrary(kgCookie2);
+      const all = lib2.songs;
+      const mine = all.filter(function (sg) { return String(sg.albumId) === rawId; });
+      sendJSON(res, {
+        ok: true,
+        provider: 'kugou',
+        album: {
+          id: 'kg:' + rawId,
+          name: mine.length ? mine[0].albumName : '',
+          artist: mine.length ? mine[0].artist : '',
+          cover: mine.length ? mine[0].cover : '',
+          // 发行日期没有可靠来源 -> 留空；简介酷狗不提供 -> 不显示
+          releaseDate: '',
+          description: '',
+        },
+        tracks: mine,
+        albumTotal: mine.length,
+        savedTotal: mine.length,
+        total: mine.length,
+      });
+    } catch (err) {
+      console.error('[KugouAlbumTracks]', err);
+      sendJSON(res, { error: err.message, provider: 'kugou', tracks: [] }, 500);
     }
     return;
   }

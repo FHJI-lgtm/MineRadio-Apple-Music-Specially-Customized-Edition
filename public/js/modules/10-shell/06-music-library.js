@@ -186,8 +186,8 @@
 
   // 每个源的资料库索引端点。返回形状统一为 { albums, changed }。
   function libraryIndexEndpoint(src) {
-    if (src === 'netease') return '/api/netease/library/index';
-    return '/api/apple/library/index';
+    var ep = sourceEndpoint(src);
+    return (ep && ep.index) || '/api/apple/library/index';
   }
 
   function fetchLibraryIndex(src) {
@@ -275,10 +275,47 @@
   var MLIB_SOURCE_OPEN_KEY = 'mineradio.mlib.sourceListOpen';
   // 需求方要求把这六个源都列出来。但**只有 Apple 已接入资料库数据层** ——
   // 其余源如实标注「未接入」且不可点，绝不做成"能点进去的空页面"。
+  // 每个源的资料库端点。集中在这里，新增源时只加一行，不再到处写 if。
+  // 未接入的源（ready:false）没有条目 —— 它们也不会被渲染成可点。
+  var MLIB_SOURCE_ENDPOINTS = {
+    apple: {
+      index: '/api/apple/library/index',
+      artists: '/api/apple/library/artists?resolve=1',
+      artistDetail: function (id, name) { return '/api/apple/library/artist/detail?id=' + encodeURIComponent(id); },
+      albumTracks: function (id) { return '/api/apple/library/album/tracks?id=' + encodeURIComponent(id) + '&limit=100'; },
+      playlistTracks: function (id) { return '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1'; },
+      usesWikiApi: true,
+    },
+    netease: {
+      index: '/api/netease/library/index',
+      artists: '/api/netease/library/artists',
+      artistDetail: function (id, name) {
+        return '/api/netease/library/artist/detail?id=' + encodeURIComponent(String(id).replace(/^ne:/, ''))
+          + '&name=' + encodeURIComponent(name || '');
+      },
+      albumTracks: function (id) { return '/api/netease/library/album/tracks?id=' + encodeURIComponent(id); },
+      playlistTracks: function (id) { return '/api/playlist/tracks?id=' + encodeURIComponent(String(id).replace(/^ne:/, '')); },
+      usesWikiApi: false,
+    },
+    kugou: {
+      index: '/api/kugou/library/index',
+      artists: '/api/kugou/library/artists',
+      artistDetail: function (id, name) {
+        return '/api/kugou/library/artist/detail?id=' + encodeURIComponent(String(id).replace(/^kg:/, ''))
+          + '&name=' + encodeURIComponent(name || '');
+      },
+      albumTracks: function (id) { return '/api/kugou/library/album/tracks?id=' + encodeURIComponent(id); },
+      playlistTracks: null,   // 酷狗歌单曲目暂未接入浏览（如实不显示）
+      usesWikiApi: false,
+    },
+  };
+  function sourceEndpoint(src) { return MLIB_SOURCE_ENDPOINTS[src] || null; }
+
   var MLIB_SOURCES = {
     apple: { label: 'Apple Music', ready: true },
     qq: { label: 'QQ 音乐', ready: false },
-    kugou: { label: '酷狗音乐', ready: false },
+    // 酷狗：专辑/歌单/艺人/播放已接入并实测（索引 1.6 秒、497 首 / 450 专辑）。
+    kugou: { label: '酷狗音乐', ready: true },
     // 网易云的「专辑」轴已接入并实测通过（/api/netease/library/index）：
     // 3 个歌单 / 8+251+286 首、专辑按 albumId 正确归并。
     netease: { label: '网易云音乐', ready: true },
@@ -604,9 +641,8 @@
         : '仍在获取艺人信息…首次解析需要逐首向 Apple 查询，请稍候（完成前不会写入不完整的结果）');
     }, 45000);
 
-    var artistsUrl = isNetease2
-      ? '/api/netease/library/artists'
-      : '/api/apple/library/artists?resolve=1';
+    var epA = sourceEndpoint(mlibActiveSource);
+    var artistsUrl = (epA && epA.artists) || '/api/apple/library/artists?resolve=1';
     apiJson(artistsUrl).then(function (data) {
       clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;            // 旧请求不得覆盖新视图
@@ -825,9 +861,9 @@
     artistDetailState.loading = true;
     setViewState('artist-detail', '正在读取艺人作品…');
     // 按源取详情：非 Apple 源走它自己的端点，不能落到 Apple 上。
-    var detailUrl = mlibActiveSource === 'netease'
-      ? '/api/netease/library/artist/detail?id=' + encodeURIComponent(String(artistId).replace(/^ne:/, ''))
-        + '&name=' + encodeURIComponent(artistDetailState.name || '')
+    var epD = sourceEndpoint(mlibActiveSource);
+    var detailUrl = (epD && epD.artistDetail)
+      ? epD.artistDetail(artistId, artistDetailState.name || '')
       : '/api/apple/library/artist/detail?id=' + encodeURIComponent(artistId);
     apiJson(detailUrl).then(function (data) {
       if (seq !== artistDetailState.seq) return;
@@ -840,7 +876,7 @@
       renderArtistDetail(data);
       // 非 Apple 源：简介随详情端点一并返回（服务端一次 artist_detail 同时取头像与简介），
       // 直接渲染即可；只有 Apple 源才需要后台单独补维基简介。
-      if (mlibActiveSource === 'apple') {
+      if (epD && epD.usesWikiApi) {
         fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name, data.wikiLang || (data.wiki && data.wiki.lang));
       }
       // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，

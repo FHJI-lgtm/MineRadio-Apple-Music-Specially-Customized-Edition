@@ -1010,11 +1010,12 @@ test('音乐资料库导航：三个视图常驻，源列表可展开切换', as
     assert.match(block, /apple: \{ label: 'Apple Music', ready: true \}/, 'Apple 已接入');
     assert.match(block, /netease: \{ label: '网易云音乐', ready: true \}/, '网易云专辑轴已接入');
     const ready = block.match(/ready: true/g) || [];
-    assert.equal(ready.length, 2, '当前应有 Apple 与网易云两个源可点（实际 ' + ready.length + '）');
+    assert.equal(ready.length, 3, 'Apple / 网易云 / 酷狗 三个源可点（实际 ' + ready.length + '）');
+    assert.match(block, /kugou: \{ label: '酷狗音乐', ready: true \}/, '酷狗已接入');
     const notReady = block.match(/ready: false/g) || [];
-    assert.equal(notReady.length, 4, '其余 4 个源必须如实标为未接入');
+    assert.equal(notReady.length, 3, '其余 3 个源必须如实标为未接入');
     // 未接入的源必须仍然存在，不能被误删
-    ['qq', 'kugou', 'qishui', 'spotify'].forEach(function (s) {
+    ['qq', 'qishui', 'spotify'].forEach(function (s) {
       // 逐行判断：该源的条目里必须出现 ready: false
       const line = block.split('\n').filter(function (l) { return l.indexOf(s + ':') >= 0; })[0] || '';
       assert.match(line, /ready: false/, s + ' 应保持未接入状态（实际: ' + line.trim() + '）');
@@ -1298,16 +1299,27 @@ test('音乐资料库：艺人轴按源取数且只含已收藏曲目', async (t
   const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
 
   await t18.test('艺人列表按源选端点', () => {
-    assert.match(MOD, /'\/api\/netease\/library\/artists'/, '网易云艺人端点');
-    assert.match(MOD, /'\/api\/apple\/library\/artists\?resolve=1'/, 'Apple 艺人端点');
+    assert.match(MOD, /MLIB_SOURCE_ENDPOINTS/, '端点集中在配置表，新增源只加一行');
+    assert.match(MOD, /artists: '\/api\/netease\/library\/artists'/, '网易云艺人端点');
+    assert.match(MOD, /artists: '\/api\/apple\/library\/artists\?resolve=1'/, 'Apple 艺人端点');
+    assert.match(MOD, /artists: '\/api\/kugou\/library\/artists'/, '酷狗艺人端点');
     assert.match(MOD, /artistsState\.source = mlibActiveSource/, '记录来源，切源后必须重取');
   });
 
   await t18.test('艺人详情按源选端点；简介各源走自己的来源', () => {
     assert.match(MOD, /'\/api\/netease\/library\/artist\/detail\?id='/, '网易云艺人详情端点');
+    assert.match(MOD, /'\/api\/kugou\/library\/artist\/detail\?id='/, '酷狗艺人详情端点');
     const fn = MOD.slice(MOD.indexOf('function loadArtistDetail'), MOD.indexOf('function scrollLibraryToTop'));
-    // 只有 Apple 源需要"后台补维基简介"；非 Apple 源的简介随详情端点一并返回
-    assert.match(fn, /mlibActiveSource === 'apple'/, '维基补取只在 Apple 源下进行');
+    // 只有 Apple 源需要"后台补维基简介"；非 Apple 源的简介随详情端点一并返回。
+    // 该判断现在来自端点配置表的 usesWikiApi 标记（新增源不必改这里）。
+    assert.match(fn, /usesWikiApi/, '维基补取由配置表的 usesWikiApi 决定');
+    // 逐块取配置对象再判断，避免用长度猜测
+    const epAt = MOD.indexOf('var MLIB_SOURCE_ENDPOINTS = {');
+    const epBlock = MOD.slice(epAt, MOD.indexOf('function sourceEndpoint', epAt));
+    const appleBlock = epBlock.slice(epBlock.indexOf('apple: {'), epBlock.indexOf('netease: {'));
+    const neBlock = epBlock.slice(epBlock.indexOf('netease: {'), epBlock.indexOf('kugou: {'));
+    assert.match(appleBlock, /usesWikiApi: true/, 'Apple 标为 true');
+    assert.match(neBlock, /usesWikiApi: false/, '网易云标为 false');
     assert.match(fn, /fetchArtistBioIfMissing/, 'Apple 源仍走维基补取');
   });
 
@@ -1367,7 +1379,7 @@ test('多源简介与缓存：网易云简介来源如实，艺人列表首次�
 
   await t19.test('客户端不再对非 Apple 源禁掉简介', () => {
     const fn = MOD.slice(MOD.indexOf('function loadArtistDetail'), MOD.indexOf('function scrollLibraryToTop'));
-    assert.match(fn, /mlibActiveSource === 'apple'/, 'Apple 才需要后台补维基简介');
+    assert.match(fn, /usesWikiApi/, '维基补取由 usesWikiApi 决定');
     assert.ok(!/本源的简介接入前如实不显示/.test(fn), '非 Apple 源简介已接入，不该再写"未接入"');
   });
 
@@ -1415,8 +1427,9 @@ test('音乐资料库：网易云专辑简介接入', async (t20) => {
   });
 
   await t20.test('客户端把服务端专辑元数据并入当前专辑后再渲染', () => {
-    const i = MOD.indexOf('if (/^ne:/.test(albumId)) {');
+    const i = MOD.indexOf('if (/^(ne|kg):/.test(albumId)) {');
     const fn = MOD.slice(i, i + 1600);
+    assert.match(fn, /apiJson\(albumTracksUrl\)/, '端点按源选（不再是写死的网易云 URL）');
     assert.match(fn, /neData\.album/, '要用服务端返回的专辑对象');
     assert.match(fn, /state\.album\.description = neAlbum\.description/, '简介要并入');
     assert.match(fn, /renderInfo\(state\.album, neSongs\)/, '合并后必须重渲染信息区，否则简介区块永远不显示');

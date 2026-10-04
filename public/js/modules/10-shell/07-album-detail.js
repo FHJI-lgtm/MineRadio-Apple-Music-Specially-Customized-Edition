@@ -439,11 +439,15 @@
       renderTracksError('这张专辑缺少资料库 ID，无法加载曲目。');
       return;
     }
-    // 非 Apple 源：id 带 "ne:" 前缀，走该源的取数端点。
+    // 非 Apple 源：id 带源前缀（ne: / kg:），走该源的取数端点。
     // 不能落到 Apple 端点上 —— 那会拿不到任何曲目，看起来就像"点不开"。
-    if (/^ne:/.test(albumId)) {
+    if (/^(ne|kg):/.test(albumId)) {
       try {
-        var neData = await apiJson('/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId));
+        var isKugouAlbum = /^kg:/.test(albumId);
+        var albumTracksUrl = isKugouAlbum
+          ? '/api/kugou/library/album/tracks?id=' + encodeURIComponent(albumId)
+          : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId);
+        var neData = await apiJson(albumTracksUrl);
         if (seq !== reqSeq) return;
         var neSongs = (neData && Array.isArray(neData.tracks)) ? neData.tracks : [];
         if (neData && neData.error && !neSongs.length) {
@@ -854,7 +858,15 @@
     //   Apple   -> /api/apple/playlist/tracks?all=1（单页上限 100，必须分页取全）
     //   非 Apple -> 走该源自己的端点。**不能落到 Apple 端点上** ——
     //              截图里那句「Apple Music Web 返回 HTTP 404」就是这么来的。
-    var isNetease = /^ne:/.test(id) || playlist.provider === 'netease';
+    // 按源取曲目。酷狗的歌单浏览尚未接入（playlistTracks 为 null）——如实说明，
+    // 不能悄悄落到 Apple 端点上（那会得到「Apple Music Web 返回 HTTP 404」）。
+    var prov = String(playlist.provider || '');
+    var isNetease = /^ne:/.test(id) || prov === 'netease';
+    var isKugou = /^kg:/.test(id) || prov === 'kugou';
+    if (isKugou) {
+      fail('酷狗歌单的曲目浏览尚未接入（可在网易云 / Apple Music 源下查看歌单）。');
+      return;
+    }
     var url = isNetease
       ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
       : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
