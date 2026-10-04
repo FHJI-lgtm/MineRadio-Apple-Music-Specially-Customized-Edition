@@ -235,11 +235,12 @@
 
   // ---- 音乐源（资料库的数据来源）----
   //
-  // 结构：**一棵树**。每个源是顶级项，展开后是它的「专辑 / 艺人 / 歌单」。
-  // 与原有「专辑 ▾」完全同一种交互与视觉，不新增区块风格。
+  // 结构：上面是**源**（可展开，用于切换音乐源），下面是**视图**（专辑 / 艺人 / 歌单，常驻）。
+  // 视图刻意不可折叠：折叠态一旦被持久化，入口就会消失、看起来"点不动"。
   //
-  // 刻意只登记**已经有资料库数据**的源。未接入的源不渲染入口 ——
-  // 否则用户点进去只会得到空页面，那是在假装功能存在。
+  // 六个源全部登记（需求方要求列出），但只有真正接入数据层的源标 ready:true。
+  // 未接入的源渲染为 disabled 并写明「未接入资料库」—— 既如实告知，
+  // 又不做成"点进去得到空页面"或"点了没反应"那种会被当成 bug 的形态。
   var MLIB_SOURCE_KEY = 'mineradio.mlib.source';
   // 换键：旧键 'mineradio.mlib.sourceOpen' 曾被写成 0，导致视图入口被折叠隐藏
   // （用户反馈"点不动"）。现在视图常驻，源列表用新键，旧值自然失效。
@@ -281,14 +282,13 @@
   function applyNavViewLabel() {
     var text = sourceCounts(mlibActiveSource)[mlibActiveView] || '';
     // 顶级项是**源**：它的标题写源名，右侧写当前视图在该源下的数量。
-    var heading = document.getElementById('mlib-nav-source-heading');
-    if (heading) heading.textContent = (MLIB_SOURCES[mlibActiveSource] || MLIB_SOURCES.apple).label;
     var count = document.getElementById('mlib-nav-source-count');
     if (count) count.textContent = text;
     var headingEl = document.getElementById('mlib-nav-source-heading');
     if (headingEl) {
       var cur = MLIB_SOURCES[mlibActiveSource] || {};
-      headingEl.textContent = cur.label || 'Apple Music';
+      // 标题固定写「音乐源（当前源）」，让"这是干什么用的"一眼可见
+      headingEl.textContent = '音乐源（' + (cur.label || 'Apple Music') + '）';
       if (!cur.ready) headingEl.setAttribute('data-mlib-not-ready', '1');
       else headingEl.removeAttribute('data-mlib-not-ready');
     }
