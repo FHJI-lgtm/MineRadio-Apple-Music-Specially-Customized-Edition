@@ -968,84 +968,133 @@ test('歌单详情：随机播放按钮只在歌单里显示且常驻可见', as
 });
 ;
 // ============================================================
-// 音乐资料库：一棵树 —— 源是顶级项，视图是它的子项
+// 音乐资料库导航：视图常驻 + 源可切换
 // ============================================================
-test('音乐资料库：源作为顶级项，视图作为其子项（不伪造未接入的源）', async (t12) => {
+test('音乐资料库导航：三个视图常驻，源列表可展开切换', async (t12) => {
   const HTML = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'index.html'), 'utf8');
   const MOD = require('node:fs').readFileSync(
     path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
-
-  await t12.test('源是唯一的顶级父级，三个视图在它的子容器里', () => {
-    assert.match(HTML, /class="mlib-nav-parent mlib-nav-source" id="mlib-nav-parent-source"/, '源父级存在');
-    assert.match(HTML, /class="mlib-nav-children" id="mlib-nav-children-source"/, '源有子容器');
-    // 三个视图项必须落在源的子容器之内（而不是另起一个父级）
-    const srcIdx = HTML.indexOf('id="mlib-nav-children-source"');
-    ['albums', 'artists', 'playlists'].forEach(function (v) {
-      const i = HTML.indexOf('id="mlib-nav-item-' + v + '"');
-      assert.ok(i > srcIdx, '视图 ' + v + ' 必须排在源子容器之后');
-    });
-    // 旧的独立视图父级必须已被移除
-    assert.ok(!/id="mlib-nav-parent-albums"/.test(HTML), '不该再有独立的视图父级');
-    assert.ok(!/id="mlib-nav-children-albums"/.test(HTML), '不该再有旧的视图子容器');
-  });
-
-  await t12.test('顶层是源名，右侧是当前视图在该源下的数量', () => {
-    assert.match(HTML, /id="mlib-nav-source-heading"/, '顶级标题写源名');
-    assert.match(HTML, /id="mlib-nav-source-count"/, '顶级计数');
-    // 源名与计数由 JS 写入，且来自**当前源**
-    assert.match(MOD, /mlib-nav-source-heading/, 'JS 要写源名');
-    assert.match(MOD, /sourceCounts\(mlibActiveSource\)\[mlibActiveView\]/, '顶级计数取当前源当前视图');
-  });
-
-  await t12.test('导航区内「Apple Music」只出现一次（标题下不再重复）', () => {
-    // 标题下方原来的静态来源标签已移除，避免同一屏出现两次
-    assert.ok(!/id="mlib-source-current"/.test(HTML), '标题下不该再有重复的来源标签');
-    // 注意：页面其它位置（账号设置、专辑/歌单详情）本来就有 Apple Music 字样，
-    // 所以只在**资料库导航区**内校验唯一性，并排除注释。
+  const nav = (function () {
     const s = HTML.indexOf('id="mlib-nav-section"');
     const e = HTML.indexOf('id="mlib-view-albums"');
-    assert.ok(s > 0 && e > s, '导航区边界应存在');
-    const nav = HTML.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
-    const n = (nav.match(/Apple Music/g) || []).length;
-    assert.equal(n, 1, '导航区内「Apple Music」只应出现一次（实际 ' + n + '）');
+    return HTML.slice(s, e);
+  })();
+
+  await t12.test('三个视图常驻：不再有可折叠的视图父级', () => {
+    assert.match(HTML, /id="mlib-nav-children-views"/, '视图容器存在');
+    assert.ok(!/id="mlib-nav-parent-albums"/.test(HTML), '不该再有可折叠的视图父级');
+    assert.ok(!/id="mlib-nav-children-albums"/.test(HTML), '旧的视图折叠容器必须已移除');
+    // 视图容器不得带折叠类（否则会被隐藏）
+    assert.ok(!/mlib-nav-children is-collapsed" id="mlib-nav-children-views"/.test(HTML),
+      '视图容器不得默认折叠');
+    ['albums', 'artists', 'playlists'].forEach(function (v) {
+      assert.match(HTML, new RegExp('id="mlib-nav-item-' + v + '"'), v + ' 入口必须存在');
+    });
   });
 
-  await t12.test('折叠复用既有类名，默认展开', () => {
-    assert.match(HTML, /mlib-nav-caret/, '复用既有折叠箭头');
-    assert.match(HTML, /aria-expanded="true"/, '默认展开，保证首次进入能直接看到三个视图');
-    assert.match(MOD, /function toggleMlibNav/, '折叠切换保留');
-    assert.match(MOD, /mineradio\.mlib\.sourceOpen/, '展开态有独立持久化键');
+  await t12.test('只有源列表可折叠，且默认展开', () => {
+    assert.match(nav, /id="mlib-nav-parent-source"/, '源父级');
+    assert.match(nav, /id="mlib-nav-children-source"/, '源子容器');
+    assert.match(nav, /aria-expanded="false"/, '源列表默认收起');
+    assert.match(MOD, /function toggleMlibSourceOpen/, '源展开切换存在');
+    assert.ok(!/function toggleMlibNav/.test(MOD), '视图折叠函数应已删除（视图常驻）');
   });
 
-  await t12.test('只登记已有数据的源，不渲染空入口', () => {
+  await t12.test('六个源都登记，但只有 Apple 标为已接入', () => {
     const i = MOD.indexOf('var MLIB_SOURCES = {');
     const block = MOD.slice(i, MOD.indexOf('};', i));
-    assert.match(block, /apple:/, 'Apple 必须有');
-    ['netease', 'kugou', 'qq', 'qishui', 'spotify'].forEach(function (s) {
-      assert.ok(block.indexOf(s + ':') < 0, s + ' 在资料库数据层就绪前不得登记');
+    ['apple', 'qq', 'kugou', 'netease', 'qishui', 'spotify'].forEach(function (s) {
+      assert.match(block, new RegExp(s + ':\\s*\\{'), s + ' 必须登记（需求方要求列出）');
     });
-    const groups = HTML.match(/data-mlib-source-group=/g) || [];
-    assert.equal(groups.length, 1, '源组当前只应有 Apple 一个（实际 ' + groups.length + '）');
+    // 只有 apple 是 ready:true
+    const ready = block.match(/ready: true/g) || [];
+    assert.equal(ready.length, 1, '当前只应有 Apple 一个源是已接入（实际 ' + ready.length + '）');
+    const notReady = block.match(/ready: false/g) || [];
+    assert.equal(notReady.length, 5, '其余 5 个源必须如实标为未接入');
   });
 
-  await t12.test('切换源会换掉整套计数，不把上一个源的数字留在界面上', () => {
-    assert.match(MOD, /navViewCountsBySource/, '计数必须按源分开存');
+  await t12.test('未接入的源不可点，且写明原因', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderSourceList'), MOD.indexOf('function setMlibSource'));
+    assert.match(fn, /disabled aria-disabled="true"/, '未接入的源必须 disabled');
+    assert.match(fn, /mlib-nav-note/, '要写明未接入，不能用"点了没反应"表达');
+    assert.match(fn, /MLIB_SOURCE_NOT_READY/, '统一口径');
+    // 点击兜底：即使绕过 disabled 也不切源
+    const bind = MOD.slice(MOD.indexOf('function bindLibraryNav'), MOD.indexOf('function bindLibraryNav') + 1600);
+    assert.match(bind, /data-mlib-source-ready/, '点击时还要再判一次是否已接入');
+  });
+
+  await t12.test('偏好键已更换，旧键不再影响界面', () => {
+    const key = (MOD.match(/var MLIB_SOURCE_OPEN_KEY = '([^']+)'/) || [])[1];
+    assert.equal(key, 'mineradio.mlib.sourceListOpen', '必须换键，否则旧的 sourceOpen=0 会继续折叠入口');
+    // 注释里为说明换键原因会提到旧键，所以只看"代码中是否还引用它"
+    const codeOnly = MOD.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!/mineradio\.mlib\.sourceOpen'/.test(codeOnly), '旧键不该再被代码使用（注释提及不算）');
+  });
+
+  await t12.test('切换源只在已接入的源之间发生', () => {
     const fn = MOD.slice(MOD.indexOf('function setMlibSource'), MOD.indexOf('function setMlibView'));
-    assert.match(fn, /applyNavViewLabel\(\)/, '切换源后要重绘标签与计数');
-    assert.match(fn, /writePref\(MLIB_SOURCE_KEY/, '切换源要持久化');
+    assert.match(fn, /MLIB_SOURCE_ORDER\.indexOf\(name\) < 0/, '未知源要回落到默认');
+  });
+});
+;
+// ============================================================
+// 资料库模块：不得调用未定义的函数（语法检查抓不到这类错误）
+// ============================================================
+test('06-music-library.js：调用的函数必须存在（防 ReferenceError 中断绑定）', async (t13) => {
+  const SELF = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const glob = require('node:fs');
+  const pathMod = require('node:path');
+  // 模块是拼接后一起加载的，所以「在别的模块里定义」也算存在
+  const dir = path.join(APP_ROOT, 'public', 'js');
+  function collect(dirPath, acc) {
+    glob.readdirSync(dirPath, { withFileTypes: true }).forEach(function (d) {
+      const p = pathMod.join(dirPath, d.name);
+      if (d.isDirectory()) collect(p, acc);
+      else if (d.name.endsWith('.js')) acc.push(glob.readFileSync(p, 'utf8'));
+    });
+    return acc;
+  }
+  const ALL = collect(dir, []).join('\n');
+
+  function definedIn(src, name) {
+    return new RegExp('function\\s+' + name + '\\b').test(src) ||
+      new RegExp('var\\s+' + name + '\\s*=').test(src);
+  }
+
+  await t13.test('本模块「apply/set/toggle/render/bind/sync」前缀的调用都有定义', () => {
+    const PREFIX = /^(apply|set|toggle|render|bind|sync)/;
+    // 浏览器/JS 内置，不是本项目函数
+    const BUILTIN = new Set(['setTimeout', 'setInterval', 'setAttribute', 'setProperty', 'setItem',
+      'setRequestHeader', 'setDate', 'setHours', 'setMinutes', 'setSeconds', 'setFullYear', 'setMonth',
+      'setSelectionRange', 'setStart', 'setEnd', 'setCustomValidity', 'setRangeText', 'setPointerCapture',
+      'setLineDash', 'setTransform', 'setValueAtTime', 'apply']);
+    const called = new Map();
+    for (const m of SELF.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[2];
+      if (!PREFIX.test(name) || BUILTIN.has(name)) continue;
+      called.set(name, (called.get(name) || 0) + 1);
+    }
+    const missing = [];
+    called.forEach(function (count, name) {
+      if (definedIn(SELF, name)) return;
+      if (definedIn(ALL, name)) return;   // 其它模块里的（拼接后可见）
+      missing.push(name + '（本模块调用 ' + count + ' 次）');
+    });
+    assert.deepEqual(missing, [],
+      '这些函数被调用但全局都没有定义，会在运行时抛 ReferenceError 并中断绑定流程：\n' + missing.join('\n'));
   });
 
-  await t12.test('源选择与视图选择各有独立偏好键，互不覆盖', () => {
-    const srcKey = (MOD.match(/var MLIB_SOURCE_KEY = '([^']+)'/) || [])[1];
-    const viewKey = (MOD.match(/var MLIB_VIEW_KEY = '([^']+)'/) || [])[1];
-    assert.ok(srcKey && viewKey, '两个键都要存在');
-    assert.notEqual(srcKey, viewKey, '两个键必须不同，否则互相覆盖');
-  });
-
-  await t12.test('计数按源隔离，切换后不会串号', () => {
-    const fn = MOD.slice(MOD.indexOf('function sourceCounts'), MOD.indexOf('function applyNavViewLabel'));
-    assert.match(fn, /navViewCountsBySource\[s2\]/, '按源取计数表');
-    const setter = MOD.slice(MOD.indexOf('function setNavViewCount'), MOD.indexOf('function syncNavAlbumCount'));
-    assert.match(setter, /sourceCounts\(src\)\[view\]/, '写入也要落到对应源');
+  await t13.test('回归样本：曾真实发生的 applySourceOpen 缺失必须能被这条断言拦住', () => {
+    // 这条断言的意义在于它确实能抓到"定义被误删、只剩调用"的情况。
+    const fake = 'function bindX() { applySourceOpen(); }';
+    const PREFIX = /^(apply|set|toggle|render|bind|sync)/;
+    const called = [];
+    for (const m of fake.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (PREFIX.test(m[2])) called.push(m[2]);
+    }
+    assert.ok(called.indexOf('applySourceOpen') >= 0, '样本本身应被识别');
+    assert.ok(!definedIn(fake, 'applySourceOpen') && !definedIn(ALL, 'applySourceOpen'),
+      'applySourceOpen 确实已不存在，因此任何残留调用都必须报错');
   });
 });

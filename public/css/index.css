@@ -2646,6 +2646,51 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   border-top: 1px solid rgba(255, 255, 255, .07)
 }
 
+/* 视图容器常驻：去掉折叠带来的高度塌陷，保证三个入口始终可见可点 */
+.mlib-nav-children-static {
+  grid-template-rows: 1fr;
+  margin-top: 8px
+}
+
+/* 源列表条目：左侧小圆点区分于视图条目（视图用图标） */
+.mlib-nav-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .38)
+}
+
+.mlib-nav-item.is-active .mlib-nav-dot {
+  background: var(--home-accent, #00f5d4);
+  box-shadow: 0 0 10px rgba(0, 245, 212, .65)
+}
+
+/* 未接入的源：明确不可选，并写明原因 —— 不用"点了没反应"表达不可用 */
+.mlib-nav-item.is-unsupported {
+  color: rgba(255, 255, 255, .3);
+  cursor: default
+}
+
+.mlib-nav-item.is-unsupported:hover {
+  background: none
+}
+
+.mlib-nav-note {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  color: rgba(255, 255, 255, .26)
+}
+
+.mlib-section-title[data-mlib-not-ready]::after {
+  content: '（未接入）';
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .3)
+}
+
 .mlib-nav-parent {
   display: inline-flex;
   align-items: baseline;

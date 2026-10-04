@@ -241,11 +241,22 @@
   // 刻意只登记**已经有资料库数据**的源。未接入的源不渲染入口 ——
   // 否则用户点进去只会得到空页面，那是在假装功能存在。
   var MLIB_SOURCE_KEY = 'mineradio.mlib.source';
-  var MLIB_SOURCE_OPEN_KEY = 'mineradio.mlib.sourceOpen';
+  // 换键：旧键 'mineradio.mlib.sourceOpen' 曾被写成 0，导致视图入口被折叠隐藏
+  // （用户反馈"点不动"）。现在视图常驻，源列表用新键，旧值自然失效。
+  var MLIB_SOURCE_OPEN_KEY = 'mineradio.mlib.sourceListOpen';
+  // 需求方要求把这六个源都列出来。但**只有 Apple 已接入资料库数据层** ——
+  // 其余源如实标注「未接入」且不可点，绝不做成"能点进去的空页面"。
   var MLIB_SOURCES = {
-    apple: { label: 'Apple Music' },
+    apple: { label: 'Apple Music', ready: true },
+    qq: { label: 'QQ 音乐', ready: false },
+    kugou: { label: '酷狗音乐', ready: false },
+    netease: { label: '网易云音乐', ready: false },
+    qishui: { label: '汽水音乐', ready: false },
+    spotify: { label: 'Spotify', ready: false },
   };
-  var MLIB_SOURCE_ORDER = ['apple'];
+  var MLIB_SOURCE_ORDER = ['apple', 'qq', 'kugou', 'netease', 'qishui', 'spotify'];
+  // 未接入的源在界面上统一用这句，保持口径一致
+  var MLIB_SOURCE_NOT_READY = '未接入资料库';
 
   function readActiveSource() {
     var v = readPref(MLIB_SOURCE_KEY);
@@ -274,6 +285,13 @@
     if (heading) heading.textContent = (MLIB_SOURCES[mlibActiveSource] || MLIB_SOURCES.apple).label;
     var count = document.getElementById('mlib-nav-source-count');
     if (count) count.textContent = text;
+    var headingEl = document.getElementById('mlib-nav-source-heading');
+    if (headingEl) {
+      var cur = MLIB_SOURCES[mlibActiveSource] || {};
+      headingEl.textContent = cur.label || 'Apple Music';
+      if (!cur.ready) headingEl.setAttribute('data-mlib-not-ready', '1');
+      else headingEl.removeAttribute('data-mlib-not-ready');
+    }
     // 子项各自显示自己的数量（只属于当前源）
     MLIB_VIEWS.forEach(function (v) {
       var item = document.getElementById('mlib-nav-count-' + v);
@@ -342,7 +360,8 @@
   function viewEl(name) { return document.getElementById('mlib-view-' + name); }
   function navItemEl(name) { return document.getElementById('mlib-nav-item-' + name); }
 
-  // 展开/收起：折叠的是**源下面的三个视图**（树只有这一层可折叠）
+  // 展开/收起：**只有源列表可折叠**。视图（专辑/艺人/歌单）常驻，
+  // 因为折叠态一旦被持久化，入口就会从界面上消失、看起来"点不动"。
   function applyNavOpen() {
     var parent = document.getElementById('mlib-nav-parent-source');
     var children = document.getElementById('mlib-nav-children-source');
@@ -350,10 +369,34 @@
     if (children) children.classList.toggle('is-collapsed', !mlibNavOpen);
   }
 
-  function toggleMlibNav(force) {
+  function toggleMlibSourceOpen(force) {
     mlibNavOpen = (typeof force === 'boolean') ? force : !mlibNavOpen;
     applyNavOpen();
     writePref(MLIB_SOURCE_OPEN_KEY, mlibNavOpen ? '1' : '0');
+  }
+
+  // 渲染源列表。已接入的源可点；未接入的源 disabled 并标注原因 ——
+  // 不用"点了没反应"来表达不可用，那会被当成 bug。
+  function renderSourceList() {
+    var box = document.getElementById('mlib-nav-children-source');
+    if (!box) return;
+    box.innerHTML = MLIB_SOURCE_ORDER.map(function (key) {
+      var src = MLIB_SOURCES[key] || {};
+      var ready = !!src.ready;
+      var label = src.label || key;
+      var active = key === mlibActiveSource;
+      var note = ready ? '' : '<span class="mlib-nav-note">' + escHtml(MLIB_SOURCE_NOT_READY) + '</span>';
+      return '<button class="mlib-nav-item' + (active ? ' is-active' : '') + (ready ? '' : ' is-unsupported') + '"' +
+        ' id="mlib-nav-source-' + key + '" type="button" role="listitem"' +
+        ' data-mlib-source="' + key + '" data-mlib-source-ready="' + (ready ? '1' : '0') + '"' +
+        (ready ? '' : ' disabled aria-disabled="true"') +
+        (active ? ' aria-current="true"' : '') +
+        ' title="' + escHtml(ready ? label : label + '（' + MLIB_SOURCE_NOT_READY + '）') + '">' +
+        '<span class="mlib-nav-dot" aria-hidden="true"></span>' +
+        '<span class="mlib-nav-label">' + escHtml(label) + '</span>' +
+        note +
+        '</button>';
+    }).join('');
   }
 
   // 切换源：换掉整套计数并重绘。
@@ -906,19 +949,13 @@
   }
 
   function bindLibraryNav() {
-    applySourceLabel();
-    applySourceOpen();
-    var parent = document.getElementById('mlib-nav-parent-albums');
-    if (parent && parent.dataset.mlibNavBound !== '1') {
-      parent.dataset.mlibNavBound = '1';
-      // 整行点击 = 展开/折叠。父级不是页面入口，所以不存在"误切页面"的问题；
-      // 子菜单入口都是独立的 button，不会冒泡到这里。
-      parent.addEventListener('click', function () { toggleMlibNav(); });
-    }
+    renderSourceList();
+    applyNavOpen();
+    // 源父级：整行点击 = 展开/收起源列表（这是唯一可折叠的部分）
     var sourceParent = document.getElementById('mlib-nav-parent-source');
     if (sourceParent && sourceParent.dataset.mlibNavBound !== '1') {
       sourceParent.dataset.mlibNavBound = '1';
-      sourceParent.addEventListener('click', function () { toggleMlibSource(); });
+      sourceParent.addEventListener('click', function () { toggleMlibSourceOpen(); });
     }
     var sourceChildren = document.getElementById('mlib-nav-children-source');
     if (sourceChildren && sourceChildren.dataset.mlibNavBound !== '1') {
@@ -926,18 +963,19 @@
       sourceChildren.addEventListener('click', function (event) {
         var btn = event.target && event.target.closest ? event.target.closest('[data-mlib-source]') : null;
         if (!btn) return;
-        // 子项点击不应连带触发父级的展开/折叠
         event.stopPropagation();
+        // 未接入的源不可选（按钮本身也是 disabled，这里是第二道防线）
+        if (btn.getAttribute('data-mlib-source-ready') !== '1') return;
         setMlibSource(btn.getAttribute('data-mlib-source'));
       });
     }
-    var children = document.getElementById('mlib-nav-children-albums');
+    // 视图：常驻，直接绑定
+    var children = document.getElementById('mlib-nav-children-views');
     if (children && children.dataset.mlibNavBound !== '1') {
       children.dataset.mlibNavBound = '1';
       children.addEventListener('click', function (event) {
         var btn = event.target && event.target.closest ? event.target.closest('[data-mlib-view]') : null;
         if (!btn) return;
-        // 子菜单点击不应连带触发父级的展开/折叠
         event.stopPropagation();
         setMlibView(btn.getAttribute('data-mlib-view'));
       });
