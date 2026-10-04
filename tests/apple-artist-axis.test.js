@@ -1000,17 +1000,33 @@ test('音乐资料库导航：三个视图常驻，源列表可展开切换', as
     assert.ok(!/function toggleMlibNav/.test(MOD), '视图折叠函数应已删除（视图常驻）');
   });
 
-  await t12.test('六个源都登记，但只有 Apple 标为已接入', () => {
+  await t12.test('六个源都登记；已接入的才可点', () => {
     const i = MOD.indexOf('var MLIB_SOURCES = {');
     const block = MOD.slice(i, MOD.indexOf('};', i));
     ['apple', 'qq', 'kugou', 'netease', 'qishui', 'spotify'].forEach(function (s) {
       assert.match(block, new RegExp(s + ':\\s*\\{'), s + ' 必须登记（需求方要求列出）');
     });
-    // 只有 apple 是 ready:true
+    // Apple 与网易云已接资料库；其余如实标为未接入
+    assert.match(block, /apple: \{ label: 'Apple Music', ready: true \}/, 'Apple 已接入');
+    assert.match(block, /netease: \{ label: '网易云音乐', ready: true \}/, '网易云专辑轴已接入');
     const ready = block.match(/ready: true/g) || [];
-    assert.equal(ready.length, 1, '当前只应有 Apple 一个源是已接入（实际 ' + ready.length + '）');
+    assert.equal(ready.length, 2, '当前应有 Apple 与网易云两个源可点（实际 ' + ready.length + '）');
     const notReady = block.match(/ready: false/g) || [];
-    assert.equal(notReady.length, 5, '其余 5 个源必须如实标为未接入');
+    assert.equal(notReady.length, 4, '其余 4 个源必须如实标为未接入');
+    // 未接入的源必须仍然存在，不能被误删
+    ['qq', 'kugou', 'qishui', 'spotify'].forEach(function (s) {
+      // 逐行判断：该源的条目里必须出现 ready: false
+      const line = block.split('\n').filter(function (l) { return l.indexOf(s + ':') >= 0; })[0] || '';
+      assert.match(line, /ready: false/, s + ' 应保持未接入状态（实际: ' + line.trim() + '）');
+    });
+  });
+
+  await t12.test('索引按源分开取，不共用同一个请求/快照', () => {
+    assert.match(MOD, /function libraryIndexEndpoint\(src\)/, '要有按源选端点');
+    assert.match(MOD, /'\/api\/netease\/library\/index'/, '网易云端点');
+    assert.match(MOD, /libraryIndexSnapshots/, '快照必须按源分开存，避免把上一个源的列表留在界面上');
+    const fn = MOD.slice(MOD.indexOf('function fetchLibraryIndex'), MOD.indexOf('function libraryIndexChanged'));
+    assert.match(fn, /libraryIndexInflight\.src === s2/, '在途请求也要按源区分');
   });
 
   await t12.test('未接入的源不可点，且写明原因', () => {

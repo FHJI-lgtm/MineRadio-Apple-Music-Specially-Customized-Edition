@@ -54,6 +54,7 @@ const {
   lyric,
   lyric_new,
 } = require('NeteaseCloudMusicApi');
+const neteaseLibrary = require('./netease-library-adapter');
 const http = require('http');
 const https = require('https');
 const fs   = require('fs');
@@ -7149,6 +7150,61 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---------- 歌单曲目详情 ----------
+  // 网易云 → 音乐资料库（只读）。
+  // 产出与 /api/apple/library/index 的 albums 同形数据 + 歌单列表 + 曲目统计，
+  // 这样音乐资料库切源时不必改渲染代码。
+  // 数据不确定的字段一律留空（发行日期、加入日期），绝不用推测值填充。
+  if (pn === '/api/netease/library/index') {
+    try {
+      const info = await getLoginInfo();
+      if (!info.loggedIn || !info.userId) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'netease', albums: [], playlists: [], songs: 0 });
+        return;
+      }
+      const raw = await fetchAllNeteaseUserPlaylists(info.userId, 0);
+      // 必须先过既有的 mapNeteasePlaylistMeta：它负责 coverImgUrl -> cover、
+      // creator.nickname -> creator。直接把原始对象喂给适配层会得到
+      // cover 为空、creator 变成 "[object Object]"。
+      const playlists = raw
+        .map(pl => neteaseLibrary.toLibraryPlaylist(mapNeteasePlaylistMeta(pl, pl && pl.id)))
+        .filter(Boolean);
+      // 「喜欢的音乐」在网易云就是一个 specialType=5 的歌单，不需要单独接口
+      const liked = playlists.filter(pl => pl.isLiked);
+      const targetId = String(url.searchParams.get('playlistId') || '') || (liked[0] && liked[0].id) || (playlists[0] && playlists[0].id) || '';
+      let songs = [];
+      let truncated = false;
+      if (targetId) {
+        const data = await fetchAllNeteasePlaylistTracks(targetId);
+        const rawTracks = (data && data.rawTracks) || [];
+        songs = neteaseLibrary.toLibrarySongs(rawTracks.map(mapSongRecord));
+        const total = Number((data && data.playlistMeta && data.playlistMeta.trackCount) || 0);
+        truncated = total > 0 && songs.length < total;
+      }
+      const albums = neteaseLibrary.albumsFromSongs(songs).map(neteaseLibrary.toAppleShapedAlbumCard).filter(Boolean);
+      sendJSON(res, {
+        ok: true,
+        provider: 'netease',
+        userId: info.userId,
+        playlists: playlists,
+        likedPlaylists: liked.map(pl => ({ id: pl.id, name: pl.name, trackCount: pl.trackCount })),
+        activePlaylistId: targetId,
+        songs: songs.length,
+        truncated: truncated,
+        albums: albums,
+        counts: {
+          playlists: playlists.length,
+          likedPlaylists: liked.length,
+          songs: songs.length,
+          albums: albums.length,
+        },
+      });
+    } catch (err) {
+      console.error('[NeteaseLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'netease', albums: [], playlists: [], songs: 0 }, 500);
+    }
+    return;
+  }
+
   if (pn === '/api/playlist/tracks') {
     try {
       const id = url.searchParams.get('id');

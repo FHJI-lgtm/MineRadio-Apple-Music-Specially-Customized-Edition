@@ -181,18 +181,35 @@
   // 资料库页的数据来源：本地索引。
   // 只在 Apple 有变化时才重新对账并重渲染 —— 打开页面不再每次都扫全库。
   var libraryIndexInflight = null;
-  var libraryIndexSnapshot = null;
+  // 快照**按源分开存**：切换源时不能把上一个源的列表留在界面上。
+  var libraryIndexSnapshots = {};
 
-  function fetchLibraryIndex() {
-    if (libraryIndexInflight) return libraryIndexInflight;   // 两个区块共用一次请求
-    libraryIndexInflight = apiJson('/api/apple/library/index')
+  // 每个源的资料库索引端点。返回形状统一为 { albums, changed }。
+  function libraryIndexEndpoint(src) {
+    if (src === 'netease') return '/api/netease/library/index';
+    return '/api/apple/library/index';
+  }
+
+  function fetchLibraryIndex(src) {
+    var s2 = src || mlibActiveSource;
+    if (libraryIndexInflight && libraryIndexInflight.src === s2) return libraryIndexInflight.promise;
+    var promise = apiJson(libraryIndexEndpoint(s2))
       .then(function (data) {
-        libraryIndexSnapshot = data;
+        // 网易云端点不返回 changed（那套"探测 Apple 是否有变动"的语义只属于本地索引），
+        // 这里补成 true，让上层按"新数据"处理。
+        if (data && data.changed === undefined) data.changed = true;
+        libraryIndexSnapshots[s2] = data;
         return data;
       })
       .then(function (d) { libraryIndexInflight = null; return d; },
         function (err) { libraryIndexInflight = null; throw err; });
-    return libraryIndexInflight;
+    libraryIndexInflight = { src: s2, promise: promise };
+    return promise;
+  }
+
+  // 取当前源的快照（计数等处使用）
+  function getLibraryIndexSnapshot() {
+    return libraryIndexSnapshots[mlibActiveSource] || null;
   }
 
   // 变更检测：Apple 侧有变化（changed=true）时才需要把列表换掉。
@@ -218,9 +235,10 @@
   // 已有数据且 Apple 无变化时不重复渲染，避免无谓的 DOM 重建与滚动位置丢失。
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
-    var first = !(libraryIndexSnapshot && libraryIndexSnapshot.albums);
+    var snap = getLibraryIndexSnapshot();
+    var first = !(snap && snap.albums);
     if (first) { albumsSection.begin(); }
-    return fetchLibraryIndex().then(function (data) {
+    return fetchLibraryIndex(mlibActiveSource).then(function (data) {
       var changed = first || libraryIndexChanged(data);
       if (!changed) return data;
       albumsSection.apply(data);
@@ -251,7 +269,9 @@
     apple: { label: 'Apple Music', ready: true },
     qq: { label: 'QQ 音乐', ready: false },
     kugou: { label: '酷狗音乐', ready: false },
-    netease: { label: '网易云音乐', ready: false },
+    // 网易云的「专辑」轴已接入并实测通过（/api/netease/library/index）：
+    // 3 个歌单 / 8+251+286 首、专辑按 albumId 正确归并。
+    netease: { label: '网易云音乐', ready: true },
     qishui: { label: '汽水音乐', ready: false },
     spotify: { label: 'Spotify', ready: false },
   };
@@ -309,8 +329,8 @@
 
   // 专辑数量（本地索引）。只写当前源的计数 —— 其它源的索引尚未接入。
   function syncNavAlbumCount() {
-    var total = (libraryIndexSnapshot && Array.isArray(libraryIndexSnapshot.albums))
-      ? libraryIndexSnapshot.albums.length : 0;
+    var snap = getLibraryIndexSnapshot();
+    var total = (snap && Array.isArray(snap.albums)) ? snap.albums.length : 0;
     setNavViewCount('albums', total ? String(total) : '');
   }
 
@@ -412,8 +432,15 @@
     mlibActiveSource = name;
     applyNavViewLabel();
     if (opts.persist !== false) writePref(MLIB_SOURCE_KEY, name);
-    // 视图名在源之间保持不变；该源的计数重新取（数据层接入后在此触发加载）。
-    if (opts.eager !== false && typeof ensureViewData === 'function') ensureViewData(mlibActiveView);
+    // 视图名在源之间保持不变；计数与列表都必须**换成新源的数据**，
+    // 否则界面上会留着上一个源的列表和数字（那会被读成新源的内容）。
+    if (opts.eager !== false) {
+      // 先按新源的缓存把计数落位，再触发加载
+      syncNavAlbumCount();
+      applyNavViewLabel();
+      loadLibraryAlbums();
+      if (typeof ensureViewData === 'function') ensureViewData(mlibActiveView);
+    }
   }
 
   // 切换视图：只改 hidden / is-active / aria-current，不动数据。
@@ -445,7 +472,7 @@
 
   // ---- 艺人视图 ----
   // 数据来自 /api/apple/library/artists（服务端从本地索引聚合，零额外网络）。
-  var artistsState = { loaded: false, loading: false, seq: 0 };
+  var artistsState = { loaded: false, loading: false, seq: 0, source: '' };
   // 首字母占位规则（规格要求三种情况都要正确）：
   //   英文 -> 第一个有效英文字母，大写（"The Weeknd" -> "T"）
   //   中文 -> 第一个有效汉字（"张杰" -> "张"）
@@ -530,7 +557,20 @@
     if (tone) el.setAttribute('data-tone', tone); else el.removeAttribute('data-tone');
   }
   function loadArtistsView() {
-    if (artistsState.loaded || artistsState.loading) return;
+    // 艺人轴目前只有 Apple 接入。切到其它源时必须**如实说明未接入**，
+    // 不能继续显示 Apple 的艺人 —— 那会让人以为看到的是该源的艺人。
+    // 这个判断必须在 early return 之前，否则已经加载过时就什么都不做了。
+    if (mlibActiveSource !== 'apple') {
+      var srcLabel = (MLIB_SOURCES[mlibActiveSource] || {}).label || mlibActiveSource;
+      setViewState('artists', srcLabel + ' 的艺人资料尚未接入。', 'warn');
+      var g0 = document.getElementById('mlib-artists-grid');
+      if (g0) g0.innerHTML = '';
+      artistsState.loaded = false;
+      artistsState.source = '';
+      return;
+    }
+    if (artistsState.loaded && artistsState.source === mlibActiveSource) return;
+    if (artistsState.loading) return;
     if (typeof apiJson !== 'function') { setViewState('artists', '页面脚本尚未就绪，稍后重试。', 'warn'); return; }
     var grid = document.getElementById('mlib-artists-grid');
     var seq = ++artistsState.seq;
@@ -837,7 +877,7 @@
 
   // ---- 歌单视图 ----
   // 真实数据来自既有只读接口 /api/apple/user/playlists；不新建、不虚构歌单。
-  var playlistsState = { loaded: false, loading: false, seq: 0 };
+  var playlistsState = { loaded: false, loading: false, seq: 0, source: '' };
   var playlistPayloads = Object.create(null);
   function playlistCardHtml(pl) {
     var cover = String(pl.cover || '').trim();
@@ -861,16 +901,25 @@
       '</div></article>';
   }
   function loadPlaylistsView() {
-    if (playlistsState.loaded || playlistsState.loading) return;
+    // 与艺人视图同理：数据只对**当时那个源**有效，切源后必须重取。
+    if (playlistsState.loaded && playlistsState.source === mlibActiveSource) return;
+    if (playlistsState.loading) return;
     if (typeof apiJson !== 'function') { setViewState('playlists', '页面脚本尚未就绪，稍后重试。', 'warn'); return; }
     var grid = document.getElementById('mlib-playlists-grid');
     var seq = ++playlistsState.seq;
     playlistsState.loading = true;
     if (grid) grid.setAttribute('aria-busy', 'true');
-    setViewState('playlists', '正在读取 Apple Music 歌单…');
-    apiJson('/api/apple/user/playlists?limit=300').then(function (data) {
+    var isNetease = mlibActiveSource === 'netease';
+    setViewState('playlists', '正在读取' + (isNetease ? '网易云音乐' : ' Apple Music') + '歌单…');
+    // 网易云的歌单随资料库索引一起返回，无需第二个请求
+    var playlistsRequest = isNetease
+      ? fetchLibraryIndex('netease').then(function (d) { return { playlists: (d && d.playlists) || [] }; })
+      : apiJson('/api/apple/user/playlists?limit=300');
+    playlistsRequest.then(function (data) {
       if (seq !== playlistsState.seq) return;
       playlistsState.loading = false;
+      playlistsState.source = mlibActiveSource;
+      playlistsState.loaded = true;
       // 过滤虚拟条目：Apple Music 资料库卡片（virtual / id=apple-liked）不是真实歌单，
       // 它的内容是"全部已保存歌曲"，不是歌单 —— 按要求不在这里显示。
       var list = ((data && Array.isArray(data.playlists)) ? data.playlists : []).filter(function (pl) {
