@@ -180,6 +180,7 @@ SMTC 再次读取 → 只有「真的切歌了」才算成功（verified）
 | 歌单 / 专辑 / 曲目 | Apple Music Web 接口（`media-user-token`） |
 ```
 
+```
 * 数据通过 **Apple Music Web 接口**取得：请求使用 **Bearer + `media-user-token`**（网页登录凭证）；
   凭证由 `desktop/apple-music-lyrics-credential.js` 管理，**只保存在本机**。
 * **开发者账号轴（Team ID / Key ID / P8 → ES256 JWT → `/v1/me/*`）已整体退休** —— 现在不需要 Apple 开发者密钥，
