@@ -94,6 +94,7 @@ const {
   extractKugouAuth,
   kugouAudioReferer,
 } = require('./kugou-api');
+const qqLibrary = require('./qq-library-adapter');
 const kugouLibrary = require('./kugou-library-adapter');
 const {
   getQishuiStatus,
@@ -7394,6 +7395,252 @@ const server = http.createServer(async (req, res) => {
     const value = { rawPlaylists: rawPls, songs: songs, ids: seen };
     kugouLibraryCache.set(key, { at: Date.now(), value: value });
     return value;
+  }
+
+  // QQ 个人库曲目聚合（带缓存）。多个端点共用。
+  // 与另两个源同一语义：个人库 = 全部歌单的曲目（去重）。
+  // 注意：实测该账号的「我的喜欢」返回 0 首（无错误、非权限问题），
+  // 所以这里不把 liked 当唯一来源 —— 有内容的歌单同样算个人库。
+  const qqLibraryCache = new Map();
+  const QQ_LIB_TTL_MS = 5 * 60 * 1000;
+
+  async function collectQQLibrary() {
+    const info = await getQQLoginInfo();
+    if (!info.loggedIn || !info.userId) return { loggedIn: false, songs: [], rawPlaylists: [] };
+    const key = String(info.userId);
+    const hit = qqLibraryCache.get(key);
+    if (hit && Date.now() - hit.at < QQ_LIB_TTL_MS) return hit.value;
+    const pRes = await handleQQUserPlaylists();
+    const rawPlaylists = (pRes && pRes.playlists) || [];
+    const seen = new Set();
+    const songs = [];
+    for (const pl of rawPlaylists) {
+      if (!pl || !pl.id) continue;
+      let tRes = null;
+      try { tRes = await handleQQPlaylistTracks(String(pl.id), { limit: '500' }); } catch (_) { tRes = null; }
+      const raw = (tRes && (tRes.tracks || tRes.songs)) || [];
+      for (const one of qqLibrary.toLibrarySongs(raw)) {
+        if (seen.has(one.librarySongId)) continue;
+        seen.add(one.librarySongId);
+        songs.push(one);
+      }
+    }
+    const value = { loggedIn: true, userId: info.userId, rawPlaylists: rawPlaylists, songs: songs, ids: seen };
+    qqLibraryCache.set(key, { at: Date.now(), value: value });
+    return value;
+  }
+
+  // QQ → 音乐资料库（只读）。与网易云/酷狗端点**同形**，前端切源即可复用。
+  if (pn === '/api/qq/library/index') {
+    try {
+      const lib = await collectQQLibrary();
+      if (!lib.loggedIn) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'qq', albums: [], playlists: [], songs: 0 });
+        return;
+      }
+      const playlists = lib.rawPlaylists.map(pl => qqLibrary.toLibraryPlaylist(pl)).filter(Boolean);
+      const songs = lib.songs;
+      const albums = qqLibrary.albumsFromSongs(songs).map(qqLibrary.toAppleShapedAlbumCard).filter(Boolean);
+      sendJSON(res, {
+        ok: true,
+        provider: 'qq',
+        userId: lib.userId,
+        playlists: playlists,
+        songs: songs.length,
+        savedSongIds: Array.from(lib.ids),
+        albums: albums,
+        counts: { playlists: playlists.length, songs: songs.length, albums: albums.length },
+      });
+    } catch (err) {
+      console.error('[QQLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qq', albums: [], playlists: [], songs: 0 }, 500);
+    }
+    return;
+  }
+
+  // QQ 歌单曲目（只读）。供歌单详情页使用。
+  if (pn === '/api/qq/library/playlist/tracks') {
+    try {
+      const pid = String(url.searchParams.get('id') || '').replace(/^qq:/, '').trim();
+      if (!pid) { sendJSON(res, { ok: false, error: 'MISSING_PLAYLIST_ID', tracks: [] }, 400); return; }
+      const tRes = await handleQQPlaylistTracks(pid, { limit: '500' });
+      const tracks = qqLibrary.toLibrarySongs((tRes && (tRes.tracks || tRes.songs)) || []);
+      sendJSON(res, {
+        ok: true,
+        provider: 'qq',
+        playlist: { id: 'qq:' + pid, name: (tRes && tRes.playlist && tRes.playlist.name) || '', trackCount: tracks.length },
+        tracks: tracks,
+        total: Number((tRes && tRes.total) || tracks.length) || tracks.length,
+        truncated: !!(tRes && tRes.partial),
+      });
+    } catch (err) {
+      console.error('[QQPlaylistTracksLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qq', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // QQ 专辑曲目（只读）。QQ 有真实的专辑端点，可直接取目录全量再按已收藏过滤。
+  if (pn === '/api/qq/library/album/tracks') {
+    try {
+      const amid = String(url.searchParams.get('id') || '').replace(/^qq:/, '').trim();
+      if (!amid) { sendJSON(res, { error: 'MISSING_ALBUM_ID', tracks: [] }, 400); return; }
+      const aRes = await handleQQAlbumDetail(amid, 120);
+      const rawSongs = (aRes && (aRes.songs || aRes.tracks)) || [];
+      const allTracks = qqLibrary.toLibrarySongs(rawSongs);
+      // 只显示**已收藏的曲目** —— 与另两个源同一规则
+      let savedIds = null;
+      try {
+        const libS = await collectQQLibrary();
+        if (libS && libS.loggedIn) savedIds = libS.ids;
+      } catch (_) { savedIds = null; }
+      const tracks = savedIds
+        ? allTracks.filter(function (t) { return savedIds.has(String(t.librarySongId)); })
+        : allTracks;
+      const a = (aRes && aRes.album) || {};
+      sendJSON(res, {
+        ok: true,
+        provider: 'qq',
+        albumTotal: allTracks.length,
+        savedTotal: tracks.length,
+        album: {
+          id: 'qq:' + amid,
+          name: a.name || '',
+          artist: a.artist || '',
+          cover: a.cover || '',
+          // QQ 专辑端点提供发行日期（实测形如 2017-09-08）
+          releaseDate: a.releaseDate || '',
+          // 简介：QQ 该端点没有提供，且未实测到可靠来源 -> 留空，前端整块隐藏
+          description: '',
+        },
+        tracks: tracks,
+        total: allTracks.length,
+      });
+    } catch (err) {
+      console.error('[QQAlbumTracksLib]', err);
+      sendJSON(res, { error: err.message, provider: 'qq', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // QQ 资料库艺人（只读）。身份键用 artistMid。
+  if (pn === '/api/qq/library/artists') {
+    try {
+      const lib2 = await collectQQLibrary();
+      if (!lib2.loggedIn) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'qq', artists: [], total: 0 });
+        return;
+      }
+      const artists = qqLibrary.artistsFromSongs(lib2.songs);
+      // 头像：QQ 的歌手详情端点提供 avatar，拿 artistMid 再发一次请求
+      const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      const CONC = 8;
+      let cursor = 0;
+      async function enrich() {
+        while (cursor < ENRICH) {
+          const idx = cursor; cursor += 1;
+          const a = artists[idx];
+          if (!a || !a.artistMid) continue;
+          try {
+            const d = await handleQQArtistDetail(a.artistMid, 10);
+            const av = (d && d.artist && d.artist.avatar) || '';
+            if (av) {
+              a.image = String(av).replace(/^http:/i, 'https:');
+              a.hasImage = true;
+              a.imageRule = 'qq-artist-avatar';
+            }
+          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+        }
+      }
+      const ws = [];
+      for (let i = 0; i < Math.min(CONC, ENRICH); i += 1) ws.push(enrich());
+      await Promise.all(ws);
+      sendJSON(res, {
+        ok: true,
+        provider: 'qq',
+        artists: artists,
+        total: artists.length,
+        withImage: artists.filter(function (x) { return x.hasImage; }).length,
+        songTotal: lib2.songs.length,
+      });
+    } catch (err) {
+      console.error('[QQLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qq', artists: [], total: 0 }, 500);
+    }
+    return;
+  }
+
+  // QQ 艺人详情（只读）。与另两个源同形；作品只含个人库里确实有的。
+  if (pn === '/api/qq/library/artist/detail') {
+    try {
+      const amid = String(url.searchParams.get('id') || '').replace(/^qq:/, '').trim();
+      if (!amid) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID' }, 400); return; }
+      let qName = String(url.searchParams.get('name') || '');
+      let qImage = '';
+      let qBio = null;
+      try {
+        const d = await handleQQArtistDetail(amid, 10);
+        const ar = (d && d.artist) || {};
+        if (ar.name) qName = ar.name;
+        if (ar.avatar) qImage = String(ar.avatar).replace(/^http:/i, 'https:');
+        if (ar.introduction || ar.desc) {
+          qBio = {
+            extract: String(ar.introduction || ar.desc),
+            title: ar.name || qName,
+            url: 'https://y.qq.com/n/ryqq/singer/' + amid,
+            description: '',
+            lang: 'zh',
+            source: 'QQ 音乐',
+          };
+        }
+      } catch (_) { /* 取不到就留空，不编造 */ }
+      // 个人库里该艺人的作品
+      const lib3 = await collectQQLibrary();
+      const mine = (lib3.songs || []).filter(function (sg) {
+        if (String(sg.artistMid || '') === amid) return true;
+        if (String(sg.artistId || '') === amid) return true;
+        return (sg.artists || []).some(function (a) { return String(a && (a.mid || a.id)) === amid; });
+      });
+      const byAlbum = new Map();
+      mine.forEach(function (sg) {
+        const key = String(sg.albumId || '');
+        if (!key) return;
+        if (!byAlbum.has(key)) byAlbum.set(key, { id: key, name: sg.albumName || '未命名专辑', cover: sg.cover || '', songs: [] });
+        const rec = byAlbum.get(key);
+        rec.songs.push(sg);
+        if (!rec.cover && sg.cover) rec.cover = sg.cover;
+      });
+      const releases = Array.from(byAlbum.values()).map(function (r) {
+        return {
+          libraryAlbumId: 'qq:' + r.id,
+          name: r.name,
+          cover: r.cover,
+          releaseDate: '',
+          songCount: r.songs.length,
+          type: 'album',
+        };
+      });
+      if (!qName) qName = (mine[0] && mine[0].artist) || '';
+      sendJSON(res, {
+        ok: true,
+        provider: 'qq',
+        artistId: 'qq:' + amid,
+        name: qName,
+        genres: [],
+        image: qImage,
+        hasImage: !!qImage,
+        imageRule: qImage ? 'qq-artist-avatar' : '',
+        wiki: qBio,
+        wikiLang: qBio ? 'zh' : '',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: { album: releases, single: [], ep: [], unknown: [] },
+      });
+    } catch (err) {
+      console.error('[QQArtistDetailLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'qq' }, 500);
+    }
+    return;
   }
 
   // 酷狗 → 音乐资料库（只读）。与网易云端点**同形**，前端切源即可复用渲染。

@@ -308,6 +308,18 @@
       playlistTracks: function (id) { return '/api/playlist/tracks?id=' + encodeURIComponent(String(id).replace(/^ne:/, '')); },
       usesWikiApi: false,
     },
+    qq: {
+      index: '/api/qq/library/index',
+      artists: '/api/qq/library/artists',
+      artistDetail: function (id, name) {
+        return '/api/qq/library/artist/detail?id=' + encodeURIComponent(String(id).replace(/^qq:/, ''))
+          + '&name=' + encodeURIComponent(name || '');
+      },
+      albumTracks: function (id) { return '/api/qq/library/album/tracks?id=' + encodeURIComponent(id); },
+      playlistTracks: function (id) { return '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(String(id).replace(/^qq:/, '')); },
+      playlistsFromIndex: true,
+      usesWikiApi: false,
+    },
     kugou: {
       index: '/api/kugou/library/index',
       artists: '/api/kugou/library/artists',
@@ -325,7 +337,7 @@
 
   var MLIB_SOURCES = {
     apple: { label: 'Apple Music', ready: true },
-    qq: { label: 'QQ 音乐', ready: false },
+    qq: { label: 'QQ 音乐', ready: true },
     // 酷狗：专辑/歌单/艺人/播放已接入并实测（索引 1.6 秒、497 首 / 450 专辑）。
     kugou: { label: '酷狗音乐', ready: true },
     // 网易云的「专辑」轴已接入并实测通过（/api/netease/library/index）：
@@ -1089,7 +1101,9 @@
       if (typeof showToast === 'function') showToast('正在读取曲目…');
       var plUrl = plProvider === 'kugou'
         ? '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(plId)
-        : '/api/playlist/tracks?id=' + encodeURIComponent(String(plId).replace(/^ne:/, ''));
+        : (plProvider === 'qq'
+          ? '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(String(plId).replace(/^qq:/, ''))
+          : '/api/playlist/tracks?id=' + encodeURIComponent(String(plId).replace(/^ne:/, '')));
       apiJson(plUrl).then(function (data) {
         var songs = (data && Array.isArray(data.tracks)) ? data.tracks : [];
         if (!songs.length) {
@@ -1304,7 +1318,9 @@
       if (typeof showToast === 'function') showToast('正在读取曲目…');
       var tracksUrl = albumProvider === 'kugou'
         ? '/api/kugou/library/album/tracks?id=' + encodeURIComponent(albumId)
-        : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId);
+        : (albumProvider === 'qq'
+          ? '/api/qq/library/album/tracks?id=' + encodeURIComponent(albumId)
+          : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId));
       apiJson(tracksUrl).then(function (data) {
         var songs = (data && Array.isArray(data.tracks)) ? data.tracks : [];
         if (!songs.length) {

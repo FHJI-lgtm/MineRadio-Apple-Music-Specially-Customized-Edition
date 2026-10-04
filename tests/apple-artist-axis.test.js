@@ -1010,12 +1010,13 @@ test('音乐资料库导航：三个视图常驻，源列表可展开切换', as
     assert.match(block, /apple: \{ label: 'Apple Music', ready: true \}/, 'Apple 已接入');
     assert.match(block, /netease: \{ label: '网易云音乐', ready: true \}/, '网易云专辑轴已接入');
     const ready = block.match(/ready: true/g) || [];
-    assert.equal(ready.length, 3, 'Apple / 网易云 / 酷狗 三个源可点（实际 ' + ready.length + '）');
+    assert.equal(ready.length, 4, 'Apple / 网易云 / 酷狗 / QQ 四个源可点（实际 ' + ready.length + '）');
     assert.match(block, /kugou: \{ label: '酷狗音乐', ready: true \}/, '酷狗已接入');
+    assert.match(block, /qq: \{ label: 'QQ 音乐', ready: true \}/, 'QQ 已接入');
     const notReady = block.match(/ready: false/g) || [];
-    assert.equal(notReady.length, 3, '其余 3 个源必须如实标为未接入');
+    assert.equal(notReady.length, 2, '其余 2 个源必须如实标为未接入');
     // 未接入的源必须仍然存在，不能被误删
-    ['qq', 'qishui', 'spotify'].forEach(function (s) {
+    ['qishui', 'spotify'].forEach(function (s) {
       // 逐行判断：该源的条目里必须出现 ready: false
       const line = block.split('\n').filter(function (l) { return l.indexOf(s + ':') >= 0; })[0] || '';
       assert.match(line, /ready: false/, s + ' 应保持未接入状态（实际: ' + line.trim() + '）');
@@ -1427,7 +1428,7 @@ test('音乐资料库：网易云专辑简介接入', async (t20) => {
   });
 
   await t20.test('客户端把服务端专辑元数据并入当前专辑后再渲染', () => {
-    const i = MOD.indexOf('if (/^(ne|kg):/.test(albumId)) {');
+    const i = MOD.indexOf('if (/^(ne|kg|qq):/.test(albumId)) {');
     const fn = MOD.slice(i, i + 1600);
     assert.match(fn, /apiJson\(albumTracksUrl\)/, '端点按源选（不再是写死的网易云 URL）');
     assert.match(fn, /neData\.album/, '要用服务端返回的专辑对象');
