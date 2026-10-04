@@ -1321,6 +1321,31 @@ function createAppleMusicLibraryCacheService(options) {
   let neteaseBioImpl = null;
   function setNeteaseBioImpl(fn) { neteaseBioImpl = typeof fn === 'function' ? fn : null; }
 
+  // 按**网易云 artistId 直接**取简介（不经过搜索匹配 —— 我们已经有确定的 id）。
+  // 与维基链路输出同形，便于详情页统一渲染。
+  async function fetchNeteaseBioById(artistId) {
+    const id = normalizeText(artistId);
+    if (!id) return { ok: false, found: false, reason: 'NO_ID' };
+    const r = await fetchNeteaseArtistDetail(id);
+    if (!r || !r.ok) return { ok: false, found: false, reason: (r && r.reason) || 'NETEASE_ERR' };
+    const d = r.data || {};
+    const extract = normalizeText(d.extract);
+    if (!extract) return { ok: false, found: false, reason: 'NETEASE_NO_BRIEF' };
+    return {
+      ok: true,
+      found: true,
+      data: {
+        extract: extract,
+        title: normalizeText(d.title),
+        description: '',
+        url: d.url || ('https://music.163.com/#/artist?id=' + id),
+        lang: 'zh',
+        source: '网易云音乐',
+        neteaseArtistId: id,
+      },
+    };
+  }
+
   async function resolveNeteaseBio(name) {
     if (neteaseBioImpl) return neteaseBioImpl(name);
     const q = normalizeText(name);
@@ -1400,6 +1425,7 @@ function createAppleMusicLibraryCacheService(options) {
     getArtistWiki,
     getNeteaseBio,
     getNeteaseAvatar,
+    fetchNeteaseBioById,
     warmNetease,
     getWikiDiag,
     setNeteaseSearchImpl,

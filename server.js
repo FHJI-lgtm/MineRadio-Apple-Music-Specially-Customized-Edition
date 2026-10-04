@@ -134,7 +134,7 @@ const {
   handleAppleSongUrl,
   handleAppleLyric,
 } = require('./apple-music-api');
-const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, handleApplePlaylistTracksAllWeb, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, handleApplePlaylistTracksAllWeb, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, fetchNeteaseBioById, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -2187,6 +2187,25 @@ const neteasePlaylistTrackIndexInflight = new Map();
 // 也避免把几百个 id 塞进 URL。
 const neteaseSavedSongCache = { userId: '', ids: null, at: 0 };
 const NETEASE_SAVED_TTL_MS = 5 * 60 * 1000;
+
+// 网易云资料库艺人的内存缓存（按 userId）。
+// 首次构建要遍历个人库并逐位取头像，代价不小；构建完就缓存，之后秒回。
+const neteaseArtistsCache = (function () {
+  const map = new Map();
+  const TTL = 30 * 60 * 1000;
+  return {
+    get: function (uid) {
+      const k = String(uid || '');
+      const hit = map.get(k);
+      if (!hit) return null;
+      if (Date.now() - hit.at > TTL) { map.delete(k); return null; }
+      return hit.payload;
+    },
+    set: function (uid, payload) {
+      map.set(String(uid || ''), { at: Date.now(), payload: payload });
+    },
+  };
+})();
 
 function rememberNeteaseSavedSongs(userId, ids) {
   neteaseSavedSongCache.userId = String(userId || '');
@@ -7226,7 +7245,21 @@ const server = http.createServer(async (req, res) => {
 
   // 从个人库聚出「按专辑Id」的曲目（艺人详情与专辑过滤共用）。
   // 与 Apple 资料库同一语义：**只含确实收藏了的曲目**。
+  // 个人库曲目的缓存：遍历歌单是每个艺人详情/专辑详情的瓶颈（实测约 5.7 秒），
+  // 而个人库在短时间内不会变。短 TTL 缓存，写入后立刻可用。
+  const neteaseLibrarySongsCache = new Map();
+  const NETEASE_LIB_TTL_MS = 5 * 60 * 1000;
+
   async function collectNeteaseLibrarySongs(uid) {
+    const key = String(uid || '');
+    const hit = neteaseLibrarySongsCache.get(key);
+    if (hit && Date.now() - hit.at < NETEASE_LIB_TTL_MS) return hit.value;
+    const value = await collectNeteaseLibrarySongsUncached(uid);
+    neteaseLibrarySongsCache.set(key, { at: Date.now(), value: value });
+    return value;
+  }
+
+  async function collectNeteaseLibrarySongsUncached(uid) {
     const pls = await fetchAllNeteaseUserPlaylists(uid, 0);
     const seen = new Set();
     const songs = [];
@@ -7254,6 +7287,22 @@ const server = http.createServer(async (req, res) => {
       let name = String(url.searchParams.get('name') || '');
       let image = '';
       let genres = [];
+      // 一次调用同时拿头像与简介 —— 不重复请求同一个 artist_detail。
+      let bio = null;
+      try {
+        const bioRes = await fetchNeteaseBioById(aid);
+        if (bioRes && bioRes.ok && bioRes.data) {
+          bio = {
+            extract: bioRes.data.extract,
+            title: bioRes.data.title || '',
+            url: bioRes.data.url || '',
+            description: '',
+            lang: bioRes.data.lang || 'zh',
+            source: bioRes.data.source || '网易云音乐',
+          };
+          if (bioRes.data.title) name = name || bioRes.data.title;
+        }
+      } catch (_) { bio = null; }
       try {
         const ad = await artist_detail({ id: aid, cookie: cookie5, timestamp: Date.now() });
         const ab = (ad && ad.body) || {};
@@ -7298,6 +7347,9 @@ const server = http.createServer(async (req, res) => {
         image: image,
         hasImage: !!image,
         imageRule: image ? 'netease-avatar' : '',
+        // 简介来源如实标注（网易云音乐），与 Apple 侧的维基简介同一形状
+        wiki: bio,
+        wikiLang: bio ? (bio.lang || 'zh') : '',
         songTotal: mine.length,
         releaseTotal: releases.length,
         sections: { album: releases, single: [], ep: [], unknown: [] },
@@ -7319,34 +7371,52 @@ const server = http.createServer(async (req, res) => {
         sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'netease', artists: [], total: 0 });
         return;
       }
+      // 首次加载完就进缓存：之后切到艺人轴/再来回切源都不必重扫个人库、重抓头像。
+      const ck = String(url.searchParams.get('refresh') || '') === '1' ? '' : neteaseArtistsCache.get(info4.userId);
+      if (ck) {
+        sendJSON(res, Object.assign({}, ck, { fromCache: true }));
+        return;
+      }
       const libAll = await collectNeteaseLibrarySongs(info4.userId);
       const allSongs4 = libAll.songs;
       const artists = neteaseLibrary.artistsFromSongs(allSongs4);
-      // 头像：只对缺头像的抓 artist_detail。限量以免一次打太多请求。
-      const LIMIT = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || '60', 10) || 60));
-      for (let i = 0; i < LIMIT; i += 1) {
-        const a = artists[i];
-        try {
-          const cookieNow = typeof userCookie === 'string' ? userCookie : '';
-          const rr = await artist_detail({ id: a.artistId, cookie: cookieNow, timestamp: Date.now() });
-          const ab = (rr && rr.body) || {};
-          const av = ab.artist || (ab.data && ab.data.artist) || {};
-          const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
-          if (raw) {
-            a.image = raw.replace(/^http:/i, 'https:');
-            a.hasImage = true;
-            a.imageRule = 'netease-avatar';
-          }
-        } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+      // 头像：并发抓取（有上限，避免滥用接口）。串行 372 位实测要 18.8 秒，
+      // 并发 8 路后显著缩短；结果会进缓存，所以只慢这一次。
+      const ENRICH_LIMIT = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      const CONC = 8;
+      let cursor = 0;
+      async function enrichWorker() {
+        const cookieNow = typeof userCookie === 'string' ? userCookie : '';
+        while (cursor < ENRICH_LIMIT) {
+          const idx = cursor; cursor += 1;
+          const a = artists[idx];
+          if (!a) continue;
+          try {
+            const rr = await artist_detail({ id: a.artistId, cookie: cookieNow, timestamp: Date.now() });
+            const ab = (rr && rr.body) || {};
+            const av = ab.artist || (ab.data && ab.data.artist) || {};
+            const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
+            if (raw) {
+              a.image = raw.replace(/^http:/i, 'https:');
+              a.hasImage = true;
+              a.imageRule = 'netease-avatar';
+            }
+          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+        }
       }
-      sendJSON(res, {
+      const workers = [];
+      for (let w = 0; w < Math.min(CONC, ENRICH_LIMIT); w += 1) workers.push(enrichWorker());
+      await Promise.all(workers);
+      const payload = {
         ok: true,
         provider: 'netease',
         artists: artists,
         total: artists.length,
         withImage: artists.filter(function (x) { return x.hasImage; }).length,
         songTotal: allSongs4.length,
-      });
+      };
+      neteaseArtistsCache.set(info4.userId, payload);
+      sendJSON(res, Object.assign({}, payload, { fromCache: false }));
     } catch (err) {
       console.error('[NeteaseLibraryArtists]', err);
       sendJSON(res, { ok: false, error: err.message, provider: 'netease', artists: [], total: 0 }, 500);

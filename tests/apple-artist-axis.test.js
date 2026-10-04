@@ -1303,11 +1303,12 @@ test('音乐资料库：艺人轴按源取数且只含已收藏曲目', async (t
     assert.match(MOD, /artistsState\.source = mlibActiveSource/, '记录来源，切源后必须重取');
   });
 
-  await t18.test('艺人详情按源选端点，且非 Apple 不拿 Apple 的简介充数', () => {
+  await t18.test('艺人详情按源选端点；简介各源走自己的来源', () => {
     assert.match(MOD, /'\/api\/netease\/library\/artist\/detail\?id='/, '网易云艺人详情端点');
     const fn = MOD.slice(MOD.indexOf('function loadArtistDetail'), MOD.indexOf('function scrollLibraryToTop'));
-    assert.match(fn, /mlibActiveSource === 'apple'/, '简介只在 Apple 源下走 wiki 端点');
-    assert.match(fn, /renderArtistBio\(null\)/, '非 Apple 源如实不显示简介');
+    // 只有 Apple 源需要"后台补维基简介"；非 Apple 源的简介随详情端点一并返回
+    assert.match(fn, /mlibActiveSource === 'apple'/, '维基补取只在 Apple 源下进行');
+    assert.match(fn, /fetchArtistBioIfMissing/, 'Apple 源仍走维基补取');
   });
 
   await t18.test('未接入的源仍如实提示，不显示别的源的艺人', () => {
@@ -1332,5 +1333,66 @@ test('音乐资料库：艺人轴按源取数且只含已收藏曲目', async (t
     assert.match(fn, /savedIds/, '要有已收藏集合');
     assert.match(fn, /allTracks\.filter/, '按集合过滤');
     assert.match(fn, /recallNeteaseSavedSongs/, '复用索引算好的集合，避免每开一张专辑重扫个人库');
+  });
+});
+;
+// ============================================================
+// 非 Apple 源简介：来源如实标注 + 首次加载进缓存
+// ============================================================
+test('多源简介与缓存：网易云简介来源如实，艺人列表首次后进缓存', async (t19) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const CACHE = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'desktop', 'apple-music-library-cache.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t19.test('按 artistId 取简介（不经过搜索匹配），来源标注为网易云音乐', () => {
+    const i = CACHE.indexOf('async function fetchNeteaseBioById(');
+    assert.ok(i > 0, '要有按 id 的简介入口 —— 我们已有确定 id，不该再做名字搜索匹配');
+    // 按下一个函数声明收尾，避免把后一个函数的实现也算进来
+    const end = CACHE.indexOf('async function resolveNeteaseBio(', i);
+    const fn = CACHE.slice(i, end > i ? end : i + 1200);
+    assert.match(fn, /source: '网易云音乐'/, '来源如实标注');
+    assert.match(fn, /fetchNeteaseArtistDetail\(/, '复用既有取数');
+    assert.ok(!/neteaseSearchArtists/.test(fn), '按 id 不该再走搜索（越界截取会误判）');
+  });
+
+  await t19.test('详情端点把简介一并返回（wiki 形状与 Apple 侧一致）', () => {
+    const fn = SERVER.slice(SERVER.indexOf("pn === '/api/netease/library/artist/detail'"),
+      SERVER.indexOf("if (pn === '/api/netease/library/artists')"));
+    assert.match(fn, /fetchNeteaseBioById\(aid\)/, '详情端点取简介');
+    assert.match(fn, /wiki: bio/, '返回 wiki 字段');
+    assert.match(fn, /wikiLang: bio/, '返回语言，供前端判断');
+  });
+
+  await t19.test('客户端不再对非 Apple 源禁掉简介', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadArtistDetail'), MOD.indexOf('function scrollLibraryToTop'));
+    assert.match(fn, /mlibActiveSource === 'apple'/, 'Apple 才需要后台补维基简介');
+    assert.ok(!/本源的简介接入前如实不显示/.test(fn), '非 Apple 源简介已接入，不该再写"未接入"');
+  });
+
+  await t19.test('艺人列表首次加载后进缓存，之后命中缓存', () => {
+    const i = SERVER.indexOf("pn === '/api/netease/library/artists'");
+    const fn = SERVER.slice(i, i + 3000);
+    assert.match(fn, /neteaseArtistsCache\.get\(info4\.userId\)/, '取缓存');
+    assert.match(fn, /neteaseArtistsCache\.set\(info4\.userId/, '写缓存');
+    assert.match(fn, /Object\.assign\(\{\}, ck, \{ fromCache: true \}\)/, '命中缓存直接返回');
+    assert.match(fn, /refresh/, '支持强制刷新');
+  });
+
+  await t19.test('个人库曲目聚合也有缓存（详情端点不再每次重扫）', () => {
+    assert.match(SERVER, /neteaseLibrarySongsCache/, '要有曲目聚合缓存');
+    const i = SERVER.indexOf('async function collectNeteaseLibrarySongs(uid)');
+    const wrapper = SERVER.slice(i, i + 420);
+    assert.match(wrapper, /neteaseLibrarySongsCache\.get\(key\)/, '先查缓存');
+    assert.match(wrapper, /collectNeteaseLibrarySongsUncached\(uid\)/, '未命中才真正遍历');
+  });
+
+  await t19.test('头像抓取并发且有上限，不逐个串行', () => {
+    const i = SERVER.indexOf("pn === '/api/netease/library/artists'");
+    const fn = SERVER.slice(i, i + 4000);
+    assert.match(fn, /enrichWorker/, '并发 worker');
+    assert.match(fn, /const CONC = \d+/, '并发要有上限');
+    assert.match(fn, /Promise\.all\(workers\)/, '等全部完成再返回，避免返回半成品');
   });
 });

@@ -838,12 +838,10 @@
         return;
       }
       renderArtistDetail(data);
-      // 首次进入时简介还没取到（详情端点为不阻塞返回），后台补齐。
-      // 非 Apple 源不走 Apple 的 wiki 端点（那会让来源标注与实际不符）。
+      // 非 Apple 源：简介随详情端点一并返回（服务端一次 artist_detail 同时取头像与简介），
+      // 直接渲染即可；只有 Apple 源才需要后台单独补维基简介。
       if (mlibActiveSource === 'apple') {
         fetchArtistBioIfMissing(artistId, data.name || artistDetailState.name, data.wikiLang || (data.wiki && data.wiki.lang));
-      } else {
-        renderArtistBio(null);   // 本源的简介接入前如实不显示，不拿 Apple 的充数
       }
       // 渲染完成后**再次**置顶：打开详情时先把列表隐藏，滚动容器高度会瞬间塌缩，
       // scrollTop 被浏览器钳到 0；内容渲染回来后浏览器会恢复旧值，
