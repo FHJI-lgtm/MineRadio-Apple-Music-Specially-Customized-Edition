@@ -283,6 +283,8 @@
       artists: '/api/apple/library/artists?resolve=1',
       artistDetail: function (id, name) { return '/api/apple/library/artist/detail?id=' + encodeURIComponent(id); },
       albumTracks: function (id) { return '/api/apple/library/album/tracks?id=' + encodeURIComponent(id) + '&limit=100'; },
+      // Apple 的歌单有自己的端点；网易云/酷狗的歌单随资料库索引返回
+      playlistsFromIndex: false,
       playlistTracks: function (id) { return '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1'; },
       usesWikiApi: true,
     },
@@ -294,6 +296,7 @@
           + '&name=' + encodeURIComponent(name || '');
       },
       albumTracks: function (id) { return '/api/netease/library/album/tracks?id=' + encodeURIComponent(id); },
+      playlistsFromIndex: true,
       playlistTracks: function (id) { return '/api/playlist/tracks?id=' + encodeURIComponent(String(id).replace(/^ne:/, '')); },
       usesWikiApi: false,
     },
@@ -305,6 +308,7 @@
           + '&name=' + encodeURIComponent(name || '');
       },
       albumTracks: function (id) { return '/api/kugou/library/album/tracks?id=' + encodeURIComponent(id); },
+      playlistsFromIndex: true,
       playlistTracks: null,   // 酷狗歌单曲目暂未接入浏览（如实不显示）
       usesWikiApi: false,
     },
@@ -972,11 +976,15 @@
     var seq = ++playlistsState.seq;
     playlistsState.loading = true;
     if (grid) grid.setAttribute('aria-busy', 'true');
-    var isNetease = mlibActiveSource === 'netease';
-    setViewState('playlists', '正在读取' + (isNetease ? '网易云音乐' : ' Apple Music') + '歌单…');
-    // 网易云的歌单随资料库索引一起返回，无需第二个请求
-    var playlistsRequest = isNetease
-      ? fetchLibraryIndex('netease').then(function (d) { return { playlists: (d && d.playlists) || [] }; })
+    // 歌单也按源取：网易云与酷狗的歌单都随各自的资料库索引一起返回（无需第二个请求），
+    // Apple 才有独立的歌单端点。
+    // 之前这里只判了 isNetease，**否则一律打 Apple 端点** —— 于是切到酷狗时
+    // 显示的是 Apple 的歌单（卡片上还带着 Apple Music 标签）。这是真 bug，不是酷狗没数据。
+    var epP = sourceEndpoint(mlibActiveSource);
+    var srcLabel = (MLIB_SOURCES[mlibActiveSource] || {}).label || 'Apple Music';
+    setViewState('playlists', '正在读取' + srcLabel + '歌单…');
+    var playlistsRequest = (epP && epP.playlistsFromIndex)
+      ? fetchLibraryIndex(mlibActiveSource).then(function (d) { return { playlists: (d && d.playlists) || [] }; })
       : apiJson('/api/apple/user/playlists?limit=300');
     playlistsRequest.then(function (data) {
       if (seq !== playlistsState.seq) return;

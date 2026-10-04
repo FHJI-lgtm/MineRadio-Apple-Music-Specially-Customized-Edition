@@ -1443,3 +1443,42 @@ test('音乐资料库：网易云专辑简介接入', async (t20) => {
     assert.match(fn, /toggle\.hidden = true/, '同时隐藏展开按钮');
   });
 });
+;
+// ============================================================
+// 歌单视图也必须按源取数（曾把 Apple 歌单显示在酷狗源下）
+// ============================================================
+test('音乐资料库：歌单视图按源取数，不再一律落到 Apple', async (t21) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t21.test('歌单端点由配置表决定，而不是"非网易云即 Apple"', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadPlaylistsView'), MOD.indexOf('function ensureViewData'));
+    // 之前这里只有 isNetease 判定，else 一律打 Apple 端点
+    assert.ok(!/isNetease\s*\?/.test(fn), '不该再用 isNetease 三元决定端点');
+    assert.match(fn, /epP\.playlistsFromIndex/, '由配置表的 playlistsFromIndex 决定');
+    assert.match(fn, /\/api\/apple\/user\/playlists\?limit=300/, 'Apple 才走自己的歌单端点');
+  });
+
+  await t21.test('三个已接入的源都标了 playlistsFromIndex', () => {
+    const epAt = MOD.indexOf('var MLIB_SOURCE_ENDPOINTS = {');
+    const epBlock = MOD.slice(epAt, MOD.indexOf('function sourceEndpoint', epAt));
+    const appleB = epBlock.slice(epBlock.indexOf('apple: {'), epBlock.indexOf('netease: {'));
+    const neB = epBlock.slice(epBlock.indexOf('netease: {'), epBlock.indexOf('kugou: {'));
+    const kgB = epBlock.slice(epBlock.indexOf('kugou: {'));
+    assert.match(appleB, /playlistsFromIndex: false/, 'Apple 有自己的端点');
+    assert.match(neB, /playlistsFromIndex: true/, '网易云歌单随索引返回');
+    assert.match(kgB, /playlistsFromIndex: true/, '酷狗歌单随索引返回');
+  });
+
+  await t21.test('状态文案按源显示，不写死 Apple', () => {
+    const fn = MOD.slice(MOD.indexOf('function loadPlaylistsView'), MOD.indexOf('function ensureViewData'));
+    assert.match(fn, /srcLabel/, '要按当前源取展示名');
+    assert.ok(!/正在读取' \+ \(isNetease/.test(fn), '不该再用 isNetease 决定文案');
+  });
+
+  await t21.test('酷狗歌单卡显示作者而不是 Apple Music', () => {
+    // 卡片副标题由 playlistCardHtml 决定；酷狗歌单带 creator，应优先显示
+    const fn = MOD.slice(MOD.indexOf('function playlistCardHtml'), MOD.indexOf('function playlistCardHtml') + 900);
+    assert.match(fn, /creator|artist/, '副标题要能取到来源作者');
+  });
+});
