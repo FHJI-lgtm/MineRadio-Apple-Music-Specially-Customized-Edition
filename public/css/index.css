@@ -2639,6 +2639,13 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 }
 
 /* 父级 = 分区标题行本身。用 button 承载，但视觉上仍是原来的标题排版。 */
+/* 源选择与视图选择是**两个平行父级**，之间给一点呼吸感，避免看成同一棵树 */
+.mlib-section-head-view {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .07)
+}
+
 .mlib-nav-parent {
   display: inline-flex;
   align-items: baseline;

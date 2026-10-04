@@ -1,0 +1,35 @@
+音乐源数据可得性审计 —— 2026-10-04T02:53:37.689Z
+工作区: F:\mineradio-apple-music
+  cookie[netease] = 2588 字符  <- C:\Users\limin\AppData\Roaming\MineRadio Apple Music Edition\.cookie
+  cookie[qq] = 2193 字符  <- C:\Users\limin\AppData\Roaming\MineRadio Apple Music Edition\.qq-cookie
+  cookie[kugou] = 1134 字符  <- C:\Users\limin\AppData\Roaming\MineRadio Apple Music Edition\.kugou-cookie
+
+=== 网易云 (netease) ===
+  cookie 文件: 有 (2588 字符)
+  登录态: 已登录 uid=6444305873 昵称=FHJI25373
+  收藏歌单: 共 3 个（自建 3，收藏 0）
+  喜欢的歌曲: 8 首
+  收藏专辑: 3 张
+    song 548785556 -> url=YES 码率=128010 类型=MP3 [试听片段]
+    song 2613048732 -> url=YES 码率=320000 类型=mp3
+    song 27072697 -> url=YES 码率=128012 类型=mp3 [试听片段]
+
+=== QQ 音乐 (qq) ===
+  cookie 文件: 有 (2193 字符)
+  说明: QQ 的个人库读取实现在 server.js 的 /api/qq/* 路由内（无独立模块），
+        需要运行中的应用上下文才能探测数量；本脚本只报 cookie 有无。
+
+=== 酷狗 (kugou) ===
+  cookie 文件: 有 (1134 字符)
+  hasLogin=true  hasPlayback=true  userId=1173556605
+  getKugouLoginInfo: {"provider":"kugou","loggedIn":true,"playbackReady":true,"playbackKeyReady":true,"userId":"1173556605","nickname":"FHJI","avatar":"http://imge.kugou.com/kugouicon/165/20260216/20260216204042813435.jpg","vipType":0,"svipType":0,"vipLevel":"n
+  收藏/自建歌单: 4 个
+    首个歌单: 默认收藏  id=collection_3_1173556605_1_0
+    曲目数: 2
+  搜索可用性: 3 条
+    样本: 晴天 hash=B3A52A7A958B
+    可播性取样: url=YES playable=true 错误=-
+      链接前缀: http://fsandroid.kugou.com/202610041053/50bddab06fa8bf2efa93cb75a31518
+
+=== 完成 ===
+提示：登录后重跑本脚本即可对比数据量。

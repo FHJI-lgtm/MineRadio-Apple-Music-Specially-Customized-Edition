@@ -300,63 +300,63 @@
         <header class="mlib-page-head">
           <div class="mlib-eyebrow">MUSIC LIBRARY</div>
           <h1 class="mlib-title">音乐资料库</h1>
-          <div class="mlib-head-meta">
-            <span class="mlib-source-dot" aria-hidden="true"></span>
-            <span class="mlib-source-label">Apple Music</span>
-          </div>
         </header>
 
         <!-- 导航：独立于三个视图之外，切换视图时**不会被一起隐藏**。
              父级「专辑」可展开/折叠，三个子项切换右侧内容。 -->
         <section class="mlib-section mlib-section-nav" id="mlib-nav-section" aria-label="资料库导航">
-          <div class="mlib-section-head">
-            <button class="mlib-nav-parent" id="mlib-nav-parent-albums" type="button"
-              aria-expanded="true" aria-controls="mlib-nav-children-albums">
-              <span class="mlib-nav-caret" aria-hidden="true">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
-                  stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>
-              </span>
-              <span class="mlib-section-title" id="mlib-nav-heading">专辑</span>
-              <span class="mlib-section-count" id="mlib-nav-view-count"></span>
-            </button>
-          </div>
+          <!-- 一棵树：**每个源是一个顶级项**，展开后是它的「专辑 / 艺人 / 歌单」。
+               与原有「专辑 ▾」完全同一种交互与视觉，不新增区块风格。
+               只列真正有数据的源 —— 未接入的源不出现，避免点进去得到空页面。 -->
           <nav class="mlib-nav" id="mlib-nav-menu" aria-label="资料库导航">
-            <div class="mlib-nav-children" id="mlib-nav-children-albums" role="list">
-              <button class="mlib-nav-item is-active" id="mlib-nav-item-albums" type="button"
-                role="listitem" data-mlib-view="albums" aria-current="page">
-                <span class="mlib-nav-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4" />
-                    <circle cx="8" cy="8" r="2.4" />
-                  </svg>
+            <!-- Apple Music（当前唯一已接入的源；其余源在数据层就绪后按同一结构追加） -->
+            <div class="mlib-nav-group" data-mlib-source-group="apple">
+              <button class="mlib-nav-parent mlib-nav-source" id="mlib-nav-parent-source" type="button"
+                aria-expanded="true" aria-controls="mlib-nav-children-source">
+                <span class="mlib-nav-caret" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4" /></svg>
                 </span>
-                <span class="mlib-nav-label">专辑</span>
-                <span class="mlib-nav-count" id="mlib-nav-count-albums"></span>
+                <span class="mlib-section-title" id="mlib-nav-source-heading">Apple Music</span>
+                <span class="mlib-section-count" id="mlib-nav-source-count"></span>
               </button>
-              <button class="mlib-nav-item" id="mlib-nav-item-artists" type="button"
-                role="listitem" data-mlib-view="artists">
-                <span class="mlib-nav-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <circle cx="8" cy="5.4" r="2.6" />
-                    <path d="M3.2 13.4c0-2.4 2.1-4 4.8-4s4.8 1.6 4.8 4" stroke-linecap="round" />
-                  </svg>
-                </span>
-                <span class="mlib-nav-label">艺人</span>
-                <span class="mlib-nav-count" id="mlib-nav-count-artists"></span>
-              </button>
-              <button class="mlib-nav-item" id="mlib-nav-item-playlists" type="button"
-                role="listitem" data-mlib-view="playlists">
-                <span class="mlib-nav-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
-                    stroke-linecap="round">
-                    <path d="M2.4 4.4h7.2M2.4 8h7.2M2.4 11.6h4.4" />
-                    <circle cx="12" cy="11.2" r="2" />
-                    <path d="M14 11.2V6.2l-2.8.7" />
-                  </svg>
-                </span>
-                <span class="mlib-nav-label">歌单</span>
-                <span class="mlib-nav-count" id="mlib-nav-count-playlists"></span>
-              </button>
+              <div class="mlib-nav-children" id="mlib-nav-children-source" role="list">
+                <button class="mlib-nav-item is-active" id="mlib-nav-item-albums" type="button"
+                  role="listitem" data-mlib-view="albums" aria-current="page">
+                  <span class="mlib-nav-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4" />
+                      <circle cx="8" cy="8" r="2.4" />
+                    </svg>
+                  </span>
+                  <span class="mlib-nav-label">专辑</span>
+                  <span class="mlib-nav-count" id="mlib-nav-count-albums"></span>
+                </button>
+                <button class="mlib-nav-item" id="mlib-nav-item-artists" type="button"
+                  role="listitem" data-mlib-view="artists">
+                  <span class="mlib-nav-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <circle cx="8" cy="5.4" r="2.6" />
+                      <path d="M3.2 13.4c0-2.4 2.1-4 4.8-4s4.8 1.6 4.8 4" stroke-linecap="round" />
+                    </svg>
+                  </span>
+                  <span class="mlib-nav-label">艺人</span>
+                  <span class="mlib-nav-count" id="mlib-nav-count-artists"></span>
+                </button>
+                <button class="mlib-nav-item" id="mlib-nav-item-playlists" type="button"
+                  role="listitem" data-mlib-view="playlists">
+                  <span class="mlib-nav-icon" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round">
+                      <path d="M2.4 4.4h7.2M2.4 8h7.2M2.4 11.6h4.4" />
+                      <circle cx="12" cy="11.2" r="2" />
+                      <path d="M14 11.2V6.2l-2.8.7" />
+                    </svg>
+                  </span>
+                  <span class="mlib-nav-label">歌单</span>
+                  <span class="mlib-nav-count" id="mlib-nav-count-playlists"></span>
+                </button>
+              </div>
             </div>
           </nav>
         </section>

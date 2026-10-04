@@ -966,3 +966,86 @@ test('歌单详情：随机播放按钮只在歌单里显示且常驻可见', as
     assert.match(HTML, /data-am-shuffle="playlist"/, '要有稳定的 data-* 标识供 UIA 定位');
   });
 });
+;
+// ============================================================
+// 音乐资料库：一棵树 —— 源是顶级项，视图是它的子项
+// ============================================================
+test('音乐资料库：源作为顶级项，视图作为其子项（不伪造未接入的源）', async (t12) => {
+  const HTML = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'index.html'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+
+  await t12.test('源是唯一的顶级父级，三个视图在它的子容器里', () => {
+    assert.match(HTML, /class="mlib-nav-parent mlib-nav-source" id="mlib-nav-parent-source"/, '源父级存在');
+    assert.match(HTML, /class="mlib-nav-children" id="mlib-nav-children-source"/, '源有子容器');
+    // 三个视图项必须落在源的子容器之内（而不是另起一个父级）
+    const srcIdx = HTML.indexOf('id="mlib-nav-children-source"');
+    ['albums', 'artists', 'playlists'].forEach(function (v) {
+      const i = HTML.indexOf('id="mlib-nav-item-' + v + '"');
+      assert.ok(i > srcIdx, '视图 ' + v + ' 必须排在源子容器之后');
+    });
+    // 旧的独立视图父级必须已被移除
+    assert.ok(!/id="mlib-nav-parent-albums"/.test(HTML), '不该再有独立的视图父级');
+    assert.ok(!/id="mlib-nav-children-albums"/.test(HTML), '不该再有旧的视图子容器');
+  });
+
+  await t12.test('顶层是源名，右侧是当前视图在该源下的数量', () => {
+    assert.match(HTML, /id="mlib-nav-source-heading"/, '顶级标题写源名');
+    assert.match(HTML, /id="mlib-nav-source-count"/, '顶级计数');
+    // 源名与计数由 JS 写入，且来自**当前源**
+    assert.match(MOD, /mlib-nav-source-heading/, 'JS 要写源名');
+    assert.match(MOD, /sourceCounts\(mlibActiveSource\)\[mlibActiveView\]/, '顶级计数取当前源当前视图');
+  });
+
+  await t12.test('导航区内「Apple Music」只出现一次（标题下不再重复）', () => {
+    // 标题下方原来的静态来源标签已移除，避免同一屏出现两次
+    assert.ok(!/id="mlib-source-current"/.test(HTML), '标题下不该再有重复的来源标签');
+    // 注意：页面其它位置（账号设置、专辑/歌单详情）本来就有 Apple Music 字样，
+    // 所以只在**资料库导航区**内校验唯一性，并排除注释。
+    const s = HTML.indexOf('id="mlib-nav-section"');
+    const e = HTML.indexOf('id="mlib-view-albums"');
+    assert.ok(s > 0 && e > s, '导航区边界应存在');
+    const nav = HTML.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+    const n = (nav.match(/Apple Music/g) || []).length;
+    assert.equal(n, 1, '导航区内「Apple Music」只应出现一次（实际 ' + n + '）');
+  });
+
+  await t12.test('折叠复用既有类名，默认展开', () => {
+    assert.match(HTML, /mlib-nav-caret/, '复用既有折叠箭头');
+    assert.match(HTML, /aria-expanded="true"/, '默认展开，保证首次进入能直接看到三个视图');
+    assert.match(MOD, /function toggleMlibNav/, '折叠切换保留');
+    assert.match(MOD, /mineradio\.mlib\.sourceOpen/, '展开态有独立持久化键');
+  });
+
+  await t12.test('只登记已有数据的源，不渲染空入口', () => {
+    const i = MOD.indexOf('var MLIB_SOURCES = {');
+    const block = MOD.slice(i, MOD.indexOf('};', i));
+    assert.match(block, /apple:/, 'Apple 必须有');
+    ['netease', 'kugou', 'qq', 'qishui', 'spotify'].forEach(function (s) {
+      assert.ok(block.indexOf(s + ':') < 0, s + ' 在资料库数据层就绪前不得登记');
+    });
+    const groups = HTML.match(/data-mlib-source-group=/g) || [];
+    assert.equal(groups.length, 1, '源组当前只应有 Apple 一个（实际 ' + groups.length + '）');
+  });
+
+  await t12.test('切换源会换掉整套计数，不把上一个源的数字留在界面上', () => {
+    assert.match(MOD, /navViewCountsBySource/, '计数必须按源分开存');
+    const fn = MOD.slice(MOD.indexOf('function setMlibSource'), MOD.indexOf('function setMlibView'));
+    assert.match(fn, /applyNavViewLabel\(\)/, '切换源后要重绘标签与计数');
+    assert.match(fn, /writePref\(MLIB_SOURCE_KEY/, '切换源要持久化');
+  });
+
+  await t12.test('源选择与视图选择各有独立偏好键，互不覆盖', () => {
+    const srcKey = (MOD.match(/var MLIB_SOURCE_KEY = '([^']+)'/) || [])[1];
+    const viewKey = (MOD.match(/var MLIB_VIEW_KEY = '([^']+)'/) || [])[1];
+    assert.ok(srcKey && viewKey, '两个键都要存在');
+    assert.notEqual(srcKey, viewKey, '两个键必须不同，否则互相覆盖');
+  });
+
+  await t12.test('计数按源隔离，切换后不会串号', () => {
+    const fn = MOD.slice(MOD.indexOf('function sourceCounts'), MOD.indexOf('function applyNavViewLabel'));
+    assert.match(fn, /navViewCountsBySource\[s2\]/, '按源取计数表');
+    const setter = MOD.slice(MOD.indexOf('function setNavViewCount'), MOD.indexOf('function syncNavAlbumCount'));
+    assert.match(setter, /sourceCounts\(src\)\[view\]/, '写入也要落到对应源');
+  });
+});

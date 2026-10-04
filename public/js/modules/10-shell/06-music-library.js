@@ -233,59 +233,87 @@
     });
   }
 
-  // 数量沿用现有动态数据，不写死。父级行显示**当前视图**的标签与数量；
-  // 子项各自显示自己的数量。计数只在真的拿到数据后写入。
-  var navViewCounts = { albums: '', artists: '', playlists: '' };
-  var MLIB_VIEW_LABELS = { albums: '专辑', artists: '艺人', playlists: '歌单' };
+  // ---- 音乐源（资料库的数据来源）----
+  //
+  // 结构：**一棵树**。每个源是顶级项，展开后是它的「专辑 / 艺人 / 歌单」。
+  // 与原有「专辑 ▾」完全同一种交互与视觉，不新增区块风格。
+  //
+  // 刻意只登记**已经有资料库数据**的源。未接入的源不渲染入口 ——
+  // 否则用户点进去只会得到空页面，那是在假装功能存在。
+  var MLIB_SOURCE_KEY = 'mineradio.mlib.source';
+  var MLIB_SOURCE_OPEN_KEY = 'mineradio.mlib.sourceOpen';
+  var MLIB_SOURCES = {
+    apple: { label: 'Apple Music' },
+  };
+  var MLIB_SOURCE_ORDER = ['apple'];
+
+  function readActiveSource() {
+    var v = readPref(MLIB_SOURCE_KEY);
+    return MLIB_SOURCE_ORDER.indexOf(v) >= 0 ? v : 'apple';
+  }
+  var mlibActiveSource = readActiveSource();
+  // 源的展开态 = 视图树的展开态（两者本就是一棵树）。
+  // 默认展开：首次进入必须能直接看到三个视图入口。
+  var mlibNavOpen = readPref(MLIB_SOURCE_OPEN_KEY) !== '0';
+
+  // 每个源的三个视图计数：{ apple: { albums: '549', artists: '506', playlists: '4' } }
+  // 切换源时换一整套，绝不把上一个源的数字留在界面上（那会被读成新源的数据）。
+  var navViewCountsBySource = {};
+  MLIB_SOURCE_ORDER.forEach(function (s) { navViewCountsBySource[s] = { albums: '', artists: '', playlists: '' }; });
+
+  function sourceCounts(src) {
+    var s2 = MLIB_SOURCES[src] ? src : 'apple';
+    if (!navViewCountsBySource[s2]) navViewCountsBySource[s2] = { albums: '', artists: '', playlists: '' };
+    return navViewCountsBySource[s2];
+  }
 
   function applyNavViewLabel() {
-    var heading = document.getElementById('mlib-nav-heading');
-    if (heading) heading.textContent = MLIB_VIEW_LABELS[mlibActiveView] || '专辑';
-    var count = document.getElementById('mlib-nav-view-count');
-    if (count) count.textContent = navViewCounts[mlibActiveView] || '';
-    var parent = document.getElementById('mlib-nav-parent-albums');
-    if (parent) parent.setAttribute('data-mlib-active-view', mlibActiveView);
-    // 视图自己的 aria-label 也跟随（标题已并入父级，不再有独立标题节点）
+    var text = sourceCounts(mlibActiveSource)[mlibActiveView] || '';
+    // 顶级项是**源**：它的标题写源名，右侧写当前视图在该源下的数量。
+    var heading = document.getElementById('mlib-nav-source-heading');
+    if (heading) heading.textContent = (MLIB_SOURCES[mlibActiveSource] || MLIB_SOURCES.apple).label;
+    var count = document.getElementById('mlib-nav-source-count');
+    if (count) count.textContent = text;
+    // 子项各自显示自己的数量（只属于当前源）
+    MLIB_VIEWS.forEach(function (v) {
+      var item = document.getElementById('mlib-nav-count-' + v);
+      if (item) item.textContent = sourceCounts(mlibActiveSource)[v] || '';
+    });
     var view = document.getElementById('mlib-view-' + mlibActiveView);
     if (view) view.setAttribute('aria-label', MLIB_VIEW_LABELS[mlibActiveView] || '专辑');
   }
 
-  function setNavViewCount(view, text) {
-    navViewCounts[view] = text || '';
-    if (view === mlibActiveView) applyNavViewLabel();
+  function setNavViewCount(view, text, source) {
+    var src = source || mlibActiveSource;
+    sourceCounts(src)[view] = text || '';
+    if (src === mlibActiveSource) applyNavViewLabel();
   }
 
-  // 专辑数量（本地索引）。
+  // 专辑数量（本地索引）。只写当前源的计数 —— 其它源的索引尚未接入。
   function syncNavAlbumCount() {
     var total = (libraryIndexSnapshot && Array.isArray(libraryIndexSnapshot.albums))
       ? libraryIndexSnapshot.albums.length : 0;
-    var text = total ? String(total) : '';
-    setNavViewCount('albums', text);
-    var itemCount = document.getElementById('mlib-nav-count-albums');
-    if (itemCount) itemCount.textContent = text;
+    setNavViewCount('albums', total ? String(total) : '');
   }
 
   // 子菜单里每个入口自带的数量（专辑由 syncNavAlbumCount 写，艺人/歌单在各自视图加载后写）。
   function setNavItemCount(view, text) {
-    var item = document.getElementById('mlib-nav-count-' + view);
-    if (item) item.textContent = text || '';
     setNavViewCount(view, text);
   }
 
   // 已有数据时刷新失败：保留当前列表，只在提示区说明，不把网格清空。
   function setLibraryIndexStale(err) {
     var msg = '索引刷新失败：' + (err && err.message ? err.message : '未知错误') + '（继续显示已有数据）';
-    var s2 = document.getElementById('mlib-albums-state');
-    [s2].forEach(function (el) {
-      if (!el) return;
-      el.hidden = false;
-      el.textContent = msg;
-      el.setAttribute('data-tone', 'warn');
-    });
+    var s3 = document.getElementById('mlib-albums-state');
+    if (s3) {
+      s3.hidden = false;
+      s3.textContent = msg;
+      s3.setAttribute('data-tone', 'warn');
+    }
   }
 
   // ----------------------------------------------------------------
-  // 纵向导航：专辑 / 艺人 / 歌单
+  // 纵向导航：源 -> 专辑 / 艺人 / 歌单
   //
   // 状态管理刻意保持轻量（项目没有路由系统）：
   //   - 选中项 = 视图名（'albums' | 'artists' | 'playlists'），用 hidden + is-active 落到 DOM；
@@ -295,8 +323,8 @@
   //     所以"没选过"时永远回到专辑页。
   // ----------------------------------------------------------------
   var MLIB_VIEW_KEY = 'mineradio.mlib.view';
-  var MLIB_NAV_OPEN_KEY = 'mineradio.mlib.navOpen';
   var MLIB_VIEWS = ['albums', 'artists', 'playlists'];
+  var MLIB_VIEW_LABELS = { albums: '专辑', artists: '艺人', playlists: '歌单' };
 
   function readPref(key) {
     try { return window.localStorage ? window.localStorage.getItem(key) : null; } catch (_) { return null; }
@@ -310,24 +338,45 @@
   }
 
   var mlibActiveView = readActiveView();
-  // 首次进入默认展开，保证"首次进入时必须能直观地访问专辑页面"。
-  var mlibNavOpen = readPref(MLIB_NAV_OPEN_KEY) !== '0';
 
   function viewEl(name) { return document.getElementById('mlib-view-' + name); }
   function navItemEl(name) { return document.getElementById('mlib-nav-item-' + name); }
 
+  // 展开/收起：折叠的是**源下面的三个视图**（树只有这一层可折叠）
   function applyNavOpen() {
-    var parent = document.getElementById('mlib-nav-parent-albums');
-    var children = document.getElementById('mlib-nav-children-albums');
+    var parent = document.getElementById('mlib-nav-parent-source');
+    var children = document.getElementById('mlib-nav-children-source');
     if (parent) parent.setAttribute('aria-expanded', mlibNavOpen ? 'true' : 'false');
     if (children) children.classList.toggle('is-collapsed', !mlibNavOpen);
+  }
+
+  function toggleMlibNav(force) {
+    mlibNavOpen = (typeof force === 'boolean') ? force : !mlibNavOpen;
+    applyNavOpen();
+    writePref(MLIB_SOURCE_OPEN_KEY, mlibNavOpen ? '1' : '0');
+  }
+
+  // 切换源：换掉整套计数并重绘。
+  // 目前只有 Apple 一个源已接入，数据侧无需重取；接入新源时在这里挂载该源的加载入口，
+  // 并把 MLIB_SOURCES / MLIB_SOURCE_ORDER 一起扩上（DOM 里的源组也按同一结构追加）。
+  function setMlibSource(name, opts) {
+    opts = opts || {};
+    if (MLIB_SOURCE_ORDER.indexOf(name) < 0) name = 'apple';
+    if (name === mlibActiveSource) {
+      if (opts.persist !== false) writePref(MLIB_SOURCE_KEY, name);
+      return;
+    }
+    mlibActiveSource = name;
+    applyNavViewLabel();
+    if (opts.persist !== false) writePref(MLIB_SOURCE_KEY, name);
+    // 视图名在源之间保持不变；该源的计数重新取（数据层接入后在此触发加载）。
+    if (opts.eager !== false && typeof ensureViewData === 'function') ensureViewData(mlibActiveView);
   }
 
   // 切换视图：只改 hidden / is-active / aria-current，不动数据。
   // 已经加载过的视图不重复请求（见 ensureViewData 的 loaded 标记）。
   function setMlibView(name, opts) {
     opts = opts || {};
-    // 恢复态（首次渲染）只切换显示，不抓数据 —— 避免一进资料库就请求艺人/歌单。
     var eager = opts.eager !== false;
     if (MLIB_VIEWS.indexOf(name) < 0) name = 'albums';
     mlibActiveView = name;
@@ -349,12 +398,6 @@
     applyNavViewLabel();
     if (opts.persist !== false) writePref(MLIB_VIEW_KEY, name);
     if (eager) ensureViewData(name);
-  }
-
-  function toggleMlibNav(force) {
-    mlibNavOpen = (typeof force === 'boolean') ? force : !mlibNavOpen;
-    applyNavOpen();
-    writePref(MLIB_NAV_OPEN_KEY, mlibNavOpen ? '1' : '0');
   }
 
   // ---- 艺人视图 ----
@@ -863,12 +906,30 @@
   }
 
   function bindLibraryNav() {
+    applySourceLabel();
+    applySourceOpen();
     var parent = document.getElementById('mlib-nav-parent-albums');
     if (parent && parent.dataset.mlibNavBound !== '1') {
       parent.dataset.mlibNavBound = '1';
       // 整行点击 = 展开/折叠。父级不是页面入口，所以不存在"误切页面"的问题；
       // 子菜单入口都是独立的 button，不会冒泡到这里。
       parent.addEventListener('click', function () { toggleMlibNav(); });
+    }
+    var sourceParent = document.getElementById('mlib-nav-parent-source');
+    if (sourceParent && sourceParent.dataset.mlibNavBound !== '1') {
+      sourceParent.dataset.mlibNavBound = '1';
+      sourceParent.addEventListener('click', function () { toggleMlibSource(); });
+    }
+    var sourceChildren = document.getElementById('mlib-nav-children-source');
+    if (sourceChildren && sourceChildren.dataset.mlibNavBound !== '1') {
+      sourceChildren.dataset.mlibNavBound = '1';
+      sourceChildren.addEventListener('click', function (event) {
+        var btn = event.target && event.target.closest ? event.target.closest('[data-mlib-source]') : null;
+        if (!btn) return;
+        // 子项点击不应连带触发父级的展开/折叠
+        event.stopPropagation();
+        setMlibSource(btn.getAttribute('data-mlib-source'));
+      });
     }
     var children = document.getElementById('mlib-nav-children-albums');
     if (children && children.dataset.mlibNavBound !== '1') {
