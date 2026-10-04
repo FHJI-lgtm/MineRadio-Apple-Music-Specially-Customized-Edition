@@ -664,6 +664,9 @@
       } else {
         state.album = album;
       }
+      // 合并完简介后必须重渲染信息区 —— 否则文案只进了 state.album 却没被画出来。
+      // （非 Apple 分支一直有此调用，Apple 分支漏了，表现为"Apple 专辑简介不见了"。）
+      renderInfo(state.album, songs);
       renderTracks(songs);
       if (usedRebuild) {
         // 重建成功：如实报告校验结果与未能验证的曲目（不猜归属、不并入）。

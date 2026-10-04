@@ -342,3 +342,34 @@ test('Apple 专辑简介：文案与曲目列表相互独立，且要去掉 HTML
     assert.ok(SERVER.indexOf('APPLE_STOREFRONT_FOR_NOTES') < 0, '同上');
   });
 });
+;
+
+// ============================================================
+// Apple 专辑简介：合并文案后必须重渲染（曾漏掉这一步）
+// ============================================================
+test('Apple 专辑简介：文案合并后必须调用 renderInfo', async (t31) => {
+  const DETAIL = MOD;
+
+  await t31.test('Apple 分支合并 editorialNotes 后要 renderInfo', () => {
+    // 真实缺陷：Apple 分支把 editorialNotes 并进了 state.album，却只调了 renderTracks，
+    // 于是文案只进状态没被画出来 —— 表现为「Apple 专辑简介不见了」。
+    const i = DETAIL.indexOf('function loadAlbum(');
+    assert.ok(i > 0, 'loadAlbum 应存在');
+    const fn = DETAIL.slice(i, i + 20000);
+    const mergeAt = fn.indexOf('editorialNotes: stripEditorialHtml(');
+    assert.ok(mergeAt > 0, 'Apple 分支应合并 editorialNotes');
+    const after = fn.slice(mergeAt, mergeAt + 900);
+    assert.ok(after.indexOf('renderInfo(state.album, songs)') > 0,
+      '合并文案后必须重渲染信息区（只调 renderTracks 会让简介不显示）');
+    // 顺序：先渲染信息区，再渲染曲目列表
+    assert.ok(after.indexOf('renderInfo(state.album, songs)') < after.indexOf('renderTracks(songs)'),
+      '先 renderInfo 再 renderTracks');
+  });
+
+  await t31.test('两个分支都要重渲染（非 Apple 早就有，Apple 曾漏）', () => {
+    const total = DETAIL.split('renderInfo(').length - 1;
+    assert.ok(total >= 4, 'renderInfo 调用点应 >= 4（初始 1 + 非Apple 1 + Apple 1 + 定义 1），实际 ' + total);
+    assert.ok(DETAIL.indexOf('renderInfo(state.album, neSongs)') > 0, '非 Apple 分支');
+    assert.ok(DETAIL.indexOf('renderInfo(state.album, songs)') > 0, 'Apple 分支');
+  });
+});
