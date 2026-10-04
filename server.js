@@ -5950,10 +5950,88 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 专辑简介：**中文优先，中文里取最完整的**。
+  // 实测同一张专辑同一个 id，各区给的内容和语言都不同（美国区总是英文且最长）：
+  //   My Dear Melancholy  cn 33 中文 / us 789 英文 / hk 32 中文
+  //   Black Panther       cn 202 中文 / us 648 英文 / hk 241 中文 / tw 196 中文
+  //   After Hours         cn 759 中文 / us 1539 英文 / hk 842 中文
+  //   Pure Heroine        cn 597 中文 / us 2306 英文 / hk 228 中文 / tw 586 中文
+  // 所以**不能选最长的**（那会拿到英文），要优先挑中文；只有完全没有中文时才对英文降级。
+  // 日文区（jp）单独排除：对中文读者没有价值。
+  // 区优先级：**中国大陆区最前**（它是简体，且内容通常最完整）。
+  // hk/tw 是繁体 —— 对习惯简体的读者不如 cn，所以只在 cn 没有时才用。
+  const APPLE_NOTES_STOREFRONTS = ['cn', 'hk', 'tw', 'us'];
+  const APPLE_NOTES_SF_RANK = { cn: 4, hk: 3, tw: 2, us: 1 };
+  // 中日韩统一表意文字占比 —— 用来判断这段文案是不是给中文读者看的
+  function cjkRatio(text) {
+    const t = String(text || '');
+    if (!t) return 0;
+    const m = t.match(/[\u3400-\u9fff]/g);
+    return (m ? m.length : 0) / t.length;
+  }
+
+  async function fetchAppleAlbumNotes(catalogId) {
+    const id = String(catalogId || '').trim();
+    if (!id) return null;
+    let best = null;       // { score: [isChinese, length], payload }
+    for (const sf of APPLE_NOTES_STOREFRONTS) {
+      let page = null;
+      try { page = await appleWebApi.getCatalog(sf, '/albums/' + encodeURIComponent(id), {}); } catch (_) { continue; }
+      if (!page || !page.ok) continue;
+      const entry = ((page.json && page.json.data) || [])[0] || null;
+      if (!entry) continue;
+      const attrs = entry.attributes || {};
+      const notes = attrs.editorialNotes || {};
+      const std = String(notes.standard || '');
+      const sh = String(notes.short || '');
+      const text = std || sh;
+      if (!text) continue;
+      const isChinese = cjkRatio(std || sh) >= 0.3;
+      const payload = {
+        catalogAlbumId: id,
+        storefront: sf,
+        editorialNotes: { standard: std, short: sh },
+        copyright: String(attrs.copyright || ''),
+        recordLabel: String(attrs.recordLabel || ''),
+        upc: String(attrs.upc || ''),
+        releaseDate: String(attrs.releaseDate || ''),
+      };
+      // 排序键：中文优先 > 区优先级（cn 简体最前）> 文案长度
+      const score = [isChinese ? 1 : 0, APPLE_NOTES_SF_RANK[sf] || 0, text.length];
+      const better = !best
+        || score[0] > best.score[0]
+        || (score[0] === best.score[0] && score[1] > best.score[1])
+        || (score[0] === best.score[0] && score[1] === best.score[1] && score[2] > best.score[2]);
+      if (better) best = { score: score, payload: payload };
+      // 已经拿到 cn 的中文，就不必再看 hk/tw/us
+      if (score[0] === 1 && sf === 'cn') break;
+    }
+    return best ? best.payload : null;
+  }
+
   if (pn === '/api/apple/library/album/notes') {
     try {
       const id = url.searchParams.get('id') || '';
-      const notes = await albumNotesFor(id);
+      // 先拿既有的「库内专辑 -> catalog 专辑」映射（cn 优先，那步没问题）
+      let notes = await albumNotesFor(id);
+      // 再用多区重取一遍简介，取最长的（美国区通常最全）
+      const catalogId = notes && notes.catalogAlbumId;
+      if (catalogId) {
+        const better = await fetchAppleAlbumNotes(catalogId);
+        if (better) {
+          const curText = String((notes.editorialNotes || {}).standard || (notes.editorialNotes || {}).short || '');
+          const newText = String((better.editorialNotes || {}).standard || (better.editorialNotes || {}).short || '');
+          const curChinese = cjkRatio(curText) >= 0.3;
+          const newChinese = cjkRatio(newText) >= 0.3;
+          const curRank = APPLE_NOTES_SF_RANK[String(notes.storefront || '')] || 0;
+          const newRank = APPLE_NOTES_SF_RANK[String(better.storefront || '')] || 0;
+          // 同一套排序：中文优先 > 简体区优先 > 更长
+          const takeBetter = (newChinese && !curChinese)
+            || (newChinese === curChinese && newRank > curRank)
+            || (newChinese === curChinese && newRank === curRank && newText.length > curText.length);
+          if (takeBetter) notes = Object.assign({}, notes, better);
+        }
+      }
       sendJSON(res, { ok: true, libraryAlbumId: id, albumNotes: notes });
     } catch (err) {
       sendJSON(res, { ok: false, error: err.message }, 500);

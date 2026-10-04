@@ -373,3 +373,49 @@ test('Apple 专辑简介：文案合并后必须调用 renderInfo', async (t31) 
     assert.ok(DETAIL.indexOf('renderInfo(state.album, songs)') > 0, 'Apple 分支');
   });
 });
+;
+
+// ============================================================
+// Apple 专辑简介：语言与区选择（中文优先、简体优先）
+// ============================================================
+test('Apple 专辑简介：中文优先、简体优先，不能只按长度选', async (t32) => {
+  const SERVER = read('server.js');
+
+  await t32.test('排序键必须是 语言 > 区 > 长度，而不是单纯最长', () => {
+    const i = SERVER.indexOf('async function fetchAppleAlbumNotes(');
+    assert.ok(i > 0, '取简介的函数应存在');
+    const fn = SERVER.slice(i, i + 2600);
+    // 真实教训：为"取最全的"改成按长度选 -> 拿到 us 的英文简介，
+    // 而中文读者要看的是中文。所以第一位排序键必须是"是否中文"。
+    assert.ok(/score = \[isChinese \? 1 : 0/.test(fn), '第一排序键是语言');
+    assert.ok(fn.indexOf('APPLE_NOTES_SF_RANK') > 0, '第二排序键是区优先级');
+    assert.ok(/text\.length/.test(fn), '第三才是长度');
+  });
+
+  await t32.test('中国大陆区排在最前（它是简体）', () => {
+    const rank = /const APPLE_NOTES_SF_RANK = \{([^}]*)\}/.exec(SERVER);
+    assert.ok(rank, '区优先级表应存在');
+    const body = rank[1];
+    const cn = Number((/cn:\s*(\d+)/.exec(body) || [])[1] || 0);
+    const hk = Number((/hk:\s*(\d+)/.exec(body) || [])[1] || 0);
+    const tw = Number((/tw:\s*(\d+)/.exec(body) || [])[1] || 0);
+    const us = Number((/us:\s*(\d+)/.exec(body) || [])[1] || 0);
+    assert.ok(cn > hk && cn > tw, 'cn 必须高于 hk/tw（简体优先，实测 hk/tw 是繁体且可能更长）');
+    assert.ok(hk > us && tw > us, '中文区都要高于美国区');
+  });
+
+  await t32.test('没有中文时才退回英文，且日文区不参与', () => {
+    const list = /const APPLE_NOTES_STOREFRONTS = \[([^\]]*)\]/.exec(SERVER);
+    assert.ok(list, '区列表应存在');
+    assert.ok(list[1].indexOf("'cn'") >= 0 && list[1].indexOf("'us'") >= 0, '要含 cn 与 us');
+    assert.equal(list[1].indexOf("'jp'"), -1, 'jp 是日文，对中文读者没价值，不参与');
+  });
+
+  await t32.test('中文判定要有阈值（避免把夹带几个汉字的英文当中文）', () => {
+    const i = SERVER.indexOf('function cjkRatio(');
+    assert.ok(i > 0, '要有 cjkRatio');
+    const fn = SERVER.slice(i, i + 400);
+    assert.ok(fn.indexOf('u3400') > 0 && fn.indexOf('u9fff') > 0, '按表意文字区间统计');
+    assert.ok(SERVER.indexOf('cjkRatio(std || sh) >= 0.3') > 0, '要有占比阈值');
+  });
+});
