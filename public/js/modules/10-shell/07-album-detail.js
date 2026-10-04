@@ -452,6 +452,16 @@
           return;
         }
         state.songs = neSongs;
+        // 服务端返回的专辑元数据（含**简介**）并入当前专辑对象后重渲染信息区。
+        // 列表里的对象只有 name/cover 等，不带简介；不合并的话简介区块永远不显示。
+        var neAlbum = (neData && neData.album) || null;
+        if (neAlbum) {
+          if (neAlbum.description) state.album.description = neAlbum.description;
+          if (neAlbum.name) state.album.name = neAlbum.name;
+          if (neAlbum.cover) state.album.cover = neAlbum.cover;
+          if (neAlbum.artist) state.album.artist = neAlbum.artist;
+        }
+        renderInfo(state.album, neSongs);
         renderTracks(neSongs);
         setStatus(neSongs.length ? '' : '这张专辑在网易云没有返回曲目。');
         return;

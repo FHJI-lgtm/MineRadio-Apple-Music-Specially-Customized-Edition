@@ -7232,6 +7232,9 @@ const server = http.createServer(async (req, res) => {
           // 发行日期：网易云 album 对象里有 publishTime，但那是**毫秒时间戳**，
           // 与资料库的 YYYY-MM-DD 语义不同；没有把握就不转，留空。
           releaseDate: '',
+          // 网易云专辑简介（实测 description 有内容、briefDesc 多为空）。
+          // 详情页已有简介区块并会读取该字段，有值就自动显示、为空则整块隐藏。
+          description: String(albumObj.description || '').trim(),
         },
         tracks: tracks,
         total: Number(body.album && body.album.size) || tracks.length,

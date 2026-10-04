@@ -1396,3 +1396,37 @@ test('多源简介与缓存：网易云简介来源如实，艺人列表首次�
     assert.match(fn, /Promise\.all\(workers\)/, '等全部完成再返回，避免返回半成品');
   });
 });
+;
+// ============================================================
+// 网易云专辑简介
+// ============================================================
+test('音乐资料库：网易云专辑简介接入', async (t20) => {
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  await t20.test('服务端返回 description（网易云用 description，briefDesc 多为空）', () => {
+    const fn = SERVER.slice(SERVER.indexOf("pn === '/api/netease/library/album/tracks'"),
+      SERVER.indexOf("async function collectNeteaseLibrarySongs"));
+    // 注释里会解释"为什么不用 briefDesc"，所以剥掉注释再判断代码
+    const code = fn.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.match(code, /description: String\(albumObj\.description/, '要取 description 字段');
+    assert.ok(!/briefDesc/.test(code), '不要用 briefDesc —— 实测多为空');
+  });
+
+  await t20.test('客户端把服务端专辑元数据并入当前专辑后再渲染', () => {
+    const i = MOD.indexOf('if (/^ne:/.test(albumId)) {');
+    const fn = MOD.slice(i, i + 1600);
+    assert.match(fn, /neData\.album/, '要用服务端返回的专辑对象');
+    assert.match(fn, /state\.album\.description = neAlbum\.description/, '简介要并入');
+    assert.match(fn, /renderInfo\(state\.album, neSongs\)/, '合并后必须重渲染信息区，否则简介区块永远不显示');
+  });
+
+  await t20.test('没有简介时整块隐藏，不显示空框', () => {
+    // renderInfo 里已有的行为：descFull 为空即隐藏描述与展开按钮
+    const fn = MOD.slice(MOD.indexOf('function renderInfo'), MOD.indexOf('function renderInfo') + 3000);
+    assert.match(fn, /if \(!state\.descFull\)/, '空简介要走隐藏分支');
+    assert.match(fn, /desc\.hidden = true/, '隐藏描述');
+    assert.match(fn, /toggle\.hidden = true/, '同时隐藏展开按钮');
+  });
+});
