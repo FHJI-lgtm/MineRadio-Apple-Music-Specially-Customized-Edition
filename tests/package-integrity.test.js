@@ -16,22 +16,46 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const FILES = pkg.build && Array.isArray(pkg.build.files) ? pkg.build.files : [];
 
 // 只做包含性判断，不求完整 glob 语义
+// electron-builder 的 files 语义：按顺序应用，最后一个匹配的说了算；
+// `**` 跨目录、`*` 不跨目录。这里逐段比较，比把 glob 揉成正则更直观。
+function matchPattern(pattern, name) {
+  const negate = pattern.charAt(0) === '!';
+  const p = (negate ? pattern.slice(1) : pattern).replace(/\\/g, '/');
+  const target = String(name).replace(/\\/g, '/');
+  const ps = p.split('/');
+  const ts = target.split('/');
+  function walk(pi, ti) {
+    if (pi === ps.length) return ti === ts.length;
+    const seg = ps[pi];
+    if (seg === '**') {
+      // `**` 吃掉 0 段或多段
+      for (let k = ti; k <= ts.length; k += 1) {
+        if (walk(pi + 1, k)) return true;
+      }
+      return false;
+    }
+    if (ti >= ts.length) return false;
+    if (seg.indexOf('*') >= 0) {
+      const re = new RegExp('^' + seg.split('*').map(function (s) {
+        return s.replace(/[.+?^$(){}|[\]\\\\]/g, '$&');
+      }).join('[^/]*') + '$');
+      if (!re.test(ts[ti])) return false;
+    } else if (seg !== ts[ti]) {
+      return false;
+    }
+    return walk(pi + 1, ti + 1);
+  }
+  const hit = walk(0, 0);
+  return { negate: negate, hit: hit };
+}
+
 function included(name) {
-  let hit = false;
+  let result = false;
   FILES.forEach(function (pattern) {
-    const negate = pattern.charAt(0) === '!';
-    const p = negate ? pattern.slice(1) : pattern;
-    let m = false;
-    if (p.indexOf('**') >= 0) {
-      // 形如 desktop/**/*：按第一个 * 之前的目录前缀匹配
-      const prefix = p.slice(0, p.indexOf('*')).replace(/\/$/, '');
-      m = prefix === '' || name === prefix || name.indexOf(prefix + '/') === 0;
-    } else if (p.indexOf('*') >= 0) {
-      m = new RegExp('^' + p.replace(/[.+?^$(){}|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(name);
-    } else m = p === name;
-    if (m) hit = !negate;
+    const r = matchPattern(pattern, name);
+    if (r.hit) result = !r.negate;
   });
-  return hit;
+  return result;
 }
 
 test('打包完整性：根目录被 require 的 JS 必须在 build.files 白名单里', async (t) => {
