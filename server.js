@@ -7270,7 +7270,12 @@ const server = http.createServer(async (req, res) => {
       const syncedData = await fetchAllNeteasePlaylistTracks(id);
       const syncedPlaylistMeta = syncedData.playlistMeta || { id, name: '', cover: '', trackCount: 0 };
       const syncedRawTracks = syncedData.rawTracks || [];
-      const syncedTracks = syncedRawTracks.map(mapSongRecord).filter(t => t.id);
+      // 必须经适配层归一化：mapSongRecord 给的 duration 是**毫秒**，
+      // 而详情页的 fmtDuration 期望**秒** —— 不转换就会把 214613 显示成 3576:53。
+      // 适配后同时得到 librarySongId（Apple 那边由 mapAppleTrack 负责同样的事）。
+      const syncedTracks = neteaseLibrary.toLibrarySongs(
+        syncedRawTracks.map(mapSongRecord).filter(t => t.id)
+      );
       if (!syncedPlaylistMeta.trackCount) syncedPlaylistMeta.trackCount = syncedTracks.length;
       sendJSON(res, { playlist: syncedPlaylistMeta, tracks: syncedTracks });
       return;

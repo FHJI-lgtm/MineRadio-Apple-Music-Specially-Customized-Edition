@@ -240,6 +240,33 @@
     };
   }
 
+  // 歌单详情版的应用内播放：状态写到**歌单弹窗**的状态区，不能写错弹窗。
+  function playPlaylistInApp(songs, startIndex, playlistName, provider) {
+    var list = (Array.isArray(songs) ? songs : []).map(function (s) { return toPlayableSong(s, provider); })
+      .filter(function (s) { return s.id && s.name; });
+    if (!list.length) { plSetStatus('这些曲目缺少可播放的标识，无法播放', 'warn'); return Promise.resolve(false); }
+    if (typeof playQueueAt !== 'function') { plSetStatus('内部播放器尚未就绪', 'warn'); return Promise.resolve(false); }
+    plSetBusy(true);
+    plSetStatus('正在用 MineRadio 播放器播放…');
+    playQueue = list;
+    currentIdx = Math.max(0, Math.min(list.length - 1, Number(startIndex) || 0));
+    if (typeof safeRenderQueuePanel === 'function') safeRenderQueuePanel('mlib-playlist-' + provider, { scrollCurrent: true });
+    if (typeof safeShelfRebuild === 'function') safeShelfRebuild('mlib-playlist-' + provider, true);
+    if (typeof forcePlaybackControlsInteractive === 'function') forcePlaybackControlsInteractive();
+    return Promise.resolve(playQueueAt(currentIdx, {
+      manual: true,
+      context: { type: 'music-library-source-playlist', provider: provider, playlistName: playlistName },
+    })).then(function () {
+      plSetBusy(false);
+      plSetStatus('已交给 MineRadio 播放器：' + list[currentIdx].name, 'ok');
+      return true;
+    }).catch(function (err) {
+      plSetBusy(false);
+      plSetStatus('播放失败：' + ((err && err.message) || '未知错误'), 'warn');
+      return false;
+    });
+  }
+
   // 用 MineRadio 自有播放器播放一批曲目（非 Apple 源）。
   function playInApp(songs, startIndex, context, provider) {
     var list = (Array.isArray(songs) ? songs : []).map(function (s) { return toPlayableSong(s, provider); })
@@ -741,10 +768,16 @@
   }
 
   // 歌单播放：沿用 amc.playPlaylist（歌单链）。SMTC 确认才算成功，不把"点了"当"在播"。
-  function plPlay(what) {
+  function plPlay(what, startIndex) {
     var playlist = plState.playlist || {};
     var name = String(playlist.name || '').trim();
     if (!name) { plSetStatus('这个歌单没有可用的名称', 'warn'); return; }
+    // 非 Apple 源：走 MineRadio 自有播放器，不碰 UIA。
+    // 之前这里一律调 amc.playPlaylist，网易云歌单会得到「Apple Music 资料库里没找到这个歌单」。
+    if (isNonAppleSource(playlist.provider)) {
+      if (!plState.tracks.length) { plSetStatus('这个歌单还没有可播放的曲目', 'warn'); return; }
+      return playPlaylistInApp(plState.tracks, startIndex || 0, name, playlist.provider);
+    }
     var amc = window.mineradio && window.mineradio.amc;
     if (!amc || typeof amc.playPlaylist !== 'function') {
       plSetStatus('Apple Music 播放通道不可用', 'warn');
@@ -878,8 +911,13 @@
       var row = more || t.closest('.am-album-track');
       if (!row || !wrap.contains(row)) return;
       event.preventDefault();
-      // 逐曲播放同样交给歌单链：Apple 侧进入该歌单后从第一首开始，
-      // 这里不谎称"播的就是这一首"—— 只如实告知入口。
+      // 非 Apple 源：真正的逐曲播放（自有播放器可以指定起始曲目）。
+      if (isNonAppleSource((plState.playlist || {}).provider)) {
+        var idx = Array.prototype.indexOf.call(wrap.querySelectorAll('.am-album-track'), row);
+        plPlay('这个歌单', idx >= 0 ? idx : 0);
+        return;
+      }
+      // Apple 侧：进入该歌单后从第一首开始，这里不谎称"播的就是这一首"—— 只如实告知入口。
       plPlay('这个歌单');
     });
     wrap.addEventListener('keydown', function (event) {

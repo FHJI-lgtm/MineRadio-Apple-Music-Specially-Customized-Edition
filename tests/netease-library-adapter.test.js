@@ -27,7 +27,8 @@ test('网易云适配：曲目映射成资料库 schema', async (t) => {
     assert.equal(s.cover, 'https://p3.music.126.net/x.jpg');
     assert.equal(s.provider, 'netease');
     assert.equal(s.durationMs, 361687);
-    assert.equal(s.duration, 362, 'duration 由毫秒换算成秒');
+    assert.equal(s.duration, 362, 'duration 由毫秒换算成秒（详情页 fmtDuration 期望秒）');
+    assert.ok(s.duration < 3600, '必须是秒；若误留毫秒会显示成 3600+ 分钟（曾出现 3576:53）');
   });
 
   await t.test('数据不确定的字段留空，不用推测值填充', () => {

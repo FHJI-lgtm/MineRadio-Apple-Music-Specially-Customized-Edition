@@ -1239,3 +1239,52 @@ test('多源播放：非 Apple 源必须走应用内播放器，不得落到 UIA
     assert.match(fn, /:\s*'\/api\/apple\/playlist\/tracks\?id=/, 'Apple 分支才用 Apple 端点');
   });
 });
+;
+// ============================================================
+// 歌单播放也必须按源分流；曲目时长单位必须正确
+// ============================================================
+test('多源播放：歌单播放按源分流，时长单位正确', async (t17) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+  const SERVER = require('node:fs').readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+
+  await t17.test('plPlay 对非 Apple 源走自有播放器并 return', () => {
+    const raw = MOD.slice(MOD.indexOf('function plPlay('), MOD.indexOf('function plLoad('));
+    // 必须剥掉注释：注释里会提到 amc.playPlaylist 以说明改动背景，直接搜会误判
+    const fn = raw.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const guard = fn.indexOf('isNonAppleSource(playlist.provider)');
+    const amc = fn.indexOf('amc.playPlaylist');
+    assert.ok(guard > 0, '歌单播放要先判源');
+    assert.ok(amc > guard, '判源必须在 Apple 通道之前');
+    assert.match(fn.slice(guard, guard + 260), /return/, '非 Apple 分支必须 return，不能继续走到 amc');
+    assert.match(MOD, /function playPlaylistInApp\(/, '歌单版应用内播放要存在');
+    assert.match(fn, /return playPlaylistInApp\(/, 'plPlay 的非 Apple 分支要调用它');
+  });
+
+  await t17.test('歌单版应用内播放写自己的状态区，不写错弹窗', () => {
+    const fn = MOD.slice(MOD.indexOf('function playPlaylistInApp'), MOD.indexOf('function playInApp'));
+    assert.match(fn, /plSetStatus/, '要写歌单弹窗的状态区');
+    assert.ok(!/setStatus\(/.test(fn), '不得写专辑弹窗的状态区');
+    assert.ok(!/amc\./.test(fn), '不得触及 AMC');
+  });
+
+  await t17.test('非 Apple 源支持逐曲播放（指定起始曲）', () => {
+    const i = MOD.indexOf('function plBindTracks');
+    const fn = MOD.slice(i, i + 900);
+    assert.match(fn, /plPlay\('这个歌单', idx/, '非 Apple 源要按点击的行给起始索引');
+  });
+
+  await t17.test('歌单曲目必须经适配层归一化（毫秒 -> 秒）', () => {
+    // mapSongRecord 给的是毫秒；详情页 fmtDuration 期望秒。不经适配层就会显示成 3576:53。
+    const i = SERVER.indexOf("pn === '/api/playlist/tracks'");
+    const block = SERVER.slice(i, i + 2600);
+    assert.match(block, /neteaseLibrary\.toLibrarySongs\(/, '歌单曲目要过适配层');
+  });
+
+  await t17.test('适配层禁止把毫秒当秒输出', () => {
+    const AD = require('node:fs').readFileSync(
+      path.join(APP_ROOT, 'netease-library-adapter.js'), 'utf8');
+    assert.match(AD, /duration: durationMs > 0 \? Math\.round\(durationMs \/ 1000\) : 0/,
+      'duration 必须由毫秒换算成秒');
+  });
+});
