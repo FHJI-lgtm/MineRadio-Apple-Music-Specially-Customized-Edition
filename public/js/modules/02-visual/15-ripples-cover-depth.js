@@ -600,6 +600,14 @@ function applyCoverCanvas(cv, thumbSrc, opts) {
   coverTex.image = cv; coverTex.needsUpdate = true;
   coverPickerCanvas = cv;
   uniforms.uHasCover.value = 1;
+  // 专辑背景环境光（#album-bg）统一在这里设：本函数是**所有封面来源共用的落点**
+  //   - loadCoverFromUrl（内部播放）
+  //   - applyCoverDataUrl（自定义封面）
+  //   - smtcApplyVisualizerCover（Apple Music 外部播放）
+  // 之前只有前两条自己调 setAlbumBackground，SMTC 那条没调 —— 于是 Apple 播放时
+  // 封面进了粒子/纹理/歌词配色，唯独 #album-bg 是空的（实测 albumBgHasImage=false
+  // 而 uHasCover=1）。放在这里以后新增封面来源不必再记得单独设一次。
+  if (thumbSrc && typeof setAlbumBackground === 'function') setAlbumBackground(thumbSrc);
   if (cachedDepth && cachedDepth.canvas) {
     coverEdgeTex.image = cachedDepth.canvas;
     coverEdgeTex.needsUpdate = true;
