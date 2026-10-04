@@ -10,6 +10,8 @@
   var modalId = 'am-album-detail-modal';
   var reqSeq = 0;
   var state = {
+    // 动态封面（Apple Motion Artwork）的请求序号：切专辑时旧响应作废
+    motionToken: 0,
     album: null, songs: [], libraryCount: 0,
     status: 'idle',
     descExpanded: false, descFull: '', playingKey: '', playBusy: false
@@ -365,6 +367,59 @@
     el.textContent = sourceLabelOf(provider) + ' · ' + axisLabel;
   }
 
+  // ============================================================
+  // Apple 动态专辑封面（Motion Artwork）
+  //
+  // 只在 **Apple 源 + provider==='apple'** 时启用 —— 这是 Apple 独有的能力，
+  // 其它源没有对应接口，强行套用只会白打请求。
+  //
+  // 降级链（按你的要求「无缝降级」）：
+  //   静态 <img> 先渲染 -> 查到动态封面就换成 <video poster=静态图> ->
+  //   视频 error / 取不到 URL / 非 Apple 源 -> 保持静态图（v-else 的等价物）。
+  // 绝不让 video 顶掉封面：任何一步失败都回到已经渲染好的静态图。
+  // ============================================================
+  function applyAlbumMotionArtwork(coverEl, album) {
+    if (!coverEl || !album) return;
+    var provider = String(album.provider || '');
+    if (provider !== 'apple') return;   // 非 Apple 源不适用
+    var name = String(album.name || '').trim();
+    if (!name) return;
+    var token = ++state.motionToken;
+    var poster = String(album.cover || '');
+    var url = '/api/apple/library/album/motion?name=' + encodeURIComponent(name)
+      + '&artist=' + encodeURIComponent(String(album.artist || ''))
+      + (album.catalogId ? '&catalogId=' + encodeURIComponent(album.catalogId) : '');
+    apiJson(url).then(function (data) {
+      if (token !== state.motionToken) return;            // 切了专辑，丢弃旧响应
+      var m = data && data.motion;
+      // 只有「单 mp4」形态才用 <video>：m3u8 需要 HLS 支持，Chromium 播不了，
+      // 与其留个黑框不如老实显示静态封面。
+      if (!m || !m.isDirectFile || !m.videoUrl) return;
+      if (!coverEl.isConnected) return;
+      var videoUrl = '/api/audio?url=' + encodeURIComponent(m.videoUrl);   // 复用既有代理（带 Range）
+      var v = document.createElement('video');
+      v.className = 'am-album-cover-video';
+      v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      v.preload = 'auto';
+      if (poster) v.poster = poster;                      // 防加载时黑屏
+      v.setAttribute('aria-hidden', 'true');
+      // 失败立刻退回静态图（CDN 挂掉 / 防盗链 / 解码失败都走这里）
+      v.addEventListener('error', function () {
+        try { v.remove(); } catch (_) {}
+      });
+      v.addEventListener('loadeddata', function () {
+        if (token !== state.motionToken) { try { v.remove(); } catch (_) {} return; }
+        var img = coverEl.querySelector('img');
+        if (img) img.style.display = 'none';             // 视频就绪后才隐藏静态图，避免闪烁
+      });
+      // 必须先设 src 再 play —— 漏掉这一步会让 <video> 进 DOM 但没有源
+      // （实测 currentSrc 为空、networkState=0，看起来像"视频没生效"）。
+      v.src = videoUrl;
+      coverEl.appendChild(v);
+      try { v.play().catch(function () {}); } catch (_) {}
+    }).catch(function () { /* 查不到就保持静态封面 */ });
+  }
   function renderInfo(album, songs) {
     setKicker('am-album-detail-kicker', album && album.provider, '资料库专辑');
     var cover = el('am-album-detail-cover');
@@ -372,6 +427,8 @@
       cover.innerHTML = album.cover
         ? '<img src="' + esc(album.cover) + '" alt="" referrerpolicy="no-referrer">'
         : '';
+      // 静态封面先渲染（也是动态封面的 poster）—— 视频失败时它一直在，天然降级
+      applyAlbumMotionArtwork(cover, album);
     }
     var h = el('am-album-detail-heading');
     if (h) { h.textContent = album.name || '未命名专辑'; h.title = album.name || ''; }

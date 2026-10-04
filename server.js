@@ -142,6 +142,8 @@ const {
   handleAppleLyric,
 } = require('./apple-music-api');
 const { handleAppleAccountStatusWeb, handleAppleUserPlaylistsWeb, handleApplePlaylistTracksWeb, handleAppleAlbumDetailWeb, handleAppleLibraryAlbums, handleAppleLibraryAlbumTracksWeb, syncLibraryIndex, readLibrarySongs, readLibraryAlbums, libraryIndexState, resolveLibraryArtists, getArtistDetail, handleApplePlaylistTracksAllWeb, resolveArtistWiki, resolveArtistWikiAsync, getArtistWiki, getNeteaseAvatar, fetchNeteaseBioById, warmNetease, getWikiDiag, rebuildAlbumTracks, albumNotesFor } = require('./desktop/apple-music-web-reads-api');
+// 动态专辑封面需要直接读 catalog（带 extend=editorialVideo）—— reads-api 不暴露 getCatalog
+const appleWebApi = require('./desktop/apple-music-web-api');
 const {
   appendCuefieldFeedback,
   readCuefieldFeedbackStats,
@@ -487,6 +489,9 @@ const qishuiArtistsResultCache = (function () {
 // 网易云艺人名单只在进程内取一次（按名字查头像时复用）——
 // 否则每个汽水艺人都要拉一次几百条的列表，实测 12 位要 21.9 秒。
 let neteaseArtistIndexCache = { at: 0, map: null };
+
+// Apple 动态封面缓存：按 catalog 专辑 id，含负缓存（没动态封面的专辑只查一次）
+const appleMotionCache = new Map();
 
 function sendJSON(res, data, status) {
   res.writeHead(status || 200, {
@@ -5849,6 +5854,102 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   // 专辑文案（简介/版权）：只回文案，不回任何曲目。
+  // Apple 动态专辑封面（Motion Artwork）。
+  // 关键实测结论（决定了实现方式）：
+  //   1) **必须带 extend=editorialVideo**，否则 attributes 里根本没有 editorialVideo（实测不加=false，加=true）。
+  //   2) 四个变体：motionDetailSquare / motionDetailTall / motionSquareVideo1x1 / motionTallVideo3x4。
+  //      每个都有 previewFrame（bgColor/textColor1..4/预览帧图）+ video。
+  //   3) video 是 **HLS .m3u8**，但抽样 9 张有动态封面的专辑**全部**是「单 mp4 + EXT-X-BYTERANGE」形态：
+  //      所有分片都是同一个 .mp4 的字节范围。所以可以把该 mp4 直接当 <video> 源（实测 Electron/Chromium
+  //      直连可播：768x768、30 秒），**不需要 HLS 库**。
+  //   4) 资源无防盗链（mvod.itunes.apple.com 直连 200/206，Accept-Ranges: bytes）。
+  const APPLE_MOTION_TTL_MS = 6 * 60 * 60 * 1000;
+
+  async function resolveAppleMotionArtwork(catalogId) {
+    if (!catalogId) return null;
+    const key = String(catalogId);
+    const hit = appleMotionCache.get(key);
+    if (hit && Date.now() - hit.at < APPLE_MOTION_TTL_MS) return hit.value;
+    let out = null;
+    try {
+      const page = await appleWebApi.getCatalog('us', '/albums/' + encodeURIComponent(key), { extend: 'editorialVideo' });
+      if (page && page.ok) {
+        const attrs = (((page.json.data || [])[0] || {}).attributes) || {};
+        const ev = attrs.editorialVideo || {};
+        // 详情页是正方形，优先正方形变体
+        const pick = ev.motionDetailSquare || ev.motionSquareVideo1x1 || ev.motionDetailTall || ev.motionTallVideo3x4 || null;
+        const hls = pick && typeof pick.video === 'string' ? pick.video : '';
+        if (hls) {
+          // HLS -> 取媒体变体 -> 若所有分片是同一个 mp4，就直接用那个 mp4
+          let file = '';
+          try {
+            const mres = await fetchWithTimeout(hls, { headers: { 'User-Agent': UA } }, 9000);
+            const master = mres.ok ? await mres.text() : '';
+            const ml = String(master).split('\n');
+            const uri = ml.find(function (l, i) { return i > 0 && /^#EXT-X-STREAM-INF/i.test(ml[i - 1]) && l && l.charAt(0) !== '#'; });
+            if (uri) {
+              const vUrl = new URL(uri.trim(), hls).href;
+              const vres = await fetchWithTimeout(vUrl, { headers: { 'User-Agent': UA } }, 9000);
+              const vl = vres.ok ? (await vres.text()).split('\n') : [];
+              const segs = Array.from(new Set(vl.filter(function (l) { return l && l.charAt(0) !== '#'; }).map(function (l) { return l.trim(); })));
+              if (segs.length === 1 && /\.mp4$/i.test(segs[0])) file = new URL(segs[0], vUrl).href;
+            }
+          } catch (_) { file = ''; }
+          const frame = (pick && pick.previewFrame) || {};
+          const poster = String(frame.url || '').replace(/\{w\}/g, '600').replace(/\{h\}/g, '600');
+          out = {
+            catalogId: key,
+            // 优先单 mp4（可直接播）；否则退回 m3u8（前端会降级到静态封面）
+            videoUrl: file || hls,
+            isDirectFile: !!file,
+            hlsUrl: hls,
+            poster: poster,
+            bgColor: String(frame.bgColor || ''),
+            textColor1: String(frame.textColor1 || ''),
+            width: Number(frame.width) || 0,
+            motionKind: ev.motionDetailSquare ? 'motionDetailSquare' : 'motionSquareVideo1x1',
+          };
+        }
+      }
+    } catch (_) { out = null; }
+    // 没拿到也缓存（负缓存），避免每开一次专辑就打一次目录
+    appleMotionCache.set(key, { at: Date.now(), value: out });
+    return out;
+  }
+
+  if (pn === '/api/apple/library/album/motion') {
+    try {
+      const catalogId = String(url.searchParams.get('catalogId') || '').trim();
+      const name = String(url.searchParams.get('name') || '').trim();
+      const artist = String(url.searchParams.get('artist') || '').trim();
+      if (!catalogId && !name) { sendJSON(res, { ok: false, error: 'MISSING_ALBUM_IDENTITY', motion: null }); return; }
+      let id = catalogId;
+      // 资料库专辑**没有 catalogId**（实测 549 张全都没有），所以按「专辑名+艺人」在目录里定位
+      if (!id && name) {
+        const term = [name, artist].filter(Boolean).join(' ').trim();
+        const sp = await appleWebApi.getCatalog('us', '/search', { term: term, types: 'albums', limit: 10 });
+        if (sp && sp.ok) {
+          const items = (((sp.json.results || {}).albums || {}).data) || [];
+          const norm = function (v) { return String(v || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+          const wn = norm(name), wa = norm(artist);
+          const scored = items.map(function (it) {
+            const at = it.attributes || {};
+            const nameOk = norm(at.name) === wn;
+            const artistOk = wa && norm(at.artistName).indexOf(wa) >= 0;
+            return { id: it.id, score: (nameOk ? 2 : 0) + (artistOk ? 1 : 0) };
+          }).filter(function (x) { return x.score > 0; }).sort(function (a, b) { return b.score - a.score; });
+          if (scored.length) id = scored[0].id;
+        }
+      }
+      const motion = id ? await resolveAppleMotionArtwork(id) : null;
+      sendJSON(res, { ok: true, provider: 'apple', motion: motion, catalogId: id || '' });
+    } catch (err) {
+      console.error('[AppleAlbumMotion]', err);
+      sendJSON(res, { ok: false, error: err.message, motion: null }, 500);
+    }
+    return;
+  }
+
   if (pn === '/api/apple/library/album/notes') {
     try {
       const id = url.searchParams.get('id') || '';

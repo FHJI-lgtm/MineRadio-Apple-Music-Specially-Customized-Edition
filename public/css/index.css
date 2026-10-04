@@ -2205,6 +2205,19 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   object-fit: cover
 }
 
+/* Apple 动态专辑封面（Motion Artwork）：与静态封面同尺寸同圆角，绝对定位叠在其上。
+   object-fit: cover 强制裁切 —— 动态封面是 768x768 正方形，但不同专辑可能给出别的比例，
+   不裁切会撑破布局。视频就绪前它是透明的（父级已有静态封面兜底），不会黑屏。 */
+.am-album-cover-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  object-fit: cover;
+  display: block
+}
+
 .am-album-meta {
   min-width: 0;
   display: flex;
