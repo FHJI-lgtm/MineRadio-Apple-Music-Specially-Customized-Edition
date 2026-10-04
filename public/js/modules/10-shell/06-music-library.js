@@ -473,6 +473,29 @@
   // 切换源：换掉整套计数并重绘。
   // 目前只有 Apple 一个源已接入，数据侧无需重取；接入新源时在这里挂载该源的加载入口，
   // 并把 MLIB_SOURCES / MLIB_SOURCE_ORDER 一起扩上（DOM 里的源组也按同一结构追加）。
+  // 切源时把三个视图的内容与计数一并清空，并立起骨架屏。
+  // 每个视图的 loaded 标记也要重置 —— 否则新源会以为"已加载过"而不再取数。
+  function clearSourceViewsForSwitch() {
+    var grids = ['mlib-albums-grid', 'mlib-artists-grid', 'mlib-playlists-grid'];
+    grids.forEach(function (id) {
+      var g = document.getElementById(id);
+      if (g) {
+        // 骨架屏：与项目既有的加载观感一致（专辑详情用的是 .am-album-skeleton）
+        g.innerHTML = '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>' +
+          '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>';
+        g.setAttribute('aria-busy', 'true');
+      }
+    });
+    // 计数清零：它是上一个源的数字，留着会被读成新源的
+    MLIB_VIEWS.forEach(function (v) { sourceCounts(mlibActiveSource)[v] = ''; });
+    // 状态文案也清掉：可能是上一个源留下的"共 N 位…"这类信息
+    MLIB_VIEWS.forEach(function (v) { try { setViewState(v, ''); } catch (_) {} });
+    // 各视图的"已加载"状态作废，强制重取
+    artistsState.loaded = false; artistsState.source = '';
+    playlistsState.loaded = false; playlistsState.source = '';
+    albumsRenderedSource = '';
+  }
+
   function setMlibSource(name, opts) {
     opts = opts || {};
     if (MLIB_SOURCE_ORDER.indexOf(name) < 0) name = 'apple';
@@ -481,6 +504,10 @@
       return;
     }
     mlibActiveSource = name;
+    // **强制视觉隔离**：切源瞬间先把上一个源的内容清空并显示骨架屏，
+    // 否则在新数据到位前，界面会短暂保留旧源的内容 —— 看起来像"数据串源"。
+    // 计数也要清空（它也是上一个源的数字）。
+    clearSourceViewsForSwitch();
     // 必须**重新渲染源列表**：选中态（.is-active / 高亮点）是 renderSourceList 写进 DOM 的，
     // 只调 applyNavViewLabel 的话标题会变、但高亮仍留在上一个源上（看起来像没切换）。
     renderSourceList();
@@ -714,6 +741,9 @@
     if (canOpen) albumPayloads[String(release.libraryAlbumId)] = {
       id: release.libraryAlbumId, libraryId: release.libraryAlbumId,
       name: name, cover: cover, artist: artistDetailState.name || '', releaseDate: release.releaseDate || '',
+      // 必须带上源：播放入口按 provider 决定走 UIA 还是应用内播放。
+      // （专辑卡是原样存整个对象所以天然带 provider，发行卡是手工构造的，漏了就会误判成 Apple。）
+      provider: release.provider || mlibActiveSource,
     };
     return '<article class="mlib-album-card' + (canOpen ? ' is-openable' : '') + '" role="listitem"' +
       (canOpen ? ' tabindex="0" data-mlib-release-album="' + escHtml(release.libraryAlbumId) + '"' +
@@ -1222,7 +1252,30 @@
   function playLibraryAlbum(album) {
     var name = String((album && album.name) || '').trim();
     if (!name) {
-      if (typeof showToast === 'function') showToast('这张专辑没有可用的名称，无法交给 Apple Music');
+      if (typeof showToast === 'function') showToast('这张专辑没有可用的名称，无法播放');
+      return;
+    }
+    // 非 Apple 源：走 MineRadio 自有播放器，**不碰 UIA**。
+    // 之前这里一律调 amc.playAlbum，于是网易云/酷狗的专辑卡也会被交给 Apple Music ——
+    // 那是"点了没反应"或播错内容的来源。
+    var albumProvider = String((album && album.provider) || 'apple');
+    if (albumProvider !== 'apple') {
+      var albumId = String((album && (album.libraryId || album.id)) || '');
+      if (!albumId) { if (typeof showToast === 'function') showToast('这张专辑缺少 ID，无法播放'); return; }
+      if (typeof showToast === 'function') showToast('正在读取曲目…');
+      var tracksUrl = albumProvider === 'kugou'
+        ? '/api/kugou/library/album/tracks?id=' + encodeURIComponent(albumId)
+        : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId);
+      apiJson(tracksUrl).then(function (data) {
+        var songs = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+        if (!songs.length) {
+          if (typeof showToast === 'function') showToast('这张专辑没有可播放的曲目');
+          return;
+        }
+        playSongsInApp(songs, 0, albumProvider, name);
+      }).catch(function (err) {
+        if (typeof showToast === 'function') showToast('读取曲目失败：' + ((err && err.message) || '未知错误'));
+      });
       return;
     }
     var amc = window.mineradio && window.mineradio.amc;

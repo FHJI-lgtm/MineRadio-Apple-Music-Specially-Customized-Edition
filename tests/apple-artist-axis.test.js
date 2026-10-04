@@ -1482,3 +1482,57 @@ test('音乐资料库：歌单视图按源取数，不再一律落到 Apple', as
     assert.match(fn, /creator|artist/, '副标题要能取到来源作者');
   });
 });
+;
+// ============================================================
+// 切源强制隔离 + 非 Apple 源播放不得走 UIA
+// ============================================================
+test('音乐资料库：切源强制隔离与非 Apple 播放路由', async (t22) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '06-music-library.js'), 'utf8');
+  const DETAIL = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+  const CSS = require('node:fs').readFileSync(path.join(APP_ROOT, 'public', 'css', 'index.css'), 'utf8');
+
+  await t22.test('切源立即清空三个视图并立起骨架屏', () => {
+    assert.match(MOD, /function clearSourceViewsForSwitch\(\)/, '要有清空函数');
+    const fn = MOD.slice(MOD.indexOf('function clearSourceViewsForSwitch'), MOD.indexOf('function setMlibSource'));
+    ['mlib-albums-grid', 'mlib-artists-grid', 'mlib-playlists-grid'].forEach(function (g) {
+      assert.ok(fn.indexOf(g) >= 0, '要清空 ' + g);
+    });
+    assert.match(fn, /mlib-skeleton/, '要立起骨架屏，避免看到旧源内容');
+    assert.match(fn, /artistsState\.loaded = false/, '作废已加载标记，强制重取');
+    assert.match(fn, /playlistsState\.loaded = false/, '歌单同理');
+    // setMlibSource 必须调用它，且在渲染源列表之前
+    const sw = MOD.slice(MOD.indexOf('function setMlibSource'), MOD.indexOf('function setMlibSource') + 900);
+    assert.match(sw, /clearSourceViewsForSwitch\(\)/, '切源要调用清空');
+  });
+
+  await t22.test('骨架屏样式存在且复用既有 shimmer 动画', () => {
+    assert.match(CSS, /\.mlib-skeleton\s*\{/, '要有骨架屏样式');
+    assert.match(CSS, /\.mlib-skeleton[\s\S]{0,300}mlib-shimmer/, '复用既有动画');
+  });
+
+  await t22.test('发行卡必须带 provider（否则会被误判成 Apple）', () => {
+    const fn = MOD.slice(MOD.indexOf('function renderReleaseCard'), MOD.indexOf('function renderReleaseCard') + 1400);
+    assert.match(fn, /provider: release\.provider \|\| mlibActiveSource/, '发行卡要带源');
+  });
+
+  await t22.test('播放不按源分流就交给 Apple —— 必须改掉', () => {
+    const fn = MOD.slice(MOD.indexOf('function playLibraryAlbum'), MOD.indexOf('function playLibraryAlbum') + 2200);
+    assert.match(fn, /albumProvider !== 'apple'/, '非 Apple 要分流');
+    // 非 Apple 分支必须走应用内播放，且不得引用 amc
+    const branch = fn.slice(fn.indexOf("albumProvider !== 'apple'"), fn.indexOf('var amc ='));
+    assert.ok(branch.length > 0, '非 Apple 分支要存在且在取 amc 之前返回');
+    assert.ok(!/amc\./.test(branch), '非 Apple 分支不得触碰 UIA（amc）');
+    assert.match(branch, /playSongsInApp/, '非 Apple 走应用内播放');
+    assert.match(branch, /api\/kugou\/library\/album\/tracks/, '酷狗取曲目');
+    assert.match(branch, /api\/netease\/library\/album\/tracks/, '网易云取曲目');
+  });
+
+  await t22.test('应用内播放入口统一为 playSongsInApp', () => {
+    assert.match(DETAIL, /window\.playSongsInApp = function/, '要暴露统一入口');
+    const fn = DETAIL.slice(DETAIL.indexOf('window.playSongsInApp = function'), DETAIL.indexOf('function playInApp'));
+    assert.match(fn, /playQueueAt\(/, '走应用内取流链路');
+    assert.ok(!/amc/.test(fn), '不得触碰 UIA');
+  });
+});

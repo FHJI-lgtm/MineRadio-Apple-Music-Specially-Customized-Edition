@@ -2589,6 +2589,15 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   }
 }
 
+/* 切源骨架屏：立即占位，避免在新数据到位前显示上一个源的内容 */
+.mlib-skeleton {
+  aspect-ratio: 1 / 1;
+  border-radius: 18px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, .045) 20%, rgba(255, 255, 255, .09) 50%, rgba(255, 255, 255, .045) 80%);
+  background-size: 220% 100%;
+  animation: mlib-shimmer 1.6s linear infinite
+}
+
 /* 状态提示：加载 / 未登录 / 出错 / 空 */
 .mlib-state {
   max-width: 1240px;

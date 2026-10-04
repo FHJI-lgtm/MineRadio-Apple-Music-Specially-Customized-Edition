@@ -267,6 +267,27 @@
     });
   }
 
+  // 统一入口：把一批曲目交给 MineRadio 自有播放器（非 Apple 源）。
+  // 专辑详情、发行卡、歌单详情都走这里，避免各处各写一遍队列逻辑。
+  window.playSongsInApp = function (songs, startIndex, provider, label) {
+    var list = (Array.isArray(songs) ? songs : []).map(function (s) { return toPlayableSong(s, provider); })
+      .filter(function (s) { return s.id && s.name; });
+    if (!list.length) { if (typeof showToast === 'function') showToast('这些曲目缺少可播放的标识'); return; }
+    if (typeof playQueueAt !== 'function') { if (typeof showToast === 'function') showToast('内部播放器尚未就绪'); return; }
+    playQueue = list;
+    currentIdx = Math.max(0, Math.min(list.length - 1, Number(startIndex) || 0));
+    if (typeof safeRenderQueuePanel === 'function') safeRenderQueuePanel('mlib-source-' + provider, { scrollCurrent: true });
+    if (typeof safeShelfRebuild === 'function') safeShelfRebuild('mlib-source-' + provider, true);
+    if (typeof forcePlaybackControlsInteractive === 'function') forcePlaybackControlsInteractive();
+    if (typeof showToast === 'function') showToast('交给 MineRadio 播放器：' + list[currentIdx].name);
+    Promise.resolve(playQueueAt(currentIdx, {
+      manual: true,
+      context: { type: 'music-library-source', provider: provider, albumName: label || '' },
+    })).catch(function (err) {
+      if (typeof showToast === 'function') showToast('播放失败：' + ((err && err.message) || '未知错误'));
+    });
+  };
+
   // 用 MineRadio 自有播放器播放一批曲目（非 Apple 源）。
   function playInApp(songs, startIndex, context, provider) {
     var list = (Array.isArray(songs) ? songs : []).map(function (s) { return toPlayableSong(s, provider); })
