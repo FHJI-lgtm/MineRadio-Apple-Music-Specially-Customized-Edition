@@ -81,6 +81,7 @@ const {
   handleKugouUserPlaylists,
   handleKugouPlaylistTracks,
   handleKugouSingerInfo,
+  handleKugouAlbumInfo,
   handleKugouLikeCheck,
   handleKugouLikeToggle,
   handleKugouPlaylistAddSong,
@@ -7428,6 +7429,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 酷狗歌单曲目（只读）。与网易云/Apple 同形，供歌单详情页使用。
+  // 按歌单**原始顺序**返回（分页取全），并转成资料库 schema。
+  if (pn === '/api/kugou/library/playlist/tracks') {
+    try {
+      const kgCookie5 = typeof kugouCookie === 'string' ? kugouCookie : '';
+      if (!kgCookie5 || !kugouCookieHasLogin(kgCookie5)) {
+        sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'kugou', tracks: [] }, 400);
+        return;
+      }
+      const pid = String(url.searchParams.get('id') || '').replace(/^kg:/, '').trim();
+      if (!pid) { sendJSON(res, { ok: false, error: 'MISSING_PLAYLIST_ID', tracks: [] }, 400); return; }
+      // 不带 paged -> 内部逐页取全；酷狗歌单可到数百首
+      const res5 = await handleKugouPlaylistTracks(pid, kgCookie5, {});
+      if (res5 && res5.error) {
+        sendJSON(res, { ok: false, provider: 'kugou', error: res5.error, message: res5.message || '', tracks: [] }, 200);
+        return;
+      }
+      const raw5 = (res5 && (res5.tracks || res5.songs || res5.data)) || [];
+      const tracks = kugouLibrary.toLibrarySongs(raw5);
+      sendJSON(res, {
+        ok: true,
+        provider: 'kugou',
+        playlist: { id: 'kg:' + pid, name: '', cover: '', trackCount: tracks.length },
+        tracks: tracks,
+        total: Number((res5 && res5.total) || tracks.length) || tracks.length,
+        truncated: false,
+      });
+    } catch (err) {
+      console.error('[KugouPlaylistTracks]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'kugou', tracks: [] }, 500);
+    }
+    return;
+  }
+
   // 酷狗资料库艺人（只读）。与网易云/Apple 同形。
   // 身份键用 artistId；艺人从已收藏曲目聚合。
   // 头像：酷狗没有艺人详情接口，所以**不编造头像** —— 留空由前端用首字母占位。
@@ -7566,17 +7601,36 @@ const server = http.createServer(async (req, res) => {
       const lib2 = await collectKugouLibrary(kgCookie2);
       const all = lib2.songs;
       const mine = all.filter(function (sg) { return String(sg.albumId) === rawId; });
+      // 专辑详细资料：与歌手同理，歌单曲目只给 albumId/albumName（基础信息），
+      // 简介(intro)与发行日期(publishtime)要拿 albumid 再发一次详情请求。
+      // 实测 12 张抽样中 9 张有简介；确实没有的返回空串，前端整块隐藏。
+      let kgAlbumName = mine.length ? mine[0].albumName : '';
+      let kgAlbumArtist = mine.length ? mine[0].artist : '';
+      let kgAlbumCover = mine.length ? mine[0].cover : '';
+      let kgAlbumIntro = '';
+      let kgAlbumDate = '';
+      try {
+        const ai = await handleKugouAlbumInfo(rawId);
+        if (ai && ai.ok) {
+          if (ai.name) kgAlbumName = ai.name;
+          if (ai.artist) kgAlbumArtist = ai.artist;
+          if (ai.cover) kgAlbumCover = ai.cover;
+          kgAlbumIntro = ai.intro || '';
+          kgAlbumDate = ai.releaseDate || '';
+        }
+      } catch (_) { /* 取不到就留空，不编造 */ }
       sendJSON(res, {
         ok: true,
         provider: 'kugou',
         album: {
           id: 'kg:' + rawId,
-          name: mine.length ? mine[0].albumName : '',
-          artist: mine.length ? mine[0].artist : '',
-          cover: mine.length ? mine[0].cover : '',
-          // 发行日期没有可靠来源 -> 留空；简介酷狗不提供 -> 不显示
-          releaseDate: '',
-          description: '',
+          name: kgAlbumName,
+          artist: kgAlbumArtist,
+          cover: kgAlbumCover,
+          // publishtime 实测形如 2020-08-28 00:00:00，已归一为 YYYY-MM-DD；解析不出就留空
+          releaseDate: kgAlbumDate,
+          // 简介：有就显示，为空由前端整块隐藏
+          description: kgAlbumIntro,
         },
         tracks: mine,
         albumTotal: mine.length,

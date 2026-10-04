@@ -154,3 +154,69 @@ test('酷狗：歌手详细资料要单独再发一次请求（基础信息里�
     assert.match(list, /Promise\.all\(ws3\)/, '等全部完成再返回');
   });
 });
+
+test('酷狗歌单曲目浏览', async (t3) => {
+  const SERVER = require('node:fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  await t3.test('服务端提供酷狗歌单曲目端点，且取全而非一页', () => {
+    const i = SERVER.indexOf("pn === '/api/kugou/library/playlist/tracks'");
+    assert.ok(i > 0, '要有该端点');
+    const fn = SERVER.slice(i, i + 1800);
+    assert.match(fn, /handleKugouPlaylistTracks\(pid, kgCookie5, \{\}\)/, '不带 paged -> 内部逐页取全');
+    assert.ok(!/paged: true/.test(fn), '不能只取一页 —— 酷狗歌单可到数百首');
+    assert.match(fn, /kugouLibrary\.toLibrarySongs/, '要转成资料库 schema');
+  });
+
+  await t3.test('客户端不再对酷狗歌单直接报未接入', () => {
+    const i = MOD.indexOf('var prov = String(playlist.provider');
+    const fn = MOD.slice(i, i + 1200);
+    assert.ok(!/酷狗歌单的曲目浏览尚未接入/.test(fn), '已接入，不该再有该提示');
+    assert.match(fn, /\/api\/kugou\/library\/playlist\/tracks\?id=/, '走酷狗自己的端点');
+    // 不能落到 Apple 端点（那会得到 HTTP 404）
+    assert.match(fn, /var url = isKugou/, '按源分流');
+  });
+});
+
+test('酷狗专辑简介与发行日期（同样是"基础信息/详细资料"分离）', async (t4) => {
+  const K = require('node:fs').readFileSync(path.join(__dirname, '..', 'kugou-api.js'), 'utf8');
+  const SERVER = require('node:fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const MOD = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  await t4.test('存在按 albumid 取专辑详细资料的实现', () => {
+    assert.match(K, /async function handleKugouAlbumInfo\(/, '要有专辑详情函数');
+    assert.match(K, /mobiles\.kugou\.com\/api\/v5\/album\/info/, '端点必须实测可用（其余候选返回 Access Deny / No Action Found）');
+    const fn = K.slice(K.indexOf('async function handleKugouAlbumInfo('), K.indexOf('function mapKugouPlaylistTrack'));
+    assert.match(fn, /d\.intro/, '简介取 intro');
+    assert.match(fn, /d\.publishtime/, '发行日期取 publishtime');
+  });
+
+  await t4.test('publishtime 归一为 YYYY-MM-DD，解析不出就留空', () => {
+    const fn = K.slice(K.indexOf('async function handleKugouAlbumInfo('), K.indexOf('function mapKugouPlaylistTrack'));
+    assert.ok(fn.indexOf('publishtime') >= 0, '要读 publishtime');
+    assert.ok(fn.indexOf('dateMatch') >= 0, '要按 YYYY-MM-DD 解析');
+    assert.ok(fn.indexOf('releaseDate = dateMatch ?') >= 0, '能解析才赋值');
+    assert.ok(fn.indexOf(": ''") >= 0, '解析不出留空，不编造');
+    assert.ok(fn.indexOf('rawTime.match') >= 0, '用正则解析日期部分');
+  });
+
+  await t4.test('端点返回 description 与 releaseDate（不再写死为空）', () => {
+    const i = SERVER.indexOf("pn === '/api/kugou/library/album/tracks'");
+    const fn = SERVER.slice(i, i + 2600);
+    assert.match(fn, /handleKugouAlbumInfo\(rawId\)/, '要调用专辑详情');
+    assert.match(fn, /description: kgAlbumIntro/, '简介取自详情，不再写死空串');
+    assert.match(fn, /releaseDate: kgAlbumDate/, '发行日期取自详情');
+    // 断言代码里不再有"酷狗不提供简介"这类未验证的结论
+    const code = fn.replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/description: ''/.test(code), '不得再把简介写死为空');
+  });
+
+  await t4.test('客户端合并发行日期并重渲染（网易云不提供则不覆盖）', () => {
+    const i = MOD.indexOf('if (/^(ne|kg):/.test(albumId)) {');
+    const fn = MOD.slice(i, i + 1800);
+    assert.match(fn, /if \(neAlbum\.releaseDate\) state\.album\.releaseDate/, '有值才覆盖');
+    assert.match(fn, /renderInfo\(state\.album, neSongs\)/, '合并后重渲染');
+  });
+});

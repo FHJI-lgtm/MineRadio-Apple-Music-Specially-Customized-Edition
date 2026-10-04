@@ -464,15 +464,19 @@
           if (neAlbum.name) state.album.name = neAlbum.name;
           if (neAlbum.cover) state.album.cover = neAlbum.cover;
           if (neAlbum.artist) state.album.artist = neAlbum.artist;
+          // 发行日期：酷狗提供（已归一为 YYYY-MM-DD）、网易云不提供（空串）。
+          // 只有真有值才覆盖，避免把列表里可能存在的值抹掉。
+          if (neAlbum.releaseDate) state.album.releaseDate = neAlbum.releaseDate;
         }
         renderInfo(state.album, neSongs);
         renderTracks(neSongs);
-        setStatus(neSongs.length ? '' : '这张专辑在网易云没有返回曲目。');
+        var srcName = isKugouAlbum ? '酷狗音乐' : '网易云音乐';
+        setStatus(neSongs.length ? '' : '这张专辑在' + srcName + '没有返回曲目。');
         return;
       } catch (err) {
         if (seq !== reqSeq) return;
         state.status = 'error';
-        renderTracksError('读取网易云专辑曲目失败：' + ((err && err.message) || '未知错误'));
+        renderTracksError('读取' + (isKugouAlbum ? '酷狗' : '网易云') + '专辑曲目失败：' + ((err && err.message) || '未知错误'));
         return;
       }
     }
@@ -863,13 +867,14 @@
     var prov = String(playlist.provider || '');
     var isNetease = /^ne:/.test(id) || prov === 'netease';
     var isKugou = /^kg:/.test(id) || prov === 'kugou';
-    if (isKugou) {
-      fail('酷狗歌单的曲目浏览尚未接入（可在网易云 / Apple Music 源下查看歌单）。');
-      return;
-    }
-    var url = isNetease
-      ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
-      : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
+    // 酷狗：走自己的端点按歌单原始顺序取全（内部逐页取全，实测 475/475）。
+    // 不用 /api/playlist/tracks 是因为那个端点额外做了"最近添加在前"的排序与适配，
+    // 而歌单详情应当保持歌单自身顺序。
+    var url = isKugou
+      ? '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^kg:/, ''))
+      : (isNetease
+        ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
+        : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1');
     apiJson(url).then(function (data) {
       if (seq !== plSeq) return;
       var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
