@@ -80,6 +80,7 @@ const {
   handleKugouGuessLike,
   handleKugouUserPlaylists,
   handleKugouPlaylistTracks,
+  handleKugouSingerInfo,
   handleKugouLikeCheck,
   handleKugouLikeToggle,
   handleKugouPlaylistAddSong,
@@ -7440,14 +7441,36 @@ const server = http.createServer(async (req, res) => {
       const lib3 = await collectKugouLibrary(kgCookie3);
       const all3 = lib3.songs;
       const artists = kugouLibrary.artistsFromSongs(all3);
+      // 酷狗把「基础信息」与「详细资料」分开：曲目只给 artists[{id,name}]，
+      // 头像(imgurl)与简介(intro)必须拿 singerid 再发一次歌手详情请求。
+      const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      const CONC = 8;
+      let cursor3 = 0;
+      async function enrich3() {
+        while (cursor3 < ENRICH) {
+          const idx = cursor3; cursor3 += 1;
+          const a = artists[idx];
+          if (!a) continue;
+          try {
+            const info = await handleKugouSingerInfo(a.artistId);
+            if (info && info.ok && info.avatar) {
+              a.image = info.avatar;
+              a.hasImage = true;
+              a.imageRule = 'kugou-singer-imgurl';
+            }
+          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+        }
+      }
+      const ws3 = [];
+      for (let i = 0; i < Math.min(CONC, ENRICH); i += 1) ws3.push(enrich3());
+      await Promise.all(ws3);
       sendJSON(res, {
         ok: true,
         provider: 'kugou',
         artists: artists,
         total: artists.length,
-        withImage: 0,
+        withImage: artists.filter(function (x) { return x.hasImage; }).length,
         songTotal: all3.length,
-        imageNote: '酷狗没有艺人详情接口，头像留空（界面用首字母占位）',
       });
     } catch (err) {
       console.error('[KugouLibraryArtists]', err);
@@ -7487,18 +7510,41 @@ const server = http.createServer(async (req, res) => {
           type: 'album',
         };
       });
+      // 歌手详细资料：头像与简介都在这里 —— 拿 singerid 再发一次请求才有。
+      // 歌单曲目只给 artists[{id,name}]，那是「基础信息」，不含 imgurl / intro。
+      let kgName = String(url.searchParams.get('name') || '');
+      let kgImage = '';
+      let kgBio = null;
+      try {
+        const singerInfo = await handleKugouSingerInfo(aid);
+        if (singerInfo && singerInfo.ok) {
+          if (singerInfo.name) kgName = singerInfo.name;
+          if (singerInfo.avatar) kgImage = singerInfo.avatar;
+          if (singerInfo.intro) {
+            kgBio = {
+              extract: singerInfo.intro,
+              title: singerInfo.name || kgName,
+              url: 'https://www.kugou.com/singer/' + aid + '.html',
+              description: '',
+              lang: 'zh',
+              source: '酷狗音乐',
+            };
+          }
+        }
+      } catch (_) { /* 取不到就留空，不编造 */ }
+      if (!kgName) kgName = (mine[0] && mine[0].artist) || '';
       sendJSON(res, {
         ok: true,
         provider: 'kugou',
         artistId: 'kg:' + aid,
-        name: String(url.searchParams.get('name') || '') || (mine[0] && mine[0].artist) || '',
+        name: kgName,
         genres: [],
-        image: '',
-        hasImage: false,
-        imageRule: '',
-        // 酷狗没有艺人简介接口 -> 不编造
-        wiki: null,
-        wikiLang: '',
+        image: kgImage,
+        hasImage: !!kgImage,
+        imageRule: kgImage ? 'kugou-singer-imgurl' : '',
+        // 简介来自歌手详情接口，来源如实标注；拿不到就不显示
+        wiki: kgBio,
+        wikiLang: kgBio ? 'zh' : '',
         songTotal: mine.length,
         releaseTotal: releases.length,
         sections: { album: releases, single: [], ep: [], unknown: [] },

@@ -110,3 +110,47 @@ test('酷狗适配：艺人聚合（身份键 artistId）', async (t) => {
     assert.equal(a.hasImage, false);
   });
 });
+
+test('酷狗：歌手详细资料要单独再发一次请求（基础信息里没有头像与简介）', async (t2) => {
+  const K = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'kugou-api.js'), 'utf8');
+  const SERVER = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'server.js'), 'utf8');
+
+  await t2.test('存在按 singerid 取详细资料的实现，且用对了端点', () => {
+    assert.match(K, /async function handleKugouSingerInfo\(/, '要有歌手详情函数');
+    assert.match(K, /mobiles\.kugou\.com\/api\/v5\/singer\/info/, '端点必须实测可用（其余候选返回 Access Deny / No Action Found）');
+    const fn = K.slice(K.indexOf('async function handleKugouSingerInfo('), K.indexOf('function mapKugouPlaylistTrack'));
+    assert.match(fn, /singerid=/, '按 singerid 请求');
+    assert.match(fn, /d\.imgurl/, '头像取 imgurl');
+    assert.match(fn, /d\.intro/, '简介取 intro');
+  });
+
+  await t2.test('头像 URL 的 {size} 占位符必须替换（否则是空图）', () => {
+    const fn = K.slice(K.indexOf('function kugouSingerAvatarUrl('), K.indexOf('async function handleKugouSingerInfo'));
+    assert.match(fn, /kugouCoverUrl\(/, '复用既有的 size 替换逻辑');
+    assert.match(fn, /replace\(\/\^http:/, '升级为 https');
+    // 复用实现的验证
+    const A = require(path.join(__dirname, '..', 'kugou-api.js'));
+    const url = A.kugouSingerAvatarUrl('http://singerimg.kugou.com/a/{size}/b.jpg', 240);
+    assert.equal(url, 'https://singerimg.kugou.com/a/240/b.jpg');
+    assert.ok(!/\{size\}/.test(url), '不得残留占位符');
+  });
+
+  await t2.test('艺人列表与详情都要调用它（不能只用基础信息）', () => {
+    const list = SERVER.slice(SERVER.indexOf("pn === '/api/kugou/library/artists'"),
+      SERVER.indexOf("pn === '/api/kugou/library/artist/detail'"));
+    assert.match(list, /handleKugouSingerInfo\(a\.artistId\)/, '列表要逐位补头像');
+    const detail = SERVER.slice(SERVER.indexOf("pn === '/api/kugou/library/artist/detail'"),
+      SERVER.indexOf("pn === '/api/kugou/library/album/tracks'"));
+    assert.match(detail, /handleKugouSingerInfo\(aid\)/, '详情要取头像与简介');
+    assert.match(detail, /source: '酷狗音乐'/, '简介来源如实标注');
+  });
+
+  await t2.test('补头像要并发且有上限，且不返回半成品', () => {
+    const list = SERVER.slice(SERVER.indexOf("pn === '/api/kugou/library/artists'"),
+      SERVER.indexOf("pn === '/api/kugou/library/artist/detail'"));
+    assert.match(list, /enrich3/, '并发 worker');
+    assert.match(list, /Promise\.all\(ws3\)/, '等全部完成再返回');
+  });
+});

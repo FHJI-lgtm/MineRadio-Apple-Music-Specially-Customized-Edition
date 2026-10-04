@@ -24,6 +24,10 @@ const KUGOU_H5_CLIENTVER = '20000';
 const KUGOU_SIGN_KEY_SALT = '57ae12eb6890223e355ccfcb74edf70d';
 const KUGOU_GATEWAY_UA = 'Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi';
 const KUGOU_VIP_ROLEINFO_URL = 'https://vip.kugou.com/recharge/roleinfo';
+// 歌手详情：酷狗把「基础信息」与「详细资料」分开 —— 歌单曲目只给 artists[{id,name}]，
+// 头像(imgurl)与简介(intro)必须拿 singerid 再发一次详情请求才拿得到。
+const KUGOU_SINGER_INFO_URL = 'https://mobiles.kugou.com/api/v5/singer/info';
+const KUGOU_SINGER_AVATAR_SIZE = 240;
 
 function createKugouTtlCache(maxEntries, defaultTtlMs) {
   const store = new Map();
@@ -1714,6 +1718,49 @@ function mapKugouPlaylistItem(item) {
   };
 }
 
+// 歌手头像 URL 里的 {size} 占位符必须替换，否则拿到的是空图。
+// 实测：240 -> 85KB（可用）；0 -> 1.4KB、空 -> 5KB，都是劣化图。
+function kugouSingerAvatarUrl(raw, size) {
+  const u = String(raw || '').trim();
+  if (!u) return '';
+  // 复用既有的 size 占位符替换逻辑，并升级为 https
+  const px = Number(size) || KUGOU_SINGER_AVATAR_SIZE;
+  return kugouCoverUrl(u, px).replace(/^http:/i, 'https:');
+}
+
+// 歌手的详细资料（头像 + 简介）。只拿 singerid，不带其它参数。
+async function handleKugouSingerInfo(singerid, opts) {
+  opts = opts || {};
+  const id = String(singerid || '').trim();
+  if (!id) return { provider: 'kugou', ok: false, error: 'MISSING_SINGER_ID' };
+  const url = KUGOU_SINGER_INFO_URL + '?singerid=' + encodeURIComponent(id);
+  let body = null;
+  try {
+    body = await requestJson(url, { headers: { Referer: 'https://www.kugou.com/' } });
+  } catch (e) {
+    return { provider: 'kugou', ok: false, error: 'REQUEST_FAILED', message: String(e && e.message || '') };
+  }
+  const j = body || {};
+  const d = j.data || null;
+  if (!d || Number(j.status) !== 1) {
+    return { provider: 'kugou', ok: false, error: 'SINGER_INFO_FAILED', status: j.status, message: j.error || '' };
+  }
+  const avatar = kugouSingerAvatarUrl(d.imgurl, opts.avatarSize);
+  return {
+    provider: 'kugou',
+    ok: true,
+    singerId: String(d.singerid || id),
+    name: stripKugouHtml(d.singername || ''),
+    alias: stripKugouHtml(d.alias || ''),
+    avatar: avatar,
+    hasAvatar: !!avatar,
+    intro: stripKugouHtml(d.intro || ''),
+    songCount: Number(d.songcount) || 0,
+    albumCount: Number(d.albumcount) || 0,
+    mvCount: Number(d.mvcount) || 0,
+  };
+}
+
 function mapKugouPlaylistTrack(item) {
   item = item || {};
   const singers = Array.isArray(item.singerinfo) ? item.singerinfo : (Array.isArray(item.Singers) ? item.Singers : []);
@@ -2230,6 +2277,8 @@ module.exports = {
   buildKugouRequestCookie,
   kugouAudioReferer,
   mapKugouSearchItem,
+  handleKugouSingerInfo,
+  kugouSingerAvatarUrl,
   _test: {
     normalizeKugouVipPayloadV2,
     normalizeKugouWebRoleInfoPayload,
