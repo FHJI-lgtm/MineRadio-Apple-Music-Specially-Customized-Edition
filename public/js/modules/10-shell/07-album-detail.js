@@ -199,7 +199,82 @@
     if (label) label.textContent = busy ? '正在播放…' : '播放专辑';
   }
 
+  // 详情页顶部的小字：**按实际来源标注**，不再一律写 Apple Music。
+  // 非 Apple 源的数据来自该源的个人库，写成 Apple 的语义会误导。
+  var SOURCE_KICKER_LABELS = {
+    apple: 'Apple Music',
+    netease: '网易云音乐',
+    kugou: '酷狗音乐',
+    qq: 'QQ 音乐',
+    qishui: '汽水音乐',
+    spotify: 'Spotify',
+  };
+  function sourceLabelOf(provider) {
+    return SOURCE_KICKER_LABELS[String(provider || 'apple')] || 'Apple Music';
+  }
+
+  // 非 Apple 源**不走 UIA**，走 MineRadio 自己的播放链路：
+  // 把曲目装进 playQueue 后交给 playQueueAt —— 播放入口会按 songProviderKey(song)
+  // 选到该源的取流端点（netease -> /api/song/url?id=），并自行处理试听片段。
+  function isNonAppleSource(provider) {
+    return String(provider || 'apple') !== 'apple';
+  }
+
+  // 曲目 -> 播放器可消费的形状。
+  // 播放器用 song.id 取流、用 provider 选源，两者都必须有。
+  function toPlayableSong(song, provider) {
+    return {
+      id: String((song && (song.id || song.sourceSongId)) || ''),
+      provider: provider,
+      source: provider,
+      name: String((song && song.name) || ''),
+      artist: String((song && song.artist) || ''),
+      artists: Array.isArray(song && song.artists) ? song.artists : [],
+      artistId: (song && song.artistId) || '',
+      album: String((song && (song.albumName || song.album)) || ''),
+      albumId: String((song && song.albumId) || ''),
+      cover: String((song && song.cover) || ''),
+      duration: Number((song && song.duration) || 0),
+      // 试听/权益由取流端点判定，这里不预判
+      playable: !!(song && song.playable),
+    };
+  }
+
+  // 用 MineRadio 自有播放器播放一批曲目（非 Apple 源）。
+  function playInApp(songs, startIndex, context, provider) {
+    var list = (Array.isArray(songs) ? songs : []).map(function (s) { return toPlayableSong(s, provider); })
+      .filter(function (s) { return s.id && s.name; });
+    if (!list.length) { setStatus('这些曲目缺少可播放的标识，无法播放', 'warn'); return Promise.resolve(false); }
+    if (typeof playQueueAt !== 'function') { setStatus('内部播放器尚未就绪', 'warn'); return Promise.resolve(false); }
+    setPlayBusy(true);
+    setStatus('正在用 MineRadio 播放器播放…');
+    playQueue = list;
+    currentIdx = Math.max(0, Math.min(list.length - 1, Number(startIndex) || 0));
+    if (typeof safeRenderQueuePanel === 'function') safeRenderQueuePanel('mlib-' + provider, { scrollCurrent: true });
+    if (typeof safeShelfRebuild === 'function') safeShelfRebuild('mlib-' + provider, true);
+    if (typeof forcePlaybackControlsInteractive === 'function') forcePlaybackControlsInteractive();
+    return Promise.resolve(playQueueAt(currentIdx, {
+      manual: true,
+      context: Object.assign({ type: 'music-library-source', provider: provider }, context || {}),
+    })).then(function () {
+      setPlayBusy(false);
+      // 不谎报成功：播放器自己会处理失败与试听提示；这里只说明已交给自有播放器
+      setStatus('已交给 MineRadio 播放器：' + list[currentIdx].name, 'ok');
+      return true;
+    }).catch(function (err) {
+      setPlayBusy(false);
+      setStatus('播放失败：' + ((err && err.message) || '未知错误'), 'warn');
+      return false;
+    });
+  }
+  function setKicker(id, provider, axisLabel) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = sourceLabelOf(provider) + ' · ' + axisLabel;
+  }
+
   function renderInfo(album, songs) {
+    setKicker('am-album-detail-kicker', album && album.provider, '资料库专辑');
     var cover = el('am-album-detail-cover');
     if (cover) {
       cover.innerHTML = album.cover
@@ -458,6 +533,11 @@
     var song = (state.songs && state.songs[index]) || null;
     var trackName = String((song && song.name) || '').trim();
     if (!trackName) { setStatus('这首曲目没有可用的名称', 'warn'); return; }
+    // 非 Apple 源：走 MineRadio 自有播放器，不碰 UIA
+    if (isNonAppleSource(album.provider)) {
+      playInApp(state.songs, index, { albumName: String(album.name || '') }, album.provider);
+      return;
+    }
     var amc = window.mineradio && window.mineradio.amc;
     if (!amc || typeof amc.playAlbum !== 'function') { setStatus('Apple Music 播放通道不可用', 'warn'); return; }
     setPlayBusy(true);
@@ -480,6 +560,11 @@
     var album = state.album || {};
     var name = String(album.name || '').trim();
     if (!name) { setStatus('这张专辑没有可用的名称', 'warn'); return; }
+    // 非 Apple 源：整张专辑从第 1 首开始，走 MineRadio 自有播放器
+    if (isNonAppleSource(album.provider)) {
+      playInApp(state.songs, 0, { albumName: name }, album.provider);
+      return;
+    }
     // 与音乐库卡片同一个入口：交给 AMC 的资料库专辑链（先强制切到「你的资料库」，
     // 再按「专辑」分区消歧，最后才点播放）。音乐库模式下单曲不单独走一条通道。
     var amc = window.mineradio && window.mineradio.amc;
@@ -615,6 +700,7 @@
         ? '<img src="' + esc(playlist.cover) + '" alt="" referrerpolicy="no-referrer">'
         : '';
     }
+    setKicker('am-playlist-detail-kicker', playlist.provider, playlist.isLiked ? '个人库 · 喜欢的音乐' : '个人库歌单');
     var h = plEl('am-playlist-detail-heading');
     if (h) { h.textContent = playlist.name || '未命名歌单'; h.title = playlist.name || ''; }
     var creator = plEl('am-playlist-detail-creator');
@@ -721,8 +807,15 @@
       plState.status = 'error';
       if (wrap) { wrap.innerHTML = '<div class="am-album-empty">' + esc(message) + '</div>'; wrap.setAttribute('aria-busy', 'false'); }
     };
-    // all=1：取整个歌单。单页上限 100，只取一页会让 370 首的歌单显示成 100 首。
-    apiJson('/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1').then(function (data) {
+    // 按源取曲目：
+    //   Apple   -> /api/apple/playlist/tracks?all=1（单页上限 100，必须分页取全）
+    //   非 Apple -> 走该源自己的端点。**不能落到 Apple 端点上** ——
+    //              截图里那句「Apple Music Web 返回 HTTP 404」就是这么来的。
+    var isNetease = /^ne:/.test(id) || playlist.provider === 'netease';
+    var url = isNetease
+      ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
+      : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
+    apiJson(url).then(function (data) {
       if (seq !== plSeq) return;
       var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
       if (data && data.error && !tracks.length) { fail(data.message || ('接口返回 ' + data.error)); return; }

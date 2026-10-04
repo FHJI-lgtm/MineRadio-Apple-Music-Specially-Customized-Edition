@@ -45,6 +45,9 @@ function toLibrarySong(song) {
     librarySongId: NETEASE_ID_PREFIX + id,
     provider: 'netease',
     source: 'netease',
+    // 播放入口按 songProviderKey(song) 选源，并用 song.id 取流（/api/song/url?id=）。
+    // 所以这里必须给**裸 id**，不能只给带前缀的 librarySongId。
+    id: id,
     sourceSongId: id,
     name: name,
     artist: normalizeText(song.artist),

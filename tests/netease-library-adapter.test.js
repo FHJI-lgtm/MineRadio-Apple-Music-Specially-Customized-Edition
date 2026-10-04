@@ -19,6 +19,7 @@ test('网易云适配：曲目映射成资料库 schema', async (t) => {
   await t.test('关键字段逐个就位', () => {
     const s = A.toLibrarySong(RAW_SONG);
     assert.equal(s.librarySongId, 'ne:27072697', '唯一键带 ne: 前缀，避免与 Apple 的 l.* 混淆');
+    assert.equal(s.id, '27072697', '播放取流按 song.id，必须是裸 id（不带前缀）');
     assert.equal(s.name, 'Next (Original)');
     assert.equal(s.artist, 'The Weeknd');
     assert.equal(s.albumName, 'Echoes Of Silence (Original)', 'album -> albumName');

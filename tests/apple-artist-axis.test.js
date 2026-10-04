@@ -1183,3 +1183,59 @@ test('音乐资料库：切源后专辑墙必须重渲染，不残留上一个�
       '只有同一来源的已加载状态才可复用');
   });
 });
+;
+// ============================================================
+// 多源播放：非 Apple 源走 MineRadio 自有播放器，不碰 UIA
+// ============================================================
+test('多源播放：非 Apple 源必须走应用内播放器，不得落到 UIA 通道', async (t16) => {
+  const MOD = require('node:fs').readFileSync(
+    path.join(APP_ROOT, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
+
+  await t16.test('有 isNonAppleSource 判定，且播放入口都先过它', () => {
+    assert.match(MOD, /function isNonAppleSource\(provider\)/, '要有非 Apple 源判定');
+    const calls = (MOD.match(/isNonAppleSource\(album\.provider\)/g) || []).length;
+    assert.ok(calls >= 2, '单曲与整张专辑两个入口都要先判源（实际 ' + calls + ' 处）');
+  });
+
+  await t16.test('非 Apple 源走 playInApp，而不是 amc.playAlbum', () => {
+    // 单曲入口：判源之后必须 return，不能继续走到 amc.playAlbum
+    const single = MOD.slice(MOD.indexOf('function playSongAt'), MOD.indexOf('window.playAmAlbumFromStart'));
+    const guardIdx = single.indexOf('isNonAppleSource(album.provider)');
+    const amcIdx = single.indexOf('amc.playAlbum');
+    assert.ok(guardIdx > 0 && guardIdx < amcIdx, '判源必须在调用 Apple 播放通道之前');
+    assert.match(single.slice(guardIdx, guardIdx + 200), /return/, '走非 Apple 分支后必须 return，不能继续下行');
+  });
+
+  await t16.test('playInApp 用 playQueue + playQueueAt（自有播放链路）', () => {
+    const fn = MOD.slice(MOD.indexOf('function playInApp'), MOD.indexOf('function loadAlbum'));
+    assert.match(fn, /playQueue = list/, '装进自有播放队列');
+    assert.match(fn, /currentIdx =/, '设置起始曲目');
+    assert.match(fn, /playQueueAt\(/, '交给自有播放器 —— 它会按 provider 选到该源的取流端点');
+    assert.ok(!/amc\./.test(fn), 'playInApp 内部不得触及 AMC（UIA）通道');
+  });
+
+  await t16.test('曲目转成播放器可消费的形状时，必须带裸 id 与 provider', () => {
+    const fn = MOD.slice(MOD.indexOf('function toPlayableSong'), MOD.indexOf('function playInApp'));
+    assert.match(fn, /id: String/, '播放器用 song.id 取流');
+    assert.match(fn, /provider: provider/, '播放器用 provider 选源（songProviderKey）');
+    assert.ok(!/id: String\(\(song && \(song\.librarySongId/.test(fn),
+      '不能把带 ne: 前缀的 librarySongId 当取流用的 id');
+  });
+
+  await t16.test('详情页小字按实际来源标注，不再一律写 Apple Music', () => {
+    assert.match(MOD, /SOURCE_KICKER_LABELS/, '要有按来源的文案表');
+    assert.match(MOD, /netease: '网易云音乐'/, '网易云要有自己的文案');
+    const setKicker = MOD.slice(MOD.indexOf('function setKicker'), MOD.indexOf('function renderInfo'));
+    assert.ok(!/Apple Music/.test(setKicker), 'setKicker 里不得写死 Apple Music');
+  });
+
+  await t16.test('歌单详情按源取曲目，不落到 Apple 端点上', () => {
+    assert.match(MOD, /isNetease/, '歌单详情要判源');
+    assert.match(MOD, /\/api\/playlist\/tracks\?id=/, '非 Apple 源走该源自己的曲目端点');
+    const fn = MOD.slice(MOD.indexOf('function plLoad'), MOD.indexOf('window.openAmPlaylistDetail'));
+    // 三元表达式：非网易云 -> Apple 端点；网易云 -> 本源端点。两者必须都出现且互斥分支。
+    assert.match(fn, /var isNetease = [^;]+;/, '先判定是否网易云');
+    assert.match(fn, /isNetease\s*\n?\s*\?\s*'\/api\/playlist\/tracks\?id='/, '网易云分支走本源端点');
+    assert.match(fn, /:\s*'\/api\/apple\/playlist\/tracks\?id=/, 'Apple 分支才用 Apple 端点');
+  });
+});
