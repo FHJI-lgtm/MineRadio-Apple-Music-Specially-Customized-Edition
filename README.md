@@ -15,7 +15,7 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 | | |
 |---|---|
 | <img src="docs/assets/readme/music-library-albums.webp" width="420" alt="音乐资料库"> | <img src="docs/assets/readme/playlist-detail.webp" width="420" alt="歌单详情"> |
-| **音乐资料库**：专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
+| **音乐资料库**：六源切换 + 专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
 | <img src="docs/assets/readme/album-detail.webp" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
 | **专辑详情**：动态封面（部分专辑）+ 简介 + 曲目列表 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
 | <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | |
@@ -27,27 +27,31 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 ## 🎮 功能一览
 
-### 🎵 Apple Music 资料库
-* 浏览资料库中的**专辑、艺人与歌单**，查看专辑作品与艺人详情（头像 / 流派 / 简介，来源见技术章节）。
-* 歌单详情支持 **播放歌单** 与 **随机播放**（直接驱动 Apple Music 自己的播放按钮）。
-
-### ▶️ Apple Music 播放控制（v2.0.0 新增）
-* 单曲 / 专辑 / 歌单 / 随机播放；**以 SMTC 真实状态判定是否真的切歌**，播放后自动把 Apple Music 交还桌面。
-* **Apple Music 窗口可在受控状态下隐藏**（隐身模式，默认开启）：平时 Apple Music 不显示在桌面上；
-  执行播放控制期间窗口状态会被**临时调整**以便完成点击，结束后**恢复隐身**。技术细节见「Apple Music 接入原理」。
-
 ### 🎧 音乐资料库多源接入（v2.1.0 新增）
-* 音乐资料库支持**六个源**，在「音乐源」下切换；切换时界面清空重建，不会出现「新源标题 + 旧源内容」。
 
-| 源 | 资料库内容 | 播放 |
+音乐资料库支持**六个源**，在「音乐源」下切换；旁边是三个**常驻视图**（专辑 / 艺人 / 歌单）。
+切换源时界面**立即清空并显示骨架屏**，等新源数据到位才渲染 —— 不会出现「新源标题 + 旧源内容」。
+
+| 源 | 资料库内容 | 播放方式 |
 |---|---|---|
 | Apple Music | 已保存的专辑 / 艺人 / 歌单 | UIA 驱动官方客户端 |
 | QQ / 酷狗 / 网易云 / 汽水 | **仅已收藏的内容** | MineRadio 应用内播放 |
 | Spotify | 喜欢的歌曲 / 歌单 / 收藏专辑 | 自动换源 |
 
 * 统一语义：**只显示你收藏过的内容**，不做全站目录浏览；数据拿不准就留空，不猜。
-* 非 Apple 源**强制走 MineRadio 自己的播放链路**，不会驱动 Apple Music —— 这是硬性约束，有结构性测试守着。
-* Spotify 的资料库**落盘缓存**并增量同步（分页 + 节流 + `snapshot_id` / 游标增量），读缓存零网络。
+* 非 Apple 源**强制走 MineRadio 自己的播放链路**，不会驱动 Apple Music —— 硬性约束，有结构性测试守着。
+* Spotify 的资料库**落盘缓存**并增量同步（分页 + 节流 + `snapshot_id` / `after` 游标增量），读缓存零网络。
+
+#### 🍎 Apple Music 资料库
+
+* 浏览已保存的**专辑、艺人与歌单**，查看专辑作品与艺人详情（头像 / 流派 / 简介，来源见技术章节）。
+* 歌单详情支持 **播放歌单** 与 **随机播放**（直接驱动 Apple Music 自己的播放按钮）。
+
+#### ▶️ Apple Music 播放控制（v2.0.0 新增）
+
+* 单曲 / 专辑 / 歌单 / 随机播放；**以 SMTC 真实状态判定是否真的切歌**，播放后自动把 Apple Music 交还桌面。
+* **Apple Music 窗口可在受控状态下隐藏**（隐身模式，默认开启）：平时 Apple Music 不显示在桌面上；
+  执行播放控制期间窗口状态会被**临时调整**以便完成点击，结束后**恢复隐身**。技术细节见「Apple Music 接入原理」。
 
 ### 🎤 实时歌词
 * 多源匹配与回退（QQ / 酷狗 / 网易云 + Apple Music Web 私有歌词），支持双语。
@@ -113,6 +117,7 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 - [多源歌词（QQ → 酷狗 → 网易云）](#多源歌词qq-酷狗-网易云)
 - [双语歌词](#双语歌词)
 - [Windows 环境要求](#windows-环境要求)
+- [出网代理（v2.1.0 新增）](#出网代理v210-新增)
 - [Electron / Node.js 要求](#electron-nodejs-要求)
 - [构建方法](#构建方法)
 - [第三方音乐平台说明](#第三方音乐平台说明)
@@ -175,9 +180,62 @@ SMTC 再次读取 → 只有「真的切歌了」才算成功（verified）
 * **随机播放**：驱动 Apple Music 歌单页自己的「随机播放」按钮，并用随机开关的状态 + SMTC 双重确认。
 * **自动最小化**：所有播放路径（单曲 / 专辑 / 歌单 / 随机播放）播放后都会把 Apple Music 交还桌面。
 
-### 3) 资料库数据：Apple Music Web 接口（`media-user-token`）
+### 3) 资料库数据：六个源各自的数据层
 
-资料库页面（歌单 / 艺人 / 专辑 / 喜爱歌曲）由主进程提供的本地只读接口驱动，例如：
+#### 统一的源抽象
+
+六个源共用一套「资料库语义 + 端点表」，新增源只需在表里加一行，不在各处写 `if`：
+
+```text
+public/js/modules/10-shell/06-music-library.js
+  MLIB_SOURCES            源登记（label / ready）
+  MLIB_SOURCE_ENDPOINTS   每个源的端点：index / artists / artistDetail
+                                            albumTracks / playlistTracks / playlistsFromIndex
+```
+
+各源端点（一律 `/api/<源>/library/*`）：
+
+| 源 | 索引 | 专辑曲目 | 歌单曲目 |
+|---|---|---|---|
+| Apple | `/api/apple/library/index` | `/api/apple/library/album/tracks` | `/api/apple/playlist/tracks` |
+| QQ | `/api/qq/library/index` | `/api/qq/library/album/tracks` | `/api/qq/library/playlist/tracks` |
+| 酷狗 | `/api/kugou/library/index` | `/api/kugou/library/album/tracks` | `/api/kugou/library/playlist/tracks` |
+| 网易云 | `/api/netease/library/index` | `/api/netease/library/album/tracks` | `/api/playlist/tracks` |
+| 汽水 | `/api/qishui/library/index` | `/api/qishui/library/album/tracks` | `/api/qishui/library/playlist/tracks` |
+| Spotify | `/api/spotify/library/index` | `/api/spotify/library/album/tracks` | `/api/spotify/library/playlist/tracks` |
+
+**每个源的身份键不同**（`librarySongId` 带源前缀以隔离）：
+
+| 源 | 身份键 |
+|---|---|
+| Apple | `l.*`（库内 id）/ catalog id |
+| QQ | `mid`（字符串，可能以 `0` 开头）|
+| 酷狗 | `hash` |
+| 网易云 | `id` |
+| 汽水 | `id` / `artists[].id` |
+| Spotify | base62 `id`（22 字符）|
+
+#### 接入时反复遇到的平台规律
+
+**基础信息与详细资料是分开的** —— 头像、简介几乎都要第二次请求：
+
+| 源 | 现象 |
+|---|---|
+| 酷狗 | 艺人头像返回全空，必须拿 `singerid` 再发一次 `get_singer_detail` 才给图片 URL |
+| QQ | 专辑简介藏在 `music.musichallAlbum.AlbumInfoServer / GetAlbumDetail` 的 `basicInfo.desc`；艺人简介在 `singer.data.singer_brief`（**不在** `singer_info`）|
+| 汽水 | 接口每页上限 50，需要按 `nextOffset` 翻页；`duration` 单位是**秒**不是毫秒 |
+| Apple | 专辑简介在 catalog 的 `editorialNotes`；**动态封面必须带 `extend=editorialVideo`** 才返回 |
+
+另外两条实测结论：
+
+* **Apple 各 storefront 的简介内容与语言都不同**（美国区总是英文且最长）。取简介时按
+  「是否中文 > 区优先级（cn > hk > tw > us）> 文案长度」排序，逐级降级，都没有就整块隐藏。
+* **资料库专辑没有 catalog id**，定位目录专辑要按「专辑名 + 艺人」搜索打分匹配。
+
+### 4) 资料库数据：Apple Music Web 接口（`media-user-token`）
+
+
+**Apple 源**的资料库页面（歌单 / 艺人 / 专辑 / 喜爱歌曲）由主进程提供的本地只读接口驱动，例如：
 
 ```text
 /api/apple/user/playlists        歌单列表
@@ -196,9 +254,7 @@ SMTC 再次读取 → 只有「真的切歌了」才算成功（verified）
 | 流派 | Apple Music 的 `genreNames` |
 | **简介** | **外部补充数据源**（Wikipedia / 网易云；返回结果带 `source` 字段标明出处）—— **不是 Apple Music 提供** |
 | 歌单 / 专辑 / 曲目 | Apple Music Web 接口（`media-user-token`） |
-```
 
-```
 * 数据通过 **Apple Music Web 接口**取得：请求使用 **Bearer + `media-user-token`**（网页登录凭证）；
   凭证由 `desktop/apple-music-lyrics-credential.js` 管理，**只保存在本机**。
 * **开发者账号轴（Team ID / Key ID / P8 → ES256 JWT → `/v1/me/*`）已整体退休** —— 现在不需要 Apple 开发者密钥，
@@ -206,14 +262,14 @@ SMTC 再次读取 → 只有「真的切歌了」才算成功（verified）
 * `/api/apple/logout` 只做清理（删除历史遗留的 `.apple-music-token.json`，只删不读）。
 * 设置里的「Apple Music 账户设置」= **登录 / 凭证入口** + 连接状态 + 隐身模式开关。
 
-### 4) 隐身模式（默认开启，可关闭）
+### 5) 隐身模式（默认开启，可关闭）
 
 * 窗口属性 `Alpha=1` + `WS_EX_LAYERED` + `WS_EX_TRANSPARENT`：视觉隐藏与鼠标穿透，同时保留 UIA 控制能力。
 * **看门狗**：每秒校验窗口属性，丢失即修复（alpha / 透明位 / 分层位 / 多属性丢失 / 窗口换新）；失败按 1s→30s 退避，超限安全停机并恢复窗口。
 * **播放门控**：控制播放期间临时摘掉透明位（播放链依赖真实点击操作 Apple Music），结束（含失败）必定戴回。
 * 用户手动唤起 / 操作 Apple Music 时自动退出隐身；MineRadio 退出时自动恢复窗口。
 
-### 5) 音频响应视觉
+### 6) 音频响应视觉
 
 * 通过原生音频捕获（`desktop/smtc-audio-capture.ps1` + `native/MineRadioAudioCapture.exe`）取回系统播放音频，用于 FFT 频谱与粒子响应。
 * 音频只用于视觉呈现，不落盘、不转发。
@@ -273,6 +329,23 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 - 会话内内存缓存（identity 键 `aumid|title|artist|album`，LRU 上限 100）+ 发送去重 + 请求 in-flight 去重 + 旧请求 identity 校验（快速切歌不串台）
 - 封面同时驱动右上角 UI 胶囊与 Visualizer 背景粒子纹理（同一 `applyCoverCanvas` 入口）
 
+### 动态封面（Motion Artwork，v2.1.0 新增）
+
+部分 Apple 专辑的封面是**动图**。打开专辑详情页时，静态封面会换成循环播放的动态封面：
+
+* 必须带 **`extend=editorialVideo`** 参数才返回（接口文档没写这一点）；变体四个：
+  `motionDetailSquare` / `motionDetailTall` / `motionSquareVideo1x1` / `motionTallVideo3x4`。
+* `video` 字段是 **HLS `.m3u8`**，但实测有动态封面的专辑**全部**是「单 mp4 + `EXT-X-BYTERANGE`」形态 ——
+  所有分片是同一个 `.mp4` 的字节范围，所以取那个 mp4 直接当 `<video>` 源即可，**不需要 HLS 库**。
+* **降级链**：静态封面先渲染并作为 `poster`；取不到 / 加载失败 / 非单 mp4 形态 → 保持静态封面，
+  不黑屏也不留白；切专辑时旧响应作废。
+* **强制校验 Web token**：拿不到 token 就如实报 `APPLE_WEB_NO_BEARER`（HTTP 503），
+  **不缓存成「无动态封面」** —— 否则 token 一恢复，那张专辑会一直显示没有。
+* 只有少部分专辑有：热门专辑实测约 3/4，单曲与冷门专辑基本没有。
+
+> 其它源没有动态封面：网易云 / 酷狗 / 汽水的专辑接口都不含相关字段；
+> QQ 有 `dynamicCoverVid` 字段但换成视频直链需要登录态（实测被拒）；Spotify Web API 不提供。
+
 
 ## 播放控制
 
@@ -289,6 +362,8 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 
 ## 多源歌词（QQ → 酷狗 → 网易云）
 
+> **别和「音乐源」搞混**：音乐源（v2.1.0 新增的六个源）决定**资料库从哪来**；
+> 歌词源是这条独立的回退链，两者互不影响 —— 用 Apple Music 的资料库，也可以匹配 QQ 的歌词。
 
 默认优先级：
 
@@ -303,6 +378,8 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 - 右上角「词源」按钮可打开优先级设置面板：拖动排序、恢复默认（localStorage 持久化）
 - 歌词来源显示在状态胶囊：`歌词已同步 · 歌词来源：QQ 音乐`
 
+* 另有 **Apple Music Web 私有歌词**通道（`apple-music-web-lyrics.js`）：命中时优先使用官方逐字歌词，
+  取不到才落到上面的回退链。
 
 ## 双语歌词
 
@@ -325,6 +402,18 @@ MineRadioAudioCapture.exe（原生 C++，静态链接）
 
 > 音频采集需要目标系统存在可用的渲染端点；Apple Music 需处于播放状态（Session 激活）后采集才会启动。
 
+
+## 出网代理（v2.1.0 新增）
+
+启动时探测本地代理端口（`7897` / `7890` / `7891` / `10809` / `1080` / `8118`），检测到就自动接管出网。
+
+* 可用 `MINERADIO_PROXY` / `MINERADIO_PROXY_PORT` 手动指定。
+* **国内源与 localhost 走 `NO_PROXY` 直连**，不受代理影响。
+* 通过 `undici` 的全局 dispatcher 生效（`NODE_USE_ENV_PROXY` 对环境变量的读取时机太晚，无效）。
+* 修好了 Spotify / Wikipedia / GitHub 直连不通的问题。
+* 实现见 `desktop/outbound-proxy.js`。
+
+---
 
 ## Electron / Node.js 要求
 
