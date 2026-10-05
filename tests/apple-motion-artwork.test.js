@@ -59,8 +59,11 @@ test('动态封面 · 服务端解析', async (t) => {
   await t.test('必须同时有正缓存与负缓存', () => {
     assert.ok(SERVER.indexOf('appleMotionCache') > 0, '要有缓存');
     const i = SERVER.indexOf('async function resolveAppleMotionArtwork(');
-    const fn = SERVER.slice(i, i + 2600);
-    assert.ok(/appleMotionCache\.set\(key/.test(fn), '无论成败都要写缓存');
+    const fn = SERVER.slice(i, i + 4200);   // 负缓存在函数尾部，切片要够
+    // 「查到 / 确认没有」都要缓存（没动态封面的专辑只查一次）；
+    // 但**鉴权失败不在此列** —— 那会把"没 token"永久记成"这张专辑没有动态封面"。
+    assert.ok(/appleMotionCache\.set\(key/.test(fn), '查到或确认没有都要写缓存');
+    assert.ok(/__authFailed/.test(fn), '鉴权失败必须走提前返回，不得写负缓存');
     assert.ok(fn.indexOf('APPLE_MOTION_TTL_MS') > 0, '要有 TTL（mvod 链接可能过期）');
   });
 
@@ -137,5 +140,52 @@ test('动态封面 · 客户端渲染与降级', async (t) => {
     assert.ok(block.indexOf('object-fit: cover') > 0, '强制裁切，防止非正方形破坏布局');
     assert.ok(block.indexOf('position: absolute') > 0, '叠在静态封面之上');
     assert.ok(block.indexOf('border-radius') > 0, '与既有封面圆角一致');
+  });
+});
+;
+
+// ============================================================
+// 动态封面：Apple Web token 必须显式校验
+//
+// 实测事实：/v1/catalog/* 目前**匿名**也返回 editorialVideo
+//   （匿名 4 变体 == 带 token 4 变体），所以 token 不是"今天能不能拿到"的必要条件。
+// 但 getBearer() 失败时返回空串、请求会静默发出 —— 将来 Apple 一收紧，
+// 我们会把"没有 token"误判成"这张专辑没有动态封面"，
+// 与 appleWebApi is not defined 被 catch 吞掉是同一类静默失败。
+// 所以必须显式门禁 + 如实上报，且**不得把鉴权失败缓存成"无动态封面"**。
+// ============================================================
+test('动态封面：Apple Web token 显式门禁', async (t33) => {
+  const SERVER = read('server.js');
+
+  await t33.test('取 token 失败时不发请求、不再往下当"无动态封面"', () => {
+    const i = SERVER.indexOf('async function appleWebTokenState(');
+    assert.ok(i > 0, '要有独立的 token 状态检查');
+    const fn = SERVER.slice(i, i + 1200);
+    assert.ok(fn.indexOf('hasToken') > 0, '要给出是否持有 token');
+    // 复用 apple-music-web-api 自己的 getBearer，而不是引用别的模块的变量
+    assert.ok(fn.indexOf('appleWebApi.getBearer') > 0, '要用 appleWebApi.getBearer（它内部委托给 web-lyrics）');
+  });
+
+  await t33.test('解析函数里先过门禁再请求', () => {
+    const i = SERVER.indexOf('async function resolveAppleMotionArtwork(');
+    const fn = SERVER.slice(i, i + 2600);
+    const gateAt = fn.indexOf('appleWebTokenState()');
+    const reqAt = fn.indexOf('getCatalog(');
+    assert.ok(gateAt > 0, '要先检查 token');
+    assert.ok(gateAt < reqAt, '门禁必须在发请求之前');
+    assert.ok(/__authFailed/.test(fn), '鉴权失败要有独立标记，不能混成 null');
+  });
+
+  await t33.test('鉴权失败要如实报错且返回非 2xx，不得写负缓存', () => {
+    assert.ok(SERVER.indexOf("APPLE_WEB_NO_BEARER") > 0, '要有明确的错误码');
+    const i = SERVER.indexOf("pn === '/api/apple/library/album/motion'");
+    const fn = SERVER.slice(i, i + 2600);
+    assert.ok(fn.indexOf('__authFailed') > 0, '端点要识别鉴权失败');
+    assert.ok(/},\s*503\)/.test(fn), '鉴权失败应返回 503（服务不可用），不是 200 + motion:null');
+  });
+
+  await t33.test('不得再引用未定义的 webLyrics 变量', () => {
+    // 这条是真实踩过的：我写过 webLyrics.getWebPlayerBearer 而 server.js 没导入它
+    assert.equal(SERVER.indexOf('webLyrics'), -1, 'server.js 不得引用未导入的 webLyrics');
   });
 });

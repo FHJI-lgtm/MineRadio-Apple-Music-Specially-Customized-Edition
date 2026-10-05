@@ -6203,6 +6203,28 @@ const server = http.createServer(async (req, res) => {
   //   4) 资源无防盗链（mvod.itunes.apple.com 直连 200/206，Accept-Ranges: bytes）。
   const APPLE_MOTION_TTL_MS = 6 * 60 * 60 * 1000;
 
+  // 动态封面**强制要求 Apple Web token**。
+  // 实测：/v1/catalog/* 目前匿名也返回 editorialVideo（匿名 4 变体 == 带 token 4 变体），
+  // 所以 token 不是"今天能不能拿到"的必要条件。但**必须显式校验**：
+  //   getBearer() 失败时返回空串，请求会静默发出；将来 Apple 一旦收紧，
+  //   我们会把"没有 token"误判成"这张专辑没有动态封面" —— 与之前
+  //   appleWebApi is not defined 被 catch 吞掉是同一类静默失败。
+  // 所以这里先取 token，拿不到就原样上报，绝不谎报"无动态封面"。
+  async function appleWebTokenState() {
+    try {
+      // 复用 apple-music-web-api 自己的 getBearer（它内部就是委托给 web-lyrics 的），
+      // 不再在这里引用另一个模块的变量 —— 上一次就是这么写出了一个未定义引用。
+      if (!appleWebApi || typeof appleWebApi.getBearer !== 'function') {
+        return { hasToken: false, reason: 'BEARER_SOURCE_UNAVAILABLE' };
+      }
+      const token = await appleWebApi.getBearer();
+      const t = String(token == null ? '' : token).trim();
+      return { hasToken: !!t, length: t.length, reason: t ? '' : 'NO_BEARER' };
+    } catch (err) {
+      return { hasToken: false, reason: 'BEARER_ERROR:' + String((err && err.message) || err).slice(0, 80) };
+    }
+  }
+
   async function resolveAppleMotionArtwork(catalogId) {
     if (!catalogId) return null;
     const key = String(catalogId);
@@ -6210,6 +6232,11 @@ const server = http.createServer(async (req, res) => {
     if (hit && Date.now() - hit.at < APPLE_MOTION_TTL_MS) return hit.value;
     let out = null;
     try {
+      // 强制 token 门禁：没有 Web token 就不发请求、也不缓存成"无动态封面"
+      const tok = await appleWebTokenState();
+      if (!tok.hasToken) {
+        return { __authFailed: true, reason: tok.reason };
+      }
       const page = await appleWebApi.getCatalog('us', '/albums/' + encodeURIComponent(key), { extend: 'editorialVideo' });
       if (page && page.ok) {
         const attrs = (((page.json.data || [])[0] || {}).attributes) || {};
@@ -6279,8 +6306,22 @@ const server = http.createServer(async (req, res) => {
           if (scored.length) id = scored[0].id;
         }
       }
-      const motion = id ? await resolveAppleMotionArtwork(id) : null;
-      sendJSON(res, { ok: true, provider: 'apple', motion: motion, catalogId: id || '' });
+      const resolved = id ? await resolveAppleMotionArtwork(id) : null;
+      // 取不到 Web token：如实报错，**不缓存成"无动态封面"** ——
+      // 否则 token 一恢复，这张专辑也会一直显示没有动态封面。
+      if (resolved && resolved.__authFailed) {
+        sendJSON(res, {
+          ok: false,
+          provider: 'apple',
+          error: 'APPLE_WEB_NO_BEARER',
+          message: 'Apple Web token 不可用，动态封面无法获取。',
+          reason: resolved.reason || '',
+          motion: null,
+          catalogId: id || '',
+        }, 503);
+        return;
+      }
+      sendJSON(res, { ok: true, provider: 'apple', motion: resolved || null, catalogId: id || '' });
     } catch (err) {
       console.error('[AppleAlbumMotion]', err);
       sendJSON(res, { ok: false, error: err.message, motion: null }, 500);
