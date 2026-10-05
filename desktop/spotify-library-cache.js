@@ -118,6 +118,10 @@ function createSpotifyLibraryCache(options) {
 
   const state = {
     loaded: false,
+    // loaded 只代表"尝试过"；diskLoadedOk 才代表"真的从盘上读到了"。
+    // 二者必须分开：否则一次早于落盘的 stats()/读调用会把 loaded 置真，
+    // 之后所有读取都跳过加载、永远返回空（实测就是这个 bug）。
+    diskLoadedOk: false,
     dirty: false,
     tracks: new Map(),        // librarySongId -> mapped song
     playlistMeta: new Map(),  // playlistId -> { id, name, trackCount, virtual, isLiked, cover, creator, snapshotId, at }
@@ -165,7 +169,7 @@ function createSpotifyLibraryCache(options) {
   }
 
   function loadFromDisk() {
-    if (state.loaded) return true;
+    if (state.diskLoadedOk) return true;
     state.loaded = true;
     if (!cachePath) return false;
     let text = '';
@@ -192,10 +196,13 @@ function createSpotifyLibraryCache(options) {
       if (Array.isArray(e) && e[0]) state.artistImage.set(String(e[0]), e[1]);
     });
     state.sync = Object.assign(state.sync, payload.sync || {});
+    state.diskLoadedOk = true;
     return true;
   }
 
   function stats() {
+    // 读之前先确保盘上数据已加载 —— stats() 是读操作，不该返回"还没加载"的假 0。
+    loadFromDisk();
     return {
       cachePath: cachePath,
       fromDisk: state.tracks.size > 0 || state.playlistMeta.size > 0,

@@ -347,6 +347,19 @@ async function requestJson(targetUrl, opts, body) {
   }
 }
 
+// 错误要能如实展示。spotifyErrorDetails(err).error 有时是对象，
+// 直接塞进响应会变成 "[object Object]" —— 排查时什么也看不到。
+function stringifySpotifyError(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    const m = value.message || value.error_description || value.reason || value.error || '';
+    if (typeof m === 'string' && m) return m;
+    try { return JSON.stringify(value).slice(0, 300); } catch (_) { return String(value); }
+  }
+  return String(value);
+}
+
 function spotifyErrorDetails(err) {
   err = err || {};
   let apiMessage = '';
@@ -861,7 +874,7 @@ async function handleSpotifyStatus() {
     authorizedAt: currentToken.authorizedAt || 0,
     stale: !!(!loggedIn && (currentToken.accessToken || currentToken.refreshToken)),
     reauthRequired: !!(profileErrorDetail && profileErrorDetail.reauthRequired),
-    error: profileErrorDetail && profileErrorDetail.error || profileError || '',
+    error: stringifySpotifyError(profileErrorDetail && profileErrorDetail.error) || profileError || '',
     errorMessage: profileErrorDetail && profileErrorDetail.message || '',
     capabilities: Object.assign({}, config.capabilities, {
       search: !!(config.clientCredentialsConfigured || loggedIn),

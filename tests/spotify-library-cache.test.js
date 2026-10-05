@@ -153,6 +153,27 @@ test('同步引擎：分页取全 / 增量 / 落盘', async (t) => {
     assert.equal(c2.playlistTracks('p1').length, 1);
   });
 
+  await t.test('**先查状态再读数据**也要能读到（真实踩过的坑）', async () => {
+    // 服务端读索引时会先调 stats() 再读 songs()。如果 stats() 把"尝试过加载"
+    // 当成"加载好了"，后续读取就会跳过加载、永远返回空 ——
+    // 表现为"盘上有 829 首，接口却返回 0"。
+    const file = tmpFile('order.json');
+    fs.writeFileSync(file, JSON.stringify({
+      schemaVersion: SPOTIFY_CACHE_SCHEMA_VERSION,
+      tracks: [{ librarySongId: 'sp:one', provider: 'spotify', id: 'one', name: 'One' }],
+      playlistMeta: [['p1', { id: 'p1', name: 'P1' }]],
+      playlistTrackIds: [['p1', ['sp:one']]],
+      savedAlbumList: [],
+      artistImage: [],
+      sync: {},
+    }), 'utf8');
+    const c = createSpotifyLibraryCache({ cachePath: file, adapter: adapter });
+    const before = c.stats();               // 这一步曾经毒化 loaded 标志
+    assert.equal(before.tracks, 1, 'stats() 要如实报盘上的数量');
+    assert.equal(c.songs().length, 1, 'stats() 之后读也必须拿得到');
+    assert.equal(c.playlistTracks('p1').length, 1);
+  });
+
   await t.test('schemaVersion 不符时当空缓存（不误用旧结构）', async () => {
     const file = tmpFile('ver.json');
     fs.writeFileSync(file, JSON.stringify({ schemaVersion: 999, tracks: [song('x', 'al1')] }), 'utf8');

@@ -5270,8 +5270,9 @@ const server = http.createServer(async (req, res) => {
 
   if (pn === '/api/spotify/library/index') {
     try {
-      const st = await handleSpotifyStatus();
-      if (!st || !st.loggedIn) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'spotify', albums: [], playlists: [], songs: 0 }); return; }
+      // **不再先探测登录态**：读缓存不需要网络。先前用 loggedIn 做门禁，
+      // 结果登录探测一旦失败（限流/断网），本地已缓存的数据也读不出来了 ——
+      // 盘上有 829 首却返回 0。登录与否让 /status 和 /library/sync 去说。
       // 有缓存就直接返回（零网络）；没有缓存则返回空索引并提示去同步，
       // 绝不在读路径上现场重拉 —— 那正是之前吃 429 的原因。
       const eng = spotifyEngine();
@@ -5357,8 +5358,7 @@ const server = http.createServer(async (req, res) => {
   // Spotify 资料库艺人（从缓存聚合；头像走缓存，只对没缓存的补）
   if (pn === '/api/spotify/library/artists') {
     try {
-      const st = await handleSpotifyStatus();
-      if (!st || !st.loggedIn) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'spotify', artists: [], total: 0 }); return; }
+      // 同样不探测登录态：艺人列表来自本地缓存
       const eng = spotifyEngine();
       const artists = spotifyLibrary.artistsFromSongs(eng.songs());
       // 先用缓存里的头像
