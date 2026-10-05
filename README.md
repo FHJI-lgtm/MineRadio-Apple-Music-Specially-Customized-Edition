@@ -17,11 +17,11 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 | <img src="docs/assets/readme/music-library-albums.webp" width="420" alt="音乐资料库"> | <img src="docs/assets/readme/playlist-detail.webp" width="420" alt="歌单详情"> |
 | **音乐资料库**：专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
 | <img src="docs/assets/readme/album-detail.webp" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
-| **专辑详情**：曲目列表 + 播放专辑 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
+| **专辑详情**：动态封面（部分专辑）+ 简介 + 曲目列表 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
 | <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | |
 | **歌词舞台**：双语歌词 + 粒子视觉（叠加在资料库之上） | |
 
-> 截图来自 v2.0.0 实际界面。
+> 截图来自 v2.1.0 实际界面。
 
 ---
 
@@ -36,6 +36,19 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 * **Apple Music 窗口可在受控状态下隐藏**（隐身模式，默认开启）：平时 Apple Music 不显示在桌面上；
   执行播放控制期间窗口状态会被**临时调整**以便完成点击，结束后**恢复隐身**。技术细节见「Apple Music 接入原理」。
 
+### 🎧 音乐资料库多源接入（v2.1.0 新增）
+* 音乐资料库支持**六个源**，在「音乐源」下切换；切换时界面清空重建，不会出现「新源标题 + 旧源内容」。
+
+| 源 | 资料库内容 | 播放 |
+|---|---|---|
+| Apple Music | 已保存的专辑 / 艺人 / 歌单 | UIA 驱动官方客户端 |
+| QQ / 酷狗 / 网易云 / 汽水 | **仅已收藏的内容** | MineRadio 应用内播放 |
+| Spotify | 喜欢的歌曲 / 歌单 / 收藏专辑 | 自动换源 |
+
+* 统一语义：**只显示你收藏过的内容**，不做全站目录浏览；数据拿不准就留空，不猜。
+* 非 Apple 源**强制走 MineRadio 自己的播放链路**，不会驱动 Apple Music —— 这是硬性约束，有结构性测试守着。
+* Spotify 的资料库**落盘缓存**并增量同步（分页 + 节流 + `snapshot_id` / 游标增量），读缓存零网络。
+
 ### 🎤 实时歌词
 * 多源匹配与回退（QQ / 酷狗 / 网易云 + Apple Music Web 私有歌词），支持双语。
 
@@ -44,19 +57,23 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 ### 🖥️ Windows 桌面集成
 * SMTC 媒体会话、桌面模式、3D 歌单架、壁纸引擎兼容等原有能力保持。
+---
+
 ## 💾 下载与安装
 
-从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载**当前版本 v2.0.0**：
+从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载**当前版本 v2.1.0**：
 
-* `MineRadio-Apple-Music-Specially-Customized-Edition-2.0.0-Setup.exe` —— 安装版（NSIS）
-* `MineRadio-Apple-Music-Specially-Customized-Edition-2.0.0.exe` —— 免安装（portable）
+* `MineRadio-Apple-Music-Specially-Customized-Edition-2.1.0-Setup.exe` —— 安装版（NSIS）
 
 * 环境：Windows 10/11；播放控制需已安装并**登录** Apple Music（Windows 版）。
 * 未签名安装包可能触发 SmartScreen 提示（小众 Electron 软件常见），请从官方 Release 下载并核对文件名。
 
 ## ⚠️ 已知限制
 
-* **播放控制仅支持 Apple Music for Windows** 作为音源；其它音乐源（QQ / 酷狗 / 网易云等）的完整资料库与播放控制**排期 2.1.0（计划功能）**。
+* **播放控制仅支持 Apple Music for Windows**；其它源走 MineRadio 应用内播放。
+* 非 Apple 源的资料库需要**先在对应平台登录**，cookie 失效时会如实提示未登录。
+* **Spotify 不提供音频直链**（官方 Web API 限制），播放会按匹配源自动换源。
+* **动态封面只有部分 Apple 专辑有**；QQ 的动态封面因取流需登录态暂未接入。
 * 播放控制依赖 UIA 与 SMTC，Apple Music 客户端界面更新可能导致个别入口需要适配。
 * 不提供 Apple Music 音频直链/下载；音频播放由 Apple Music 自身负责，MineRadio 只做视觉 / 歌词 / 封面 / 控制。
 
@@ -64,16 +81,17 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 | 能力 | 现状 |
 |---|---|
-| **完整资料库 + 播放控制** | **仅 Apple Music**（v2.0.0 正式支持） |
-| 已有登录 / 辅助接入能力 | QQ 会员状态识别、汽水音乐本地登录态、Spotify 等（沿用上游 MineRadio 能力） |
+| **资料库浏览（专辑 / 艺人 / 歌单）** | **六个源全部支持**（v2.1.0 起）：Apple Music · QQ · 酷狗 · 网易云 · 汽水 · Spotify |
+| **播放控制（驱动官方客户端）** | **仅 Apple Music**（UIA + SMTC） |
+| **应用内播放（MineRadio 自有链路）** | 非 Apple 源；Spotify 因官方不提供音频直链，按匹配源自动换源 |
 | **歌词来源** | QQ → 酷狗 → 网易云 + Apple Music Web 私有歌词 |
-| **2.1.0 计划** | 其它音乐源的**完整资料库与播放控制**整合（当前未支持） |
+| **动态封面（Motion Artwork）** | 仅部分 Apple 专辑 |
 
 ## 🚧 项目状态
 
 项目仍在持续开发中。资料库浏览、艺人详情、歌词与视觉舞台等功能会继续迭代；部分功能的兼容性与数据覆盖率可能因歌曲、系统环境及外部服务而异。
 
-**当前版本：v2.0.0**。
+**当前版本：v2.1.0**。
 
 ---
 
