@@ -137,7 +137,7 @@ test('汽水接入的接线', async (t) => {
   });
 
   await t.test('专辑/歌单详情与播放都按源分流到汽水', () => {
-    assert.ok(DETAIL.indexOf('(ne|kg|qq|qs):') >= 0, '专辑前缀要含 qs');
+    assert.ok(DETAIL.indexOf('(ne|kg|qq|qs|sp):') >= 0, '专辑前缀要含 qs');
     assert.ok(DETAIL.indexOf('/api/qishui/library/album/tracks?id=') >= 0, '专辑曲目走汽水端点');
     assert.ok(DETAIL.indexOf('/api/qishui/library/playlist/tracks?id=') >= 0, '歌单曲目走汽水端点');
     ['playLibraryAlbum', 'playLibraryPlaylist'].forEach(function (fnName) {

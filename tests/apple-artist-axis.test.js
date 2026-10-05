@@ -163,7 +163,11 @@ test('艺人详情：以 artist ID 为实体，且只展示本地资料库作品
   });
 
   await t2.test('发行类型只按名称后缀判定，不用曲目数推断', () => {
-    const fn = SERVER.slice(SERVER.indexOf('function classifyRelease'), SERVER.indexOf('const releases ='));
+    // 切片终点必须是**函数之后**的那个 const releases —— 全文件 indexOf 会命中
+    // 别处（新增的 Spotify 艺人详情也有同名变量），那样切出来是空字符串。
+    const fnStart = SERVER.indexOf('function classifyRelease');
+    const fnEnd = SERVER.indexOf('const releases =', fnStart);
+    const fn = SERVER.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 900);
     assert.match(fn, /Single/, 'Single 后缀规则');
     assert.match(fn, /EP/, 'EP 后缀规则');
     // 绝不能用 songCount === 1 判定 Single
@@ -1010,16 +1014,18 @@ test('音乐资料库导航：三个视图常驻，源列表可展开切换', as
     assert.match(block, /apple: \{ label: 'Apple Music', ready: true \}/, 'Apple 已接入');
     assert.match(block, /netease: \{ label: '网易云音乐', ready: true \}/, '网易云专辑轴已接入');
     const ready = block.match(/ready: true/g) || [];
-    assert.equal(ready.length, 5, 'Apple / 网易云 / 酷狗 / QQ / 汽水 五个源可点（实际 ' + ready.length + '）');
+    // Spotify 已接入资料库，六个源都可点
+    assert.equal(ready.length, 6, 'Apple / 网易云 / 酷狗 / QQ / 汽水 / Spotify 六个源可点（实际 ' + ready.length + '）');
     assert.match(block, /kugou: \{ label: '酷狗音乐', ready: true \}/, '酷狗已接入');
     assert.match(block, /qq: \{ label: 'QQ 音乐', ready: true \}/, 'QQ 已接入');
     const notReady = block.match(/ready: false/g) || [];
-    assert.equal(notReady.length, 1, '只剩 Spotify 未接入（实际 ' + notReady.length + '）');
-    // 未接入的源必须仍然存在，不能被误删
-    ['spotify'].forEach(function (s) {
-      // 逐行判断：该源的条目里必须出现 ready: false
+    assert.equal(notReady.length, 0, '六个源都已接入（实际 ' + notReady.length + ' 个未接入）');
+    // 六个源都必须仍然登记，不能被误删；且每个已接入的源都要有端点条目
+    ['apple', 'qq', 'kugou', 'netease', 'qishui', 'spotify'].forEach(function (s) {
       const line = block.split('\n').filter(function (l) { return l.indexOf(s + ':') >= 0; })[0] || '';
-      assert.match(line, /ready: false/, s + ' 应保持未接入状态（实际: ' + line.trim() + '）');
+      assert.match(line, /ready: true/, s + ' 已接入（实际: ' + line.trim() + '）');
+      assert.ok(MOD.indexOf('index: ' + "'" + (s === 'apple' ? '/api/apple' : s === 'spotify' ? '/api/spotify' : ('/api/' + s)) + '/library/index' + "'") > 0,
+        s + ' 必须有资料库索引端点');
     });
   });
 
@@ -1235,10 +1241,17 @@ test('多源播放：非 Apple 源必须走应用内播放器，不得落到 UIA
     assert.match(MOD, /isNetease/, '歌单详情要判源');
     assert.match(MOD, /\/api\/playlist\/tracks\?id=/, '非 Apple 源走该源自己的曲目端点');
     const fn = MOD.slice(MOD.indexOf('function plLoad'), MOD.indexOf('window.openAmPlaylistDetail'));
-    // 三元表达式：非网易云 -> Apple 端点；网易云 -> 本源端点。两者必须都出现且互斥分支。
-    assert.match(fn, /var isNetease = [^;]+;/, '先判定是否网易云');
-    assert.match(fn, /isNetease\s*\n?\s*\?\s*'\/api\/playlist\/tracks\?id='/, '网易云分支走本源端点');
-    assert.match(fn, /:\s*'\/api\/apple\/playlist\/tracks\?id=/, 'Apple 分支才用 Apple 端点');
+    // 每个已接入的源都必须有自己的分支 —— 白名单式 if/else 在新增源时必然漏：
+    // Spotify 曾掉进最后的 Apple 分支，弹窗显示「Apple Music Web 返回 HTTP 404」。
+    assert.match(fn, /var isNetease = [^;]+;/, '要判网易云');
+    assert.match(fn, /var isSpotify = [^;]+;/, '要判 Spotify');
+    assert.match(fn, /'\/api\/playlist\/tracks\?id='/, '网易云走本源端点');
+    assert.match(fn, /'\/api\/spotify\/library\/playlist\/tracks\?id='/, 'Spotify 走本源端点');
+    // Apple 端点只能由 isApple 判定，不得作为兜底
+    const appleAt = fn.indexOf("'/api/apple/playlist/tracks?id='");
+    assert.ok(appleAt > 0, 'Apple 分支仍应存在');
+    assert.match(fn.slice(Math.max(0, appleAt - 120), appleAt), /isApple\s*\?/, 'Apple 端点必须由 isApple 判定');
+    assert.ok(!/isApple\s*=\s*true/.test(fn), 'isApple 不得恒真');
   });
 });
 ;
@@ -1428,7 +1441,7 @@ test('音乐资料库：网易云专辑简介接入', async (t20) => {
   });
 
   await t20.test('客户端把服务端专辑元数据并入当前专辑后再渲染', () => {
-    const i = MOD.indexOf('if (/^(ne|kg|qq|qs):/.test(albumId)) {');
+    const i = MOD.indexOf('if (/^(ne|kg|qq|qs|sp):/.test(albumId)) {');
     // 源变多后这一段更长了，切片要够（否则 renderInfo 落在范围外被误判）
     const fn = MOD.slice(i, i + 2600);
     assert.match(fn, /apiJson\(albumTracksUrl\)/, '端点按源选（不再是写死的网易云 URL）');

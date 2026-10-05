@@ -90,7 +90,7 @@ test('打包完整性：根目录被 require 的 JS 必须在 build.files 白名
   });
 
   await t.test('新增的适配层必须在白名单里（曾全部遗漏）', () => {
-    ['kugou-library-adapter.js', 'netease-library-adapter.js', 'qq-library-adapter.js', 'qishui-library-adapter.js'].forEach(function (f) {
+    ['kugou-library-adapter.js', 'netease-library-adapter.js', 'qq-library-adapter.js', 'qishui-library-adapter.js', 'spotify-library-adapter.js'].forEach(function (f) {
       assert.ok(included(f), f + ' 必须进包（server.js 会 require 它）');
     });
   });

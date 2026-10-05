@@ -563,18 +563,23 @@
     }
     // 非 Apple 源：id 带源前缀（ne: / kg:），走该源的取数端点。
     // 不能落到 Apple 端点上 —— 那会拿不到任何曲目，看起来就像"点不开"。
-    if (/^(ne|kg|qq|qs):/.test(albumId)) {
+    // 前缀白名单必须与"已接入的源"同步。**曾经漏掉 sp:** —— Spotify 专辑
+    // 于是一路落到 Apple 端点，表现为「Apple Music Web 返回 HTTP 404」或空列表。
+    if (/^(ne|kg|qq|qs|sp):/.test(albumId)) {
       try {
         var isKugouAlbum = /^kg:/.test(albumId);
         var isQQAlbum = /^qq:/.test(albumId);
         var isQishuiAlbum = /^qs:/.test(albumId);
+        var isSpotifyAlbum = /^sp:/.test(albumId);
         var albumTracksUrl = isKugouAlbum
           ? '/api/kugou/library/album/tracks?id=' + encodeURIComponent(albumId)
           : (isQQAlbum
             ? '/api/qq/library/album/tracks?id=' + encodeURIComponent(albumId)
             : (isQishuiAlbum
               ? '/api/qishui/library/album/tracks?id=' + encodeURIComponent(albumId)
-              : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId)));
+              : (isSpotifyAlbum
+                ? '/api/spotify/library/album/tracks?id=' + encodeURIComponent(albumId)
+                : '/api/netease/library/album/tracks?id=' + encodeURIComponent(albumId))));
         var neData = await apiJson(albumTracksUrl);
         if (seq !== reqSeq) return;
         var neSongs = (neData && Array.isArray(neData.tracks)) ? neData.tracks : [];
@@ -1003,18 +1008,32 @@
     var isKugou = /^kg:/.test(id) || prov === 'kugou';
     var isQQ = /^qq:/.test(id) || prov === 'qq';
     var isQishui = /^qs:/.test(id) || prov === 'qishui';
+    var isApple = /^l\./.test(id) || /^p\./.test(id) || prov === 'apple';
     // 酷狗：走自己的端点按歌单原始顺序取全（内部逐页取全，实测 475/475）。
     // 不用 /api/playlist/tracks 是因为那个端点额外做了"最近添加在前"的排序与适配，
     // 而歌单详情应当保持歌单自身顺序。
+    // Spotify：走自己的资料库端点。**这条以前缺失** —— 于是 Spotify 歌单
+    // 掉进最后的 Apple 分支，弹窗里显示「Apple Music Web 返回 HTTP 404」，
+    // 但卡片标签却是 SPOTIFY。这与"歌单视图只判 isNetease"是同一类错误：
+    // 白名单式 if/else，新增源时必然漏。
+    var isSpotify = /^sp:/.test(id) || prov === 'spotify';
     var url = isKugou
       ? '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^kg:/, ''))
       : (isQQ
         ? '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^qq:/, ''))
         : (isQishui
           ? '/api/qishui/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^qs:/, ''))
-          : (isNetease
-            ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
-            : '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1')));
+          : (isSpotify
+            ? '/api/spotify/library/playlist/tracks?id=' + encodeURIComponent(id.replace(/^sp:/, ''))
+            : (isNetease
+              ? '/api/playlist/tracks?id=' + encodeURIComponent(id.replace(/^ne:/, ''))
+              : (isApple ? '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1' : '')))));
+    // 兜底：认不出的源**绝不回落 Apple** —— 那只会得到一句无关的 404。
+    // 如实告知"该源歌单尚未接入"，而不是把 Apple 的错误显示给用户。
+    if (!url) {
+      fail(((playlist.sourceLabel || prov || '该源') + ' 的歌单浏览尚未接入。'));
+      return;
+    }
     apiJson(url).then(function (data) {
       if (seq !== plSeq) return;
       var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];

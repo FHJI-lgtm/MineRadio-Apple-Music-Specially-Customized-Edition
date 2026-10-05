@@ -135,7 +135,11 @@ const {
   handleSpotifyCreatePlaylist,
   handleSpotifySongUrl,
   handleSpotifyLyric,
+  spotifyUserGet,
+  spotifyErrorDetails,
 } = require('./spotify-api');
+const spotifyLibrary = require('./spotify-library-adapter');
+const { createSpotifyLibraryCache, createThrottle } = require('./desktop/spotify-library-cache');
 const {
   clearAppleToken,
   handleAppleSongUrl,
@@ -5127,6 +5131,340 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[KugouRecommendations]', err);
       sendJSON(res, { provider: 'kugou', error: err.message, songs: [] }, 500);
+    }
+    return;
+  }
+
+  // ---- Spotify → 音乐资料库（与其它五个源同形）----
+  // 个人库 = 喜欢的歌曲 + 全部歌单的曲目（去重）。
+  // 实测曲目对象已带 albumId/artists[]/cover/duration，与其它源一一对应。
+  // ---- Spotify 资料库：落盘缓存 + 节流 + 增量同步 ----
+  // 最初的实现每次请求都现场重拉（索引一次 40+ 次 API 调用），很快吃到 429，
+  // 而且越重试越糟。现在改为：**先落盘，增量同步，全程节流**。
+  const spotifyThrottle = createThrottle({ minIntervalMs: 120 });
+  let spotifyCacheEngine = null;
+
+  function spotifyEngine() {
+    if (spotifyCacheEngine) return spotifyCacheEngine;
+    spotifyCacheEngine = createSpotifyLibraryCache({
+      throttle: spotifyThrottle,
+      adapter: spotifyLibrary,
+      // 歌单列表：Spotify 每页上限 50，这里按 50 分页取全
+      listPlaylists: async function (o) {
+        const out = [];
+        let offset = 0;
+        for (let guard = 0; guard < 40; guard += 1) {
+          const page = await handleSpotifyUserPlaylists({ limit: 50, offset: offset });
+          const items = (page && page.playlists) || [];
+          if (!items.length) break;
+          items.forEach(function (pl) {
+            // snapshot_id 由 handleSpotifyUserPlaylists 透传（若无则为空 -> 每次都重拉）
+            out.push(pl);
+          });
+          const total = Number(page && page.total) || 0;
+          if (total && out.length >= total) break;
+          if (!(page && page.hasMore)) break;
+          offset += items.length;
+        }
+        return { playlists: out, total: out.length };
+      },
+      playlistTracks: function (id, o) {
+        return handleSpotifyPlaylistTracks(String(id).replace(/^sp:/, ''), { limit: o.limit, offset: o.offset });
+      },
+      // 喜欢的歌曲：走 /me/tracks 的 after 游标（Spotify 原生增量语义）。
+      // 不能用 offset 深翻 —— 那是 O(n) 且容易漏；after 只取新增。
+      // 直接用 spotifyUserGet（既有 handler 不透传 after，也不回传游标）。
+      savedTracks: async function (o) {
+        const st = await handleSpotifyStatus();
+        const params = { limit: o.limit, market: (st && st.market) || 'US' };
+        if (o.after) params.after = o.after;
+        let page = null;
+        try {
+          page = await spotifyUserGet('/me/tracks', params, { timeoutMs: 12000 });
+        } catch (err) {
+          const detail = typeof spotifyErrorDetails === 'function' ? spotifyErrorDetails(err) : {};
+          throw Object.assign(new Error('SPOTIFY_SAVED_TRACKS_FAILED'), detail, { statusCode: detail.statusCode });
+        }
+        const items = (page && page.items) || [];
+        let maxAt = String(o.after || '');
+        items.forEach(function (it) {
+          const at = String((it && it.added_at) || '');
+          if (at && at > maxAt) maxAt = at;
+        });
+        return {
+          tracks: items.map(function (it) { return (it && it.track) || null; }).filter(Boolean),
+          total: Number(page && page.total) || 0,
+          hasMore: !!(page && page.next),
+          cursor: maxAt,
+        };
+      },
+      savedAlbums: async function (o) {
+        const page = await spotifyUserGet('/me/albums', { limit: o.limit, offset: o.offset }, { timeoutMs: 12000 });
+        return { items: (page && page.items) || [], next: page && page.next };
+      },
+    });
+    spotifyCacheEngine.loadFromDisk();
+    return spotifyCacheEngine;
+  }
+
+  // ---- Spotify 资料库：**一律从本地缓存读**，只有 /library/sync 才打 Spotify ----
+  function buildSpotifyIndex() {
+    const eng = spotifyEngine();
+    const songs = eng.songs();
+    const playlists = eng.playlists();
+    const byId = new Map();
+    eng.savedAlbumCards().forEach(function (a) { byId.set(String(a.albumId), a); });
+    spotifyLibrary.albumsFromSongs(songs).forEach(function (a) {
+      if (!byId.has(String(a.albumId))) byId.set(String(a.albumId), a);
+    });
+    const albums = Array.from(byId.values()).map(spotifyLibrary.toAppleShapedAlbumCard).filter(Boolean);
+    return {
+      ok: true,
+      provider: 'spotify',
+      playlists: playlists,
+      songs: songs,
+      savedSongIds: songs.map(function (x) { return x.librarySongId; }),
+      albums: albums,
+      counts: { playlists: playlists.length, songs: songs.length, albums: albums.length },
+      cache: eng.stats(),
+    };
+  }
+
+  // 同步：分页 + 节流 + 增量。**这是唯一会打 Spotify 的资料库入口**。
+  // 首次调用做全量（逐歌单按 snapshot 增量、喜欢的歌曲用 after 游标），
+  // 之后重复调用只会取新增。
+  if (pn === '/api/spotify/library/sync') {
+    try {
+      const eng = spotifyEngine();
+      const wantFull = url.searchParams.get('full') === '1';
+      const out = await eng.sync({ full: wantFull });
+      if (!out.ok && out.error === 'RATE_LIMITED') {
+        // 如实告知限流与退避剩余时间，不谎报失败原因，也不继续猛打
+        sendJSON(res, {
+          ok: false,
+          error: 'RATE_LIMITED',
+          message: 'Spotify 限流中，已暂停请求。已缓存的数据仍可浏览。',
+          cache: eng.stats(),
+        }, 429);
+        return;
+      }
+      sendJSON(res, Object.assign({ provider: 'spotify' }, out));
+    } catch (err) {
+      console.error('[SpotifyLibrarySync]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'spotify' }, 500);
+    }
+    return;
+  }
+
+  // 缓存状态（不触发任何网络请求）
+  if (pn === '/api/spotify/library/cache') {
+    try {
+      const eng = spotifyEngine();
+      eng.loadFromDisk();
+      sendJSON(res, { ok: true, provider: 'spotify', cache: eng.stats() });
+    } catch (err) {
+      sendJSON(res, { ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/spotify/library/index') {
+    try {
+      const st = await handleSpotifyStatus();
+      if (!st || !st.loggedIn) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'spotify', albums: [], playlists: [], songs: 0 }); return; }
+      // 有缓存就直接返回（零网络）；没有缓存则返回空索引并提示去同步，
+      // 绝不在读路径上现场重拉 —— 那正是之前吃 429 的原因。
+      const eng = spotifyEngine();
+      eng.loadFromDisk();
+      const stats0 = eng.stats();
+      if (!stats0.tracks && !stats0.playlists) {
+        sendJSON(res, {
+          ok: true,
+          provider: 'spotify',
+          albums: [], playlists: [], songs: 0,
+          needsSync: true,
+          message: 'Spotify 资料库尚未同步到本地。',
+          cache: stats0,
+        });
+        return;
+      }
+      sendJSON(res, buildSpotifyIndex());
+    } catch (err) {
+      console.error('[SpotifyLibraryIndex]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'spotify', albums: [], playlists: [], songs: 0 }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/spotify/library/playlist/tracks') {
+    try {
+      const pidRaw = String(url.searchParams.get('id') || '').trim();
+      const pid = pidRaw.replace(/^sp:/, '');
+      if (!pid) { sendJSON(res, { ok: false, error: 'MISSING_PLAYLIST_ID', tracks: [] }, 400); return; }
+      const eng = spotifyEngine();
+      const tracks = eng.playlistTracks(pid);
+      const meta = eng.playlists().filter(function (p) { return String(p.id) === pid; })[0] || {};
+      sendJSON(res, {
+        ok: true,
+        provider: 'spotify',
+        playlist: { id: 'sp:' + pid, name: meta.name || '', trackCount: tracks.length },
+        tracks: tracks,
+        total: tracks.length,
+        truncated: false,
+        fromCache: true,
+      });
+    } catch (err) {
+      console.error('[SpotifyPlaylistTracksLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'spotify', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // Spotify 专辑曲目：**只显示已收藏的曲目**（与其它源的资料库语义一致）
+  if (pn === '/api/spotify/library/album/tracks') {
+    try {
+      const aid = String(url.searchParams.get('id') || '').replace(/^sp:/, '').trim();
+      if (!aid) { sendJSON(res, { error: 'MISSING_ALBUM_ID', tracks: [] }, 400); return; }
+      const eng = spotifyEngine();
+      const mine = eng.songs().filter(function (t) { return String(t.albumId) === aid; });
+      const meta = eng.savedAlbumCards().filter(function (a) { return String(a.albumId) === aid; })[0] || {};
+      const cover = (mine[0] && mine[0].cover) || meta.cover || '';
+      sendJSON(res, {
+        ok: true,
+        provider: 'spotify',
+        albumTotal: mine.length,
+        savedTotal: mine.length,
+        album: {
+          id: 'sp:' + aid,
+          name: meta.name || (mine[0] && mine[0].albumName) || '',
+          artist: meta.artist || (mine[0] && mine[0].artist) || '',
+          cover: cover,
+          releaseDate: meta.releaseDate || '',
+          // Spotify 不提供专辑简介 -> 留空，前端整块隐藏（不编造）
+          description: '',
+        },
+        tracks: mine,
+        total: mine.length,
+        fromCache: true,
+      });
+    } catch (err) {
+      console.error('[SpotifyAlbumTracksLib]', err);
+      sendJSON(res, { error: err.message, provider: 'spotify', tracks: [] }, 500);
+    }
+    return;
+  }
+
+  // Spotify 资料库艺人（从缓存聚合；头像走缓存，只对没缓存的补）
+  if (pn === '/api/spotify/library/artists') {
+    try {
+      const st = await handleSpotifyStatus();
+      if (!st || !st.loggedIn) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'spotify', artists: [], total: 0 }); return; }
+      const eng = spotifyEngine();
+      const artists = spotifyLibrary.artistsFromSongs(eng.songs());
+      // 先用缓存里的头像
+      artists.forEach(function (a) {
+        const img = eng.getArtistImage(a.artistId);
+        if (img) { a.image = img; a.hasImage = true; a.imageRule = 'spotify-artist-image'; }
+      });
+      // enrich：对**没有缓存头像**的补取，节流 + 低并发；限流即停，不硬撑
+      const wantEnrich = url.searchParams.get('enrich') !== '0';
+      let enriched = 0;
+      let rateLimited = false;
+      if (wantEnrich) {
+        const need = artists.filter(function (a) { return a.artistId && !a.hasImage; }).slice(0, 40);
+        const CONC = 3;
+        let cursor = 0;
+        let stopEnrich = false;
+        async function worker() {
+          while (cursor < need.length) {
+            if (rateLimited) return;
+            const a = need[cursor]; cursor += 1;
+            try {
+              const info = await spotifyThrottle.run(function () {
+                return spotifyUserGet('/artists/' + encodeURIComponent(a.artistId), null, { timeoutMs: 9000 });
+              });
+              const img = ((info && info.images) || [])[0];
+              const url2 = (img && img.url) ? String(img.url) : '';
+              eng.setArtistImage(a.artistId, url2);
+              if (url2) { a.image = url2; a.hasImage = true; a.imageRule = 'spotify-artist-image'; }
+              enriched += 1;
+            } catch (err) {
+              // 限流：**停止**本轮补取并如实上报，不重试轰炸
+              stopEnrich = true;
+              rateLimited = true;
+              spotifyThrottle.noteRateLimit(Number(err && err.retryAfterSeconds) * 1000 || 1000);
+              return;
+            }
+          }
+        }
+        const ws = [];
+        for (let i = 0; i < Math.min(CONC, need.length); i += 1) ws.push(worker());
+        await Promise.all(ws);
+        eng.persist();
+      }
+      sendJSON(res, {
+        ok: true,
+        provider: 'spotify',
+        artists: artists,
+        total: artists.length,
+        withImage: artists.filter(function (x) { return x.hasImage; }).length,
+        songTotal: eng.songs().length,
+        enriched: enriched,
+        rateLimited: rateLimited,
+        fromCache: true,
+      });
+    } catch (err) {
+      console.error('[SpotifyLibraryArtists]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'spotify', artists: [], total: 0 }, 500);
+    }
+    return;
+  }
+
+  // Spotify 艺人详情：从缓存聚合（零网络），头像优先用缓存
+  if (pn === '/api/spotify/library/artist/detail') {
+    try {
+      const aid = String(url.searchParams.get('id') || '').replace(/^sp:/, '').trim();
+      if (!aid) { sendJSON(res, { ok: false, error: 'MISSING_ARTIST_ID' }, 400); return; }
+      const eng = spotifyEngine();
+      const mine = eng.songs().filter(function (sg) {
+        if (String(sg.artistId || '') === aid) return true;
+        return (sg.artists || []).some(function (a) { return String(a && a.id) === aid; });
+      });
+      let name = String(url.searchParams.get('name') || '');
+      if (!name) name = (mine[0] && mine[0].artist) || '';
+      const byAlbum = new Map();
+      mine.forEach(function (sg) {
+        const key = String(sg.albumId || '');
+        if (!key) return;
+        if (!byAlbum.has(key)) byAlbum.set(key, { albumId: key, name: sg.albumName || '未命名专辑', cover: sg.cover || '', songCount: 0 });
+        const rec = byAlbum.get(key);
+        rec.songCount += 1;
+        if (!rec.cover && sg.cover) rec.cover = sg.cover;
+      });
+      const releases = Array.from(byAlbum.values()).map(function (r) {
+        return { libraryAlbumId: 'sp:' + r.albumId, name: r.name, cover: r.cover, releaseDate: '', songCount: r.songCount, type: 'album' };
+      });
+      const image = eng.getArtistImage(aid);
+      sendJSON(res, {
+        ok: true,
+        provider: 'spotify',
+        artistId: 'sp:' + aid,
+        name: name,
+        genres: [],
+        image: image,
+        hasImage: !!image,
+        imageRule: image ? 'spotify-artist-image' : '',
+        // Spotify 没有艺人简介接口 -> 不编造
+        wiki: null,
+        wikiLang: '',
+        songTotal: mine.length,
+        releaseTotal: releases.length,
+        sections: { album: releases, single: [], ep: [], unknown: [] },
+        fromCache: true,
+      });
+    } catch (err) {
+      console.error('[SpotifyArtistDetailLib]', err);
+      sendJSON(res, { ok: false, error: err.message, provider: 'spotify' }, 500);
     }
     return;
   }

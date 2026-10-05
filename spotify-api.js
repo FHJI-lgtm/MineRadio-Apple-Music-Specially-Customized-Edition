@@ -1022,6 +1022,8 @@ function mapSpotifyPlaylist(item, profile) {
     collaborative: !!item.collaborative,
     spotifyUrl: item.external_urls && item.external_urls.spotify || '',
     spotifyUri: normalizeText(item.uri),
+    // 增量同步用：歌单内容变了 snapshot_id 才会变，据此跳过没变的歌单的曲目拉取
+    snapshotId: normalizeText(item.snapshot_id),
   };
 }
 
@@ -1462,6 +1464,8 @@ module.exports = {
   handleSpotifyCreatePlaylist,
   handleSpotifySongUrl,
   handleSpotifyLyric,
+  // 带用户 token 的 GET —— 资料库侧（艺人等）需要它；此前只在 _test 里暴露
+  spotifyUserGet,
   SPOTIFY_SEARCH_LIMIT_MAX,
   SPOTIFY_LIKED_PLAYLIST_ID,
   _test: {

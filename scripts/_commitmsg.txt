@@ -1,0 +1,34 @@
+feat(spotify): 资料库改为落盘缓存 + 分页 + 节流 + 增量同步
+
+你指出得对：不该继续重试轰炸，先把已拿到的数据留住，再把同步做成分页 + 节流 + 增量。已按这个方向重做。
+
+**问题现状（实测）**：最初的实现每次请求都现场重拉 —— 索引一次要 40+ 次 API 调用，
+38 次请求就吃到 429；而且越重试越糟。
+
+**新增 desktop/spotify-library-cache.js**（与 Apple 的 apple-music-library-cache.js 同一套思路）：
+  1) 落盘：userData 下的 spotify-library-cache.json，原子写（先写 .tmpdir 再改名，不残留半截文件）；
+     schemaVersion 不符就当空缓存重建。
+  2) 分页：所有列表按自身分页语义取全（Spotify 每页上限 50），解析不出下一页就停下。
+  3) 节流：全局最小间隔 120ms（≈8 QPS），请求串行；429 时按 Retry-After 退避，
+     **退避期内直接拒绝新请求而不是排队堆积**。
+  4) 增量：歌单比对 snapshot_id（没变就不重拉曲目）；喜欢的歌曲走 /me/tracks 的 **after 游标**
+     （Spotify 原生增量语义，不用 offset 深翻）；艺人头像得到即缓存。
+
+**关键取舍**：限流时**已拿到的数据也落盘**（只是不把这次记为成功同步），
+所以下次不用从头再打 —— 这正是「越重试越糟」的解药。
+读路径（index / album / playlist / artists / artist detail）**一律零网络**，只有 /library/sync 打 Spotify。
+
+顺带修掉的两处路由 bug（与之前「歌单视图只判 isNetease」同类）：
+  歌单详情与专辑详情的前缀白名单漏了 sp:，Spotify 掉进最后的 Apple 分支 ——
+  弹窗里显示「Apple Music Web 返回 HTTP 404」，卡片标签却是 SPOTIFY。
+  现在改为：每个源显式分支 + 认不出的源**如实说未接入**，绝不回落 Apple。
+
+**实测**（首次全量同步）：38 次请求（节流生效）→ 829 首 / 4 歌单 / 250 收藏专辑，
+全部落盘（0.70 MB）；限流时如实返回 429 与退避剩余时间，缓存数据仍可浏览；
+第二次同步因退避立即返回，不再发请求。
+
+测试：新增 tests/spotify-library-cache.test.js（17 项：节流间隔与退避、单任务失败不卡死、
+分页取全、snapshot 未变不重拉/变了必重拉、after 游标推进且游标不前进即停、落盘与读回、
+schemaVersion 不符丢弃、原子写不残留、限流如实上报、**限流时已拿到的数据必须落盘**、依赖未接好如实报错、打包白名单）。
+另修 5 处因源变多而失效的测试切片/前缀断言（新增 sp 前缀后旧断言找错位置）。
+全量除 tests/update-external-only.test.js 的既有失败外全过。

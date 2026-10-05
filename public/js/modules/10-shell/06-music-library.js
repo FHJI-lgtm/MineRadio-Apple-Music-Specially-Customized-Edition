@@ -195,6 +195,16 @@
     if (libraryIndexInflight && libraryIndexInflight.src === s2) return libraryIndexInflight.promise;
     var promise = apiJson(libraryIndexEndpoint(s2))
       .then(function (data) {
+        // Spotify 的资料库在服务端是**本地缓存**，同步才打 Spotify。
+        // 首次（无缓存）先触发一次同步再取索引，避免读到空索引却以为"没数据"。
+        // 同步自身有分页 + 节流，限流时会如实返回 429，这里不重试。
+        if (s2 === 'spotify' && data && data.needsSync) {
+          return apiJson('/api/spotify/library/sync').catch(function () { return null; })
+            .then(function () { return apiJson(libraryIndexEndpoint(s2)); });
+        }
+        return data;
+      })
+      .then(function (data) {
         // 网易云端点不返回 changed（那套"探测 Apple 是否有变动"的语义只属于本地索引），
         // 这里补成 true，让上层按"新数据"处理。
         if (data && data.changed === undefined) data.changed = true;
@@ -332,6 +342,22 @@
       playlistsFromIndex: true,
       usesWikiApi: false,
     },
+    spotify: {
+      index: '/api/spotify/library/index',
+      artists: '/api/spotify/library/artists',
+      artistDetail: function (id, name) {
+        return '/api/spotify/library/artist/detail?id=' + encodeURIComponent(String(id).replace(/^sp:/, ''))
+          + '&name=' + encodeURIComponent(name || '');
+      },
+      albumTracks: function (id) { return '/api/spotify/library/album/tracks?id=' + encodeURIComponent(id); },
+      // Spotify 歌单随索引返回（与网易云/QQ/汽水一致）
+      playlistsFromIndex: true,
+      playlistTracks: function (id) {
+        return '/api/spotify/library/playlist/tracks?id=' + encodeURIComponent(String(id).replace(/^sp:/, ''));
+      },
+      // Spotify 没有公开的艺人简介接口 -> 不查维基，避免张冠李戴
+      usesWikiApi: false,
+    },
     kugou: {
       index: '/api/kugou/library/index',
       artists: '/api/kugou/library/artists',
@@ -356,7 +382,7 @@
     // 3 个歌单 / 8+251+286 首、专辑按 albumId 正确归并。
     netease: { label: '网易云音乐', ready: true },
     qishui: { label: '汽水音乐', ready: true },
-    spotify: { label: 'Spotify', ready: false },
+    spotify: { label: 'Spotify', ready: true },
   };
   var MLIB_SOURCE_ORDER = ['apple', 'qq', 'kugou', 'netease', 'qishui', 'spotify'];
   // 未接入的源在界面上统一用这句，保持口径一致

@@ -214,8 +214,8 @@ test('酷狗专辑简介与发行日期（同样是"基础信息/详细资料"�
   });
 
   await t4.test('客户端合并发行日期并重渲染（网易云不提供则不覆盖）', () => {
-    const i = MOD.indexOf('if (/^(ne|kg|qq|qs):/.test(albumId)) {');
-    const fn = MOD.slice(i, i + 1800);
+    const i = MOD.indexOf('if (/^(ne|kg|qq|qs|sp):/.test(albumId)) {');
+    const fn = MOD.slice(i, i + 3200);   // 源变多后这段更长，切片要够
     // 条件形式可能演进（如 if (neAlbum.releaseDate) / if (neData.album.releaseDate)），
     // 断言"必须存在针对 releaseDate 的条件赋值"，而不是写死变量名
     assert.match(fn, /if \(\w+(?:\.\w+)*\.releaseDate\)[^\n]*releaseDate/, '有值才覆盖');
