@@ -88,3 +88,4 @@ tmp/
 *.png.tmp
 verification/
 screenshots/
+_commitmsg.txt
