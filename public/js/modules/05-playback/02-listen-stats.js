@@ -198,6 +198,9 @@ function beginListenSession(song, context) {
     listenMs: 0,
     maxProgress: 0,
   };
+  if (typeof playEventBeginSession === 'function') {
+    try { playEventBeginSession(listenSession, context || activeRadioContext || null); } catch (e) { }
+  }
 }
 function tickListenSessionSnapshot(session, force) {
   if (!session || !audio || !audio.duration || audio.paused) return;
@@ -221,7 +224,7 @@ function updateListenStatsTick(force) {
   if (!listenSession) return;
   tickListenSessionSnapshot(listenSession, force);
 }
-function finalizeListenSession(completed) {
+function finalizeListenSession(completed, endReason, endInfo) {
   if (!listenSession) return;
   var session = listenSession;
   tickListenSessionSnapshot(session, true);
@@ -230,6 +233,22 @@ function finalizeListenSession(completed) {
     : listenSnapshotDurationMs(session.song);
   listenSession = null;
   var effective = completed || session.listenMs >= 45000 || session.maxProgress >= 0.5 || (!audio || !audio.duration ? session.listenMs >= 30000 : false);
+  // P0 黑匣子: 必须在 effective 门槛之前落库 —— 短跳过正是推荐系统最需要的负反馈,
+  // 而下面那行 return 会把 <45s 且 <50% 的会话整条丢掉。事件表不做这个门槛。
+  if (typeof playEventFinalizeSession === 'function') {
+    try {
+      playEventFinalizeSession(session, {
+        completed: !!completed,
+        effective: effective,
+        endReason: endReason || (completed ? 'ended' : 'track-switch'),
+        durationMs: actualDurationMs,
+        listenMs: session.listenMs,
+        maxProgress: session.maxProgress,
+        userInitiated: !!(endInfo && endInfo.userInitiated),
+        insertedBy: (endInfo && endInfo.insertedBy) || ''
+      });
+    } catch (e) { }
+  }
   if (!effective) return;
   var now = Date.now();
   var snap = session.song || {};

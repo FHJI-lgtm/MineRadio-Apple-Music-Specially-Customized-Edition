@@ -656,6 +656,7 @@ function nextTrack(userInitiated) {
       }
       currentIdx = playQueue.length > previousTail + 1 ? previousTail + 1 : 0;
       var tailOpts = userInitiated ? { manual: true, suppressPlayFailureNotice: true } : { suppressPlayFailureNotice: true };
+      tailOpts.endReason = userInitiated ? 'next' : 'auto-advance';
       if (playMode === 'shuffle') tailOpts.skipShuffleOrder = true;
       return playQueueAt(currentIdx, tailOpts);
     }).finally(forcePlaybackControlsInteractive);
@@ -664,6 +665,7 @@ function nextTrack(userInitiated) {
   if (playMode === 'shuffle') currentIdx = currentIdx < 0 ? 0 : (currentIdx + 1) % playQueue.length;
   else currentIdx = (currentIdx + 1) % playQueue.length;
   var opts = userInitiated ? { manual: true, suppressPlayFailureNotice: true } : { suppressPlayFailureNotice: true };
+  opts.endReason = userInitiated ? 'next' : 'auto-advance';
   if (playMode === 'shuffle') opts.skipShuffleOrder = true;
   Promise.resolve(playQueueAt(currentIdx, opts)).finally(forcePlaybackControlsInteractive);
 }
@@ -679,6 +681,7 @@ function prevTrack(userInitiated) {
   forcePlaybackControlsInteractive();
   currentIdx = (currentIdx - 1 + playQueue.length) % playQueue.length;
   var opts = userInitiated ? { manual: true, suppressPlayFailureNotice: true } : { suppressPlayFailureNotice: true };
+  opts.endReason = userInitiated ? 'prev' : 'auto-advance';
   if (playMode === 'shuffle') opts.skipShuffleOrder = true;
   Promise.resolve(playQueueAt(currentIdx, opts)).finally(forcePlaybackControlsInteractive);
 }

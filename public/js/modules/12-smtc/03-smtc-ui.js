@@ -263,6 +263,8 @@ function smtcSyncBarPlayIcon() {
 }
 
 function smtcControlCommand(cmd) {
+  // P0: 只有用户在 MineRadio 界面按的上一首/下一首才带方向; AM 自己的界面/媒体键没有方向信息
+  if (typeof smtcListenNoteCommand === 'function') smtcListenNoteCommand(cmd);
   var api = window.desktopWindow;
   if (!api || typeof api.smtcControl !== 'function') {
     console.log('[Renderer][' + Date.now() + '] SMTC control unavailable (preload missing)');

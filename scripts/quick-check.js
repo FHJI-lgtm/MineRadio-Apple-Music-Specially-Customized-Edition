@@ -220,6 +220,26 @@ function runHomeDailyRecommendationRegressionCheck() {
   process.stdout.write(result.stdout || '');
 }
 
+function runSmartShuffleRegressionCheck() {
+  logStep('Smart Shuffle scoring, cooldown, insertion ratio and P0 play-event regression');
+  const testFiles = [
+    path.join(appRoot, 'tests', 'smart-shuffle-scoring.test.js'),
+    path.join(appRoot, 'tests', 'smart-shuffle-candidates.test.js'),
+    path.join(appRoot, 'tests', 'smtc-listen-session.test.js'),
+    path.join(appRoot, 'tests', 'smart-shuffle-toggle.test.js'),
+  ];
+  const result = spawnSync(process.execPath, ['--test'].concat(testFiles), {
+    cwd: appRoot,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
+    fail('smart shuffle regression failed: ' + testFiles.map(rel).join(', '));
+  }
+  process.stdout.write(result.stdout || '');
+}
+
 function runQishuiProviderDistributionRegressionCheck() {
   logStep('Qishui provider distribution, entitlement, and signed Passport QR regression');
   const testFiles = [
@@ -5427,6 +5447,7 @@ async function main() {
   runSpotifyApiResilienceRegressionCheck();
   runPlatformAccountSyncGuardCheck();
   runHomeDailyRecommendationRegressionCheck();
+  runSmartShuffleRegressionCheck();
   parseCombinedIndexModules();
   scanForbiddenMarkers();
   checkMainWindowChrome();

@@ -881,7 +881,7 @@ async function playLocalQueueSong(song, idx, token, firstVisualPlay, opts, resum
       if (typeof noteCuefieldAutoMixOutgoingEnded === 'function') noteCuefieldAutoMixOutgoingEnded(this, token, currentIdx);
       return;
     }
-    finalizeListenSession(true);
+    finalizeListenSession(true, 'ended');
     if (playAlbumGaplessNextOnEnded(token)) return;
     if (playMode === 'single') setTimeout(function () { playQueueAt(currentIdx, { autoRepeat: true, suppressPlayFailureNotice: true }); }, 0);
     else setTimeout(nextTrack, 0);
@@ -962,10 +962,14 @@ async function playQueueAt(idx, opts) {
   function markPlayPhase(name) { playPhase = name; }
   try {
     markPlayPhase('session-finalize');
-    safePlaybackStep('session-finalize', function () { finalizeListenSession(false); });
+    safePlaybackStep('session-finalize', function () { finalizeListenSession(false, (opts && opts.endReason) || 'track-switch', { userInitiated: !!(opts && opts.manual) }); });
     homeForcedOpen = false;
     if (!opts.preserveHomeState) homeSuppressed = false;
     currentIdx = idx;
+    // P0.5 Smart Shuffle 影子推演: 只计算 + 写日志/事件, 绝不改动 playQueue / currentIdx
+    if (typeof smartShuffleShadowProbe === 'function') {
+      safePlaybackStep('smart-shuffle-shadow', function () { smartShuffleShadowProbe('track-start'); });
+    }
   // E-A: internal playback takes the UI context back from any external (AM) single-play context.
   if (typeof clearCurrentPlaybackContext === 'function') clearCurrentPlaybackContext('internal-play');
     trackSwitchToken++;
@@ -1280,7 +1284,7 @@ async function playQueueAt(idx, opts) {
           if (typeof noteCuefieldAutoMixOutgoingEnded === 'function') noteCuefieldAutoMixOutgoingEnded(this, token, currentIdx);
           return;
         }
-        finalizeListenSession(true);
+        finalizeListenSession(true, 'ended');
         if (playAlbumGaplessNextOnEnded(token)) return;
         if (playMode === 'single') setTimeout(function () { playQueueAt(currentIdx, { autoRepeat: true, suppressPlayFailureNotice: true }); }, 0);
         else setTimeout(nextTrack, 0);

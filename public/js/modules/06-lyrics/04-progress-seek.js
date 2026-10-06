@@ -426,6 +426,8 @@ function commitProgressSeek(targetTime, resumeAfterSeek) {
   progressDragState.previewTime = targetTime;
   progressDragState.previewDuration = durationSec;
   beginProgressPreviewHold(serial, 2800, !!resumeAfterSeek, media, mediaSrc, targetTime);
+  // P0: 用户拖动进度条是一次真实行为。必须在改动 currentTime 之前记下起点。
+  var seekFromSec = isFinite(media.currentTime) ? Number(media.currentTime) : 0;
   if (typeof setAudioOutputGainImmediate === 'function') setAudioOutputGainImmediate(0);
   try {
     media.currentTime = targetTime;
@@ -440,6 +442,18 @@ function commitProgressSeek(targetTime, resumeAfterSeek) {
   renderProgressPreview(targetTime, durationSec);
   syncBeatMapPlaybackCursor(targetTime, true);
   saveLastPlaybackSnapshot(true, 'seek');
+  if (typeof playEventRecord === 'function') {
+    try {
+      playEventRecord({
+        type: 'seek',
+        key: typeof currentQueueSong === 'function' && currentQueueSong() ? queueItemKey(currentQueueSong()) : '',
+        fromSec: seekFromSec,
+        toSec: targetTime,
+        durationSec: durationSec,
+        deltaSec: targetTime - seekFromSec
+      });
+    } catch (e) { }
+  }
   waitForProgressSeekReady(media, targetTime, serial, 1800).then(function (ready) {
     if (serial !== progressDragState.commitSerial || !progressSeekMediaStillCurrent(media, mediaSrc)) return false;
     if (ready) return true;

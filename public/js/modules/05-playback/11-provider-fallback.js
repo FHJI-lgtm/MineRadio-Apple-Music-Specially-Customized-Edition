@@ -572,6 +572,22 @@ function markQueueItemPlaybackFailed(idx, recovery) {
   if (!playQueue[idx]) return;
   playQueue[idx]._lastPlaybackFailAt = Date.now();
   playQueue[idx]._lastPlaybackFailRecoveryId = recovery && recovery.id ? recovery.id : '';
+  // P0: 播放失败是"这首歌在这个源上不可播"的直接证据, 以前只活在内存里(快照白名单会丢掉它)
+  if (typeof playEventRecord === 'function') {
+    try {
+      var failed = playQueue[idx] || {};
+      playEventRecord({
+        type: 'error',
+        key: typeof queueItemKey === 'function' ? queueItemKey(failed) : '',
+        provider: failed.provider || failed.source || '',
+        resolvedPlaybackProvider: failed.resolvedPlaybackProvider || '',
+        name: failed.name || failed.title || '',
+        artist: failed.artist || '',
+        recoveryId: (recovery && recovery.id) || '',
+        failedAt: Date.now()
+      });
+    } catch (e) { }
+  }
 }
 var MAX_RECENT_AUTO_QUEUE_FAILURES = 12;
 function recentQueuePlaybackFailureCount(recovery) {

@@ -673,7 +673,7 @@ function recoverCuefieldAutoMixEndedOutgoing(pending, context, reason) {
   outgoing.__mineradioCuefieldEndedRecoveryToken = token;
   cuefieldAutoMixExecuting = false;
   if (cuefieldActiveTransitionContext === context) cuefieldActiveTransitionContext = null;
-  if (typeof finalizeListenSession === 'function') finalizeListenSession(true);
+  if (typeof finalizeListenSession === 'function') finalizeListenSession(true, 'ended');
   updateCuefieldAutoMixUi(reason || 'fallback');
   setTimeout(function () {
     if (trackSwitchToken !== token || currentIdx !== index || audio !== outgoing) return;

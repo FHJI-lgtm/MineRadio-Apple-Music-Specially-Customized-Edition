@@ -654,11 +654,25 @@ function homeDashboardTodayListenMetrics() {
     if (listenSession.key) keys[listenSession.key] = true;
   }
   var topArtist = Object.keys(artists).sort(function (a, b) { return artists[b] - artists[a]; })[0] || '';
+  // 口径统一: 事件表是"今天听了多少"的唯一真源 —— 它同时覆盖内部播放与 Apple Music 外部播放,
+  // 而上面的 listenStatsState 只统计内部播放, 用 AM 听歌时首页会长期显示 0。
+  // 这里是**覆盖**不是相加, 否则内部播放会被算两遍。
+  var eventToday = (typeof playEventsDailySummaryFor === 'function')
+    ? playEventsDailySummaryFor(homeDashboardDayKey(now))
+    : null;
+  var songCount = Object.keys(keys).length;
+  if (eventToday && eventToday.has) {
+    listenMs = eventToday.listenMs;
+    songCount = eventToday.songCount;
+  }
   var dayMap = Object.create(null);
   history.forEach(function (record) {
     if (record && record.playedAt) dayMap[homeDashboardDayKey(record.playedAt)] = true;
   });
-  if (records.length || listenSession) dayMap[homeDashboardDayKey(now)] = true;
+  if (typeof playEventsDailyDayKeys === 'function') {
+    playEventsDailyDayKeys().forEach(function (key) { dayMap[key] = true; });
+  }
+  if (records.length || listenSession || (eventToday && eventToday.has)) dayMap[homeDashboardDayKey(now)] = true;
   var streak = 0;
   var cursor = new Date(todayStart);
   if (!dayMap[homeDashboardDayKey(cursor.getTime())]) cursor.setDate(cursor.getDate() - 1);
@@ -668,7 +682,7 @@ function homeDashboardTodayListenMetrics() {
   }
   return {
     listenMs: listenMs,
-    songCount: Object.keys(keys).length,
+    songCount: songCount,
     topArtist: topArtist,
     streak: streak,
   };

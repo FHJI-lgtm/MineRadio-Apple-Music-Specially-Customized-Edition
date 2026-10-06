@@ -132,6 +132,10 @@
         </button>
         <button id="clear-cover-btn" class="icon-btn" onclick="clearCustomCoverForCurrent()" title="取消自定义封面"
           aria-label="取消自定义封面">×</button>
+        <button id="smart-shuffle-btn" class="icon-btn ss-btn" type="button" onclick="cycleSmartShuffleMode(event)"
+          title="Smart Shuffle 关闭（点击开启影子模式：只记录，不干预播放）" aria-label="Smart Shuffle">
+          <span id="smart-shuffle-label">SS</span>
+        </button>
         <div id="upload-panel" class="upload-panel" onclick="event.stopPropagation()" aria-label="导入面板">
           <button class="upload-choice" type="button" onclick="triggerUploadInput('cover')"><svg viewBox="0 0 24 24"
               fill="none" stroke-width="2">

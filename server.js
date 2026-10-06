@@ -4774,6 +4774,139 @@ async function handlePlatformListenReport(body) {
 // ====================================================================
 //  HTTP Server
 // ====================================================================
+// ====================================================================
+//  Smart Shuffle 候选池
+// ====================================================================
+// 这一层的职责**只有一个**: 回答"有哪些候选"。它**绝不打分**。
+//
+//   server.js            -> 有哪些候选?      (本段)
+//   02c-shuffle-score.js -> 哪个更值得插?    (渲染端, 纯函数)
+//   14-player-controls.js-> 什么时候真的用?  (渲染端, 目前 shadow)
+//
+// 三条红线:
+//   1. 跨源归并**复用** neteaseSourceMatch* 这套实战验证过的指纹, 不另造。
+//      尤其是版本令牌(live/cover/remix/伴奏...) —— 它是"同名同艺人≠同一录音"的唯一防线。
+//   2. 不预测可播性。真正的可播性只有取直链时才知道, 这里不假装(playabilityVerified:false)。
+//   3. 任何一个源失败都只影响它自己; 全失败返回空池, 不抛错炸掉渲染端。
+// ====================================================================
+
+// 个人歌单变化很慢, 而一次刷新要遍历四源全部歌单逐页取全(实测 ~11s) —— TTL 太短会周期性压满主进程
+const SMART_SHUFFLE_POOL_TTL_MS = 10 * 60 * 1000;
+const SMART_SHUFFLE_POOL_CACHE_MAX = 8;
+const smartShufflePoolCache = new Map();
+
+// 把任意源的标准化曲目映射成 neteaseSourceMatch* 期望的形状。
+// 这一层是"复用指纹"的关键: 指纹逻辑一字不改, 只负责把输入喂对。
+function smartShuffleMatchShape(song) {
+  song = song && typeof song === 'object' ? song : {};
+  const artists = Array.isArray(song.artists) ? song.artists : [];
+  const ar = [];
+  artists.forEach((artist) => {
+    const id = String((artist && (artist.id || artist.artistId || artist.mid || artist.artistMid)) || '');
+    const name = String((artist && (artist.name || artist.artistName)) || '');
+    if (id || name) ar.push({ id: id, name: name });
+  });
+  if (!ar.length && song.artist) {
+    String(song.artist).split(/\s*\/\s*|\s*,\s*|、|&/).forEach((name) => {
+      const text = String(name || '').trim();
+      if (text) ar.push({ id: '', name: text });
+    });
+  }
+  const durationMs = Number(song.durationMs) || (Number(song.duration) || 0) * 1000 || 0;
+  return {
+    id: String(song.provider || '') + ':' + String(song.id || song.librarySongId || ''),
+    name: song.name || song.title || '',
+    ar: ar,
+    alia: Array.isArray(song.alias) ? song.alias : [],
+    dt: durationMs,
+  };
+}
+
+// 候选可用性(保守): 只剔除**确定**不可用的, 不预测可播性。
+function smartShuffleCandidateUsable(song) {
+  if (!song || typeof song !== 'object') return false;
+  if (!song.id && !song.mid && !song.hash && !song.librarySongId) return false;
+  if (song.trial === true) return false;
+  const ms = Number(song.durationMs) || 0;
+  if (ms > 0 && (ms < 60 * 1000 || ms > 15 * 60 * 1000)) return false;
+  return true;
+}
+
+// 跨源归并。
+// 先用归一化曲名分块(指纹的第一道硬门槛就是"曲名完全相等", 所以分块不会漏配),
+// 再在块内两两跑 neteaseSourceMatchCandidateScore —— 版本令牌/艺人/时长/指纹全在里面。
+// 分块是必须的: 个人库上千首, 不做分块的 O(n^2) 会拖住主进程。
+function smartShuffleMergeCandidates(list) {
+  const blocks = new Map();
+  (Array.isArray(list) ? list : []).forEach((song) => {
+    const key = neteaseSourceMatchText(song && (song.name || song.title));
+    if (!key) return;
+    if (!blocks.has(key)) blocks.set(key, []);
+    blocks.get(key).push(song);
+  });
+  const clusters = [];
+  blocks.forEach((songs) => {
+    const pool = songs.slice();
+    while (pool.length) {
+      const seed = pool.shift();
+      const members = [seed];
+      const seedShape = smartShuffleMatchShape(seed);
+      for (let i = pool.length - 1; i >= 0; i--) {
+        let score = -1;
+        try { score = neteaseSourceMatchCandidateScore(seedShape, smartShuffleMatchShape(pool[i])); }
+        catch (_) { score = -1; }
+        if (score >= 0) members.push(pool.splice(i, 1)[0]);
+      }
+      clusters.push(members);
+    }
+  });
+  return clusters;
+}
+
+// provider 优先级: 只决定"同一首歌从哪个源播", 不影响评分。
+const SMART_SHUFFLE_PROVIDER_ORDER = ['netease', 'qq', 'kugou', 'qishui'];
+
+function smartShuffleBuildCandidate(members) {
+  const songs = members.slice().sort((a, b) => {
+    return SMART_SHUFFLE_PROVIDER_ORDER.indexOf(a.provider) - SMART_SHUFFLE_PROVIDER_ORDER.indexOf(b.provider);
+  });
+  const primary = songs[0] || {};
+  const candidate = Object.assign({}, primary);
+  candidate.sources = songs.map((song) => ({
+    provider: song.provider || '',
+    id: song.id || '',
+    mid: song.mid || song.songmid || '',
+    hash: song.hash || '',
+    mediaMid: song.mediaMid || '',
+    albumId: song.albumId || '',
+    durationMs: Number(song.durationMs) || 0,
+  }));
+  candidate.crossSource = candidate.sources.length > 1;
+  candidate.needsSourceSwitch = candidate.crossSource;
+  candidate.candidateSource = 'personal-playlists';
+  candidate.fingerprint = 'fp:' + neteaseSourceMatchText(primary.name || primary.title) +
+    '|' + neteaseSourceMatchText(primary.artist) +
+    '|' + Math.round((Number(primary.durationMs) || 0) / 1000);
+  return candidate;
+}
+
+// 从整池里按 limit 切出本次响应(缓存的是全量, 不是某一档 limit 的结果)
+function smartShuffleSlicePool(value, limit) {
+  const candidates = (value.candidates || []).slice(0, limit);
+  return Object.assign({}, value, {
+    counts: Object.assign({}, value.counts, { returned: candidates.length }),
+    candidates: candidates
+  });
+}
+
+function smartShufflePoolCacheSet(key, value) {
+  if (smartShufflePoolCache.size >= SMART_SHUFFLE_POOL_CACHE_MAX) {
+    const oldest = smartShufflePoolCache.keys().next();
+    if (!oldest.done) smartShufflePoolCache.delete(oldest.value);
+  }
+  smartShufflePoolCache.set(key, { at: Date.now(), value: value });
+}
+
 function loginEasterEggGateUnlocked() {
   if (!LOGIN_EASTER_EGG_GATE_FILE) return true;
   try {
@@ -9090,6 +9223,101 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pn === '/api/smart-shuffle/candidates') {
+    try {
+      const limit = Math.max(1, Math.min(3000, parseInt(url.searchParams.get('limit') || '800', 10) || 800));
+      const requested = String(url.searchParams.get('sources') || 'netease,qq,kugou,qishui')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      // 缓存键**不能带 limit**: 否则 limit=3000 与 limit=3 会各自穿透一次, 每次都重跑四源全量抓取。
+      // 缓存整个池, 再按请求切片。
+      const cacheKey = requested.slice().sort().join(',');
+      const cached = smartShufflePoolCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < SMART_SHUFFLE_POOL_TTL_MS) {
+        sendJSON(res, smartShuffleSlicePool(cached.value, limit));
+        return;
+      }
+
+      // 每个源独立 try/catch: 一个源挂了不能拖垮另外三个。
+      const collectOne = async (provider) => {
+        try {
+          if (provider === 'netease') {
+            const info = await getLoginInfo();
+            if (!info || !info.loggedIn || !userCookie) return { provider, loggedIn: false, songs: [], error: 'NOT_LOGGED_IN' };
+            const lib = await collectNeteaseLibrarySongs(info.userId);
+            return { provider, loggedIn: true, songs: (lib && lib.songs) || [], playlists: [] };
+          }
+          if (provider === 'qq') {
+            const lib = await collectQQLibrary();
+            if (!lib || !lib.loggedIn) return { provider, loggedIn: false, songs: [], error: 'NOT_LOGGED_IN' };
+            return { provider, loggedIn: true, songs: lib.songs || [], playlists: lib.rawPlaylists || [] };
+          }
+          if (provider === 'kugou') {
+            const cookie = typeof kugouCookie === 'string' ? kugouCookie : '';
+            if (!cookie || !kugouCookieHasLogin(cookie)) return { provider, loggedIn: false, songs: [], error: 'NOT_LOGGED_IN' };
+            const lib = await collectKugouLibrary(cookie);
+            return { provider, loggedIn: true, songs: (lib && lib.songs) || [], playlists: (lib && lib.rawPlaylists) || [] };
+          }
+          if (provider === 'qishui') {
+            const lib = await collectQishuiLibrary();
+            if (!lib || !lib.loggedIn) return { provider, loggedIn: false, songs: [], error: 'NOT_LOGGED_IN' };
+            return { provider, loggedIn: true, songs: lib.songs || [], playlists: lib.rawPlaylists || [] };
+          }
+          return { provider, loggedIn: false, songs: [], error: 'UNKNOWN_SOURCE' };
+        } catch (err) {
+          return { provider, loggedIn: false, songs: [], error: (err && err.message) || 'SOURCE_FAILED' };
+        }
+      };
+
+      const raw = [];
+      const sourceStats = {};
+      for (let i = 0; i < requested.length; i++) {
+        const provider = requested[i];
+        const result = await collectOne(provider);
+        sourceStats[provider] = {
+          loggedIn: !!result.loggedIn,
+          playlists: (result.playlists || []).length,
+          tracks: (result.songs || []).length,
+          usable: 0,
+          error: result.error || '',
+        };
+        (result.songs || []).forEach((song) => {
+          if (smartShuffleCandidateUsable(song)) { raw.push(song); sourceStats[provider].usable += 1; }
+        });
+      }
+
+      let clusters = [];
+      try { clusters = smartShuffleMergeCandidates(raw); }
+      catch (err) {
+        // 归并失败绝不能变成"没有候选池就崩": 退化成不去重, 但仍然给出候选
+        console.error('[SmartShuffleMerge]', err);
+        clusters = raw.map((song) => [song]);
+      }
+      const built = clusters.map(smartShuffleBuildCandidate);
+
+      const payload = {
+        ok: true,
+        generatedAt: Date.now(),
+        scoring: 'renderer',
+        playabilityVerified: false,
+        sources: sourceStats,
+        counts: {
+          raw: raw.length,
+          merged: clusters.length,
+          pool: built.length,
+          // 必须统计**整个池**, 不能只统计被 limit 截断的那几首 —— 那会让人误判归并率
+          crossSource: built.filter((c) => c.crossSource).length,
+        },
+        candidates: built,
+      };
+      smartShufflePoolCacheSet(cacheKey, payload);
+      sendJSON(res, smartShuffleSlicePool(payload, limit));
+    } catch (err) {
+      console.error('[SmartShuffleCandidates]', err);
+      // 全链路失败 -> 空池 + ok:false, 让渲染端走"原队列"安全阀
+      sendJSON(res, { ok: false, error: err.code || err.message, candidates: [], counts: { raw: 0, merged: 0, returned: 0, crossSource: 0 } }, 500);
+    }
+    return;
+  }
   // ---------- 静态资源 ----------
   if (pn === '/favicon.ico') {
     serveStatic(res, path.join(__dirname, 'build', 'icon.ico'));
