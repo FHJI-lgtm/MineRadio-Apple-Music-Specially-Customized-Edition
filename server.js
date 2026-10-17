@@ -4884,6 +4884,12 @@ function smartShuffleBuildCandidate(members) {
   candidate.crossSource = candidate.sources.length > 1;
   candidate.needsSourceSwitch = candidate.crossSource;
   candidate.candidateSource = 'personal-playlists';
+  // 试听风险: 只**标记**不过滤。
+  // 实测网易云 VIP 曲目在没有会员时只返回 30 秒片段(restriction.category='trial_only'),
+  // 而账号的 isVip 标志并不可信(实测 isVip=true 仍然只给试听) —— 所以逐首探测不现实,
+  // 只能按 fee 做启发式标记, 交给评分层降权, 并在影子日志里报数。
+  candidate.fee = (candidate.fee === undefined || candidate.fee === null) ? null : Number(candidate.fee);
+  candidate.trialRisk = Number(candidate.fee) > 0;
   candidate.fingerprint = 'fp:' + neteaseSourceMatchText(primary.name || primary.title) +
     '|' + neteaseSourceMatchText(primary.artist) +
     '|' + Math.round((Number(primary.durationMs) || 0) / 1000);

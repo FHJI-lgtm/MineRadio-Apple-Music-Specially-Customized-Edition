@@ -180,6 +180,8 @@ function shuffleSourcePenalty(candidate) {
   var penalty = 0;
   if (candidate.playable === false) penalty = Math.max(penalty, 1);
   if (candidate.isTrial || candidate.trial) penalty = Math.max(penalty, 1);
+  // fee>0 只是"可能试听"(账号 VIP 状态不可信), 所以用比确认 trial 更轻的惩罚
+  if (candidate.trialRisk) penalty = Math.max(penalty, 0.5);
   if (candidate.needsSourceSwitch) penalty = Math.max(penalty, 0.7);
   if (candidate.resolvedPlaybackProvider && candidate.playbackProvider &&
       candidate.resolvedPlaybackProvider !== candidate.playbackProvider) {
@@ -239,7 +241,8 @@ function scoreCandidate(candidate, ctx) {
       weights: w,
       statsSource: meta.statsSource,
       plays: meta.plays,
-      lastPlayedAt: meta.lastPlayedAt
+      lastPlayedAt: meta.lastPlayedAt,
+      trialRisk: !!(candidate && candidate.trialRisk)
     }
   };
 }
@@ -1026,6 +1029,8 @@ function smartShuffleDecisionRow(key, name, score, breakdown, probability, cross
     },
     probability: Number((probability || 0).toFixed(4)),
     picked: !!picked,
+    // 试听风险要进决策行: 两周后能看出"点了多少首其实只能播 30 秒"
+    trialRisk: !!(breakdown && breakdown.trialRisk),
     crossSource: !!crossSource
   };
 }

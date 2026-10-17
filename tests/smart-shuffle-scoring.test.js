@@ -299,6 +299,18 @@ test('TEST 25 — 首页必须用事件表**覆盖**今日指标, 不能相加(�
   assert.ok(/songCount: songCount/.test(body), '返回值必须用该变量');
 });
 
+test('TEST 26 — 试听风险(fee>0)软降权, 并写进决策行', () => {
+  const sb = makeSandbox();
+  const risky = fixtureCandidate('r1', { plays: 3, lastPlayedAt: 0 }, { trialRisk: true });
+  const safe = fixtureCandidate('s1', { plays: 3, lastPlayedAt: 0 }, { trialRisk: false });
+  const a = sb.scoreCandidate(risky, { now: NOW, weights: sb.shuffleDefaultWeights() });
+  const b = sb.scoreCandidate(safe, { now: NOW, weights: sb.shuffleDefaultWeights() });
+  assert.ok(a.breakdown.features.source >= 0.5, '试听风险惩罚应有 0.5, 实际=' + a.breakdown.features.source);
+  assert.ok(a.score < b.score, '带试听风险的必须更低分');
+  const row = sb.smartShuffleDecisionRow('r1', 'n', a.score, a.breakdown, 0.1, false, '', true);
+  assert.strictEqual(row.trialRisk, true, '决策行必须标记试听风险');
+});
+
 test('TEST 15 — 关闭状态(off)下不产生任何影子事件', () => {
   const sb = makeSandbox();
   assert.strictEqual(sb.shuffleMode(), 'off', '默认必须是 off');
