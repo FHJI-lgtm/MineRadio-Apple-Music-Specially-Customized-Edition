@@ -434,6 +434,63 @@ test('TEST 19 — 宽松桶与严格桶/四源桶三者物理隔离', () => {
   assert.ok(rec.sigLooseVariants.indexOf(rec.sigLoose) >= 0, '基准桶必须在变体里');
 });
 
+test('TEST 21 — SMTC 采样滞后不得少算收听时长（11 天实测只有 0.310 平均听比）', () => {
+  const sb = makeSandbox();
+  sb.smtcStore.active = true;
+  sb.smtcStore.isPlaying = true;
+  sb.smtcStore.title = 'Lag Test';
+  sb.smtcStore.artist = 'Some Artist';
+  sb.smtcStore.album = 'Alb';
+  sb.smtcStore.durationMs = 60000; // 与下面播放的 60 秒对齐, listenRatio 才该接近 1
+  sb.smtcStore.positionMs = 0;
+  sb.smtcStore.aumid = 'AM';
+  sb.smtcListenTick(); // begin
+  // 1 秒 tick, 但 position 只每 4 秒更新一次 —— 这是 SMTC 的真实行为
+  for (let t = 1; t <= 60; t += 1) {
+    advance(1000);
+    if (t % 4 === 0) sb.smtcStore.positionMs = t * 1000;
+    sb.smtcListenTick();
+  }
+  sb.smtcStore.active = false;
+  sb.smtcListenTick();
+
+  const rec = playRecords(sb)[0];
+  assert.ok(rec, '必须成案');
+  // 修好前这里是 ~15000(只有真实值的 25%), 与实测 0.310 的平均听比吻合
+  assert.ok(rec.listenMs >= 58000 && rec.listenMs <= 62000,
+    '60 秒真实播放必须记 ≈60 秒, 实际=' + rec.listenMs);
+  assert.ok(rec.listenRatio > 0.95, 'listenRatio 应接近真实, 实际=' + rec.listenRatio);
+});
+
+test('TEST 22 — 前跳 seek 不能把跳过的时长算成收听', () => {
+  const sb = makeSandbox();
+  sb.smtcStore.active = true;
+  sb.smtcStore.isPlaying = true;
+  sb.smtcStore.title = 'Seek Test';
+  sb.smtcStore.artist = 'A';
+  sb.smtcStore.album = 'Al';
+  sb.smtcStore.durationMs = 300000;
+  sb.smtcStore.positionMs = 0;
+  sb.smtcStore.aumid = 'AM';
+  sb.smtcListenTick();
+  for (let t = 1; t <= 10; t += 1) {
+    advance(1000);
+    sb.smtcStore.positionMs = t * 1000;
+    sb.smtcListenTick();
+  }
+  // 用户拖到 4:00 —— 位置瞬间跳 230 秒, 但墙钟只过了 1 秒
+  advance(1000);
+  sb.smtcStore.positionMs = 240000;
+  sb.smtcListenTick();
+  sb.smtcStore.active = false;
+  sb.smtcListenTick();
+
+  const rec = playRecords(sb)[0];
+  assert.ok(rec, '必须成案');
+  assert.ok(rec.listenMs <= 13000, '跳过的 230 秒不能计入, 实际=' + rec.listenMs);
+  assert.ok(rec.maxProgress > 0.75, '但 progress 要如实反映位置');
+});
+
 test('TEST 10 — 源限制闸门: 只允许国内四源接管', () => {
   const sb = makeSandbox();
   const q = (provider) => [{ provider, key: provider + ':1', name: 'n', artist: 'a' }];

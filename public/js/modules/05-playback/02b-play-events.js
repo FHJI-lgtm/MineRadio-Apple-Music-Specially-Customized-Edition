@@ -269,7 +269,9 @@ function playEventsPruneDaily() {
 
 function playEventsDailyAccumulate(record) {
   if (!record) return;
-  var dayKey = playEventsDayKey(record.endedAt || record.startedAt);
+  // 与 playEventDailySummary 保持一致: 按**开始时间**归日。
+  // 用 endedAt 会把 23:58 开始、00:01 结束的歌算到第二天。
+  var dayKey = playEventsDayKey(record.startedAt || record.endedAt);
   var day = playEventsDaily[dayKey];
   if (!day) {
     day = { listenMs: 0, plays: 0, completed: 0, external: 0, errors: 0, keys: {} };

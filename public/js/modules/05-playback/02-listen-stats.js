@@ -208,9 +208,12 @@ function tickListenSessionSnapshot(session, force) {
   var audioTime = isFinite(audio.currentTime) ? audio.currentTime : 0;
   var deltaByAudio = Math.max(0, audioTime - (session.lastAudioTime || 0)) * 1000;
   var deltaByWall = Math.max(0, now - (session.lastWallAt || now));
-  var delta = deltaByAudio > 0 ? Math.min(deltaByAudio, deltaByWall || deltaByAudio, 4200) : 0;
+  // 上限从 4200 放宽到 90s: 窗口在后台时浏览器会把 timer 节流到 1 分钟一次,
+  // 旧的 "4200 上限 + <8000 才记" 会把一整分钟的真实播放整段丢掉。
+  // 位置源是 audio.currentTime(连续更新), 所以 min(音频增量, 墙钟) 本身是对的, 只是上限太紧。
+  var delta = deltaByAudio > 0 ? Math.min(deltaByAudio, deltaByWall || deltaByAudio, 90000) : 0;
   if (force && delta <= 0) delta = Math.min(deltaByWall, 1500);
-  if (delta > 0 && delta < 8000) session.listenMs += delta;
+  if (delta > 0 && delta < 90000) session.listenMs += delta;
   session.lastWallAt = now;
   session.lastAudioTime = audioTime;
   session.maxProgress = Math.max(session.maxProgress || 0, audio.duration ? audioTime / audio.duration : 0);

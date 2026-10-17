@@ -21,7 +21,11 @@
 var smtcListenCfg = {
   ticker: 0,
   intervalMs: 1000,     // SMTC 本身 2~4s 一个采样, 1s 轮询足够且便宜
-  maxDeltaMs: 4200,     // 单次累计上限, 与 02-listen-stats.js 的内部播放同规则
+  // 单次记账上限。**不能按"每个 tick 的墙钟"去夹** —— SMTC 的 position 每 2~4 秒才更新一次:
+  // 位置滞后期间 tick 记 0, 之后一次跳 4s 又被墙钟夹回 1s => 系统性少算约 70%
+  // (实测 11 天: 73% 完播却只有 0.310 的平均听比, 就是这个造成的)。
+  // 这个上限只用于兜住后台定时器被节流时的一次大跨度。
+  maxTickCreditMs: 90000,
   // 抗抖动下限(不是"负面反馈门槛"): SMTC 桥在切歌瞬间会闪出几乎不前进的样本。
   // 低于这个量且几乎没有进度的会话不算一次收听。真实短跳过(>=1s)仍然会被记录。
   minListenMs: 500,
@@ -212,12 +216,23 @@ function smtcListenTick() {
     var playing = smtcStore.isPlaying === true;
     if (playing) {
       session.sawPlaying = true;
+      // 统一时间源: 与歌词/进度条一致的 stablePosition（无 TSP 时退回 smtcStore.positionMs，
+      // 保持本模块可独立测试 / 独立加载）
       var positionMs = Math.max(0, Number(smtcStore.positionMs) || 0);
+      if (typeof smtcStablePositionMsNow === 'function') {
+        var stableMs = Number(smtcStablePositionMsNow());
+        if (isFinite(stableMs) && stableMs >= 0) positionMs = stableMs;
+      }
       var deltaPosition = positionMs - (Number(session.lastPositionMs) || 0);
       var deltaWall = now - (Number(session.lastWallAt) || now);
       // 与内部播放同规则: 取"位置增量"与"墙钟增量"的较小值, 单帧封顶
-      var delta = deltaPosition > 0 ? Math.min(deltaPosition, deltaWall || deltaPosition, smtcListenCfg.maxDeltaMs) : 0;
-      if (delta > 0 && delta < 8000) session.listenMs += delta;
+      // 以**位置增量**为准。墙钟只用来识别 seek: 位置推进超过墙钟 5s 视为跳转, 此时按真实经过时间计。
+      var delta = 0;
+      if (deltaPosition > 0) {
+        delta = deltaPosition > deltaWall + 5000 ? deltaWall : deltaPosition;
+        if (delta > smtcListenCfg.maxTickCreditMs) delta = smtcListenCfg.maxTickCreditMs;
+      }
+      if (delta > 0) session.listenMs += delta;
       var duration = Math.max(session.durationMs, Number(smtcStore.durationMs) || 0);
       if (duration > 0) {
         session.durationMs = duration;

@@ -245,7 +245,9 @@ test('TEST 13 — P0: 每日汇总能算出"播放/完整/短跳/手动下一首
   endSession(sb, 'a', 12000, 0.05, 'next', { userInitiated: true });
   endSession(sb, 'b', 200000, 0.95, 'ended', { completed: true });
   endSession(sb, 'c', 300000, 1.0, 'prev', { userInitiated: true });
-  sb.playEventRecord({ type: 'error', key: 'd', provider: 'kugou' });
+  // startedAt 必须显式给 —— 否则它取 Date.now(), 与上面钉死的 NOW 会分成两天
+  // (这个测试曾经"刚好同一天"才通过, 时间一过就挂)
+  sb.playEventRecord({ type: 'error', key: 'd', provider: 'kugou', startedAt: NOW });
   const rows = arr(sb.playEventDailySummary());
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(rows[0].plays, 3);
@@ -270,9 +272,11 @@ test('TEST 24 — 首页今日口径: 事件表同时覆盖内部播放与 AM �
   sb.playEventRecord({                                                 // AM 外部播放
     type: 'play', provider: 'smtc-external', key: 'smtc:X|Y',
     sig: 'Y|X|200', sigLoose: 'x|40', listenMs: 90000, completed: false,
+    startedAt: NOW,   // 必须钉住, 否则它会落在"今天", 与上面三个分成两天
   });
 
-  const dayKey = sb.playEventsDayKey(Date.now());
+  // 查询也用 NOW 推导的日期 —— 不能写 Date.now(), 那是时间炸弹
+  const dayKey = sb.playEventsDayKey(NOW);
   const day = sb.playEventsDailySummaryFor(dayKey);
   assert.strictEqual(day.has, true, '当天必须有记录');
   assert.strictEqual(day.plays, 3, 'plays=' + day.plays);
