@@ -347,3 +347,21 @@ test('20 主页按需拉池的边界: 只在 pool-empty 触发, 且有防重入�
   assert.ok(!/playQueueAt|playSongEntry|playInApp|playQueue\s*(\.length\s*=|\.push|\.splice)/.test(ensure),
     '拉池不得触发播放或改队列');
 });
+
+test('21 播放按钮必须真的绑上点击处理(不能只有 data 属性)', () => {
+  const DASH = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '03a-home-dashboard.js'), 'utf8');
+  const btnStart = DASH.indexOf('var playBtn = canPlay');
+  assert.ok(btnStart > 0, '必须找得到播放按钮的构造');
+  const btn = DASH.slice(btnStart, btnStart + 700);
+  assert.ok(/onclick="homeSmartShufflePlay\(/.test(btn), '按钮必须绑 onclick —— 只写 data-ss-play 点了没反应');
+  assert.ok(/data-ss-play/.test(btn), '同时要带身份属性, 供处理器取出歌曲键');
+  // 处理器必须存在且导出, 否则 inline onclick 找不到
+  const fnStart = DASH.indexOf('function homeSmartShufflePlay(');
+  assert.ok(fnStart > 0, '必须有 homeSmartShufflePlay');
+  assert.ok(/window\.homeSmartShufflePlay = homeSmartShufflePlay/.test(DASH), '必须导出到 window(inline onclick 才找得到)');
+  // 处理器只找对象 + 调公共入口, 不自己选源/改队列
+  const fn = DASH.slice(fnStart, DASH.indexOf('try { window.homeSmartShufflePlay'));
+  assert.ok(/playSongEntry\(/.test(fn), '必须交给公共播放入口');
+  assert.ok(!/playQueueAt|provider/.test(fn.replace(/context: \{ type: 'smart-shuffle-home', provider: String\(song\.provider/, '')),
+    '处理器不得自行选源或直接调底层播放器');
+});

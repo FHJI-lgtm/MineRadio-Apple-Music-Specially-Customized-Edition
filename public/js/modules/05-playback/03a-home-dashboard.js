@@ -832,8 +832,10 @@ function homeSmartShuffleSongHtml(song, canPlay) {
     : '';
   // 播放按钮只在 canPlay 为真时出现: 「算法算出歌」和「能安全播」是两件事,
   // canPlay 由 02d 校验(公共入口存在 + 每首都有稳定身份)后才为真。
+  // 必须有可点击的绑定: 只写 data-ss-play 属性是不够的(上一版就是漏了 onclick, 按钮点了没反应)。
   var playBtn = canPlay
     ? '<button type="button" class="home-ss-play" data-ss-play="' + homeSmartShuffleEscape(song.key) + '"' +
+      ' onclick="homeSmartShufflePlay(this.getAttribute(&quot;data-ss-play&quot;))"' +
       ' aria-label="播放 ' + homeSmartShuffleEscape(song.name) + '" title="播放">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>'
     : '';
