@@ -320,6 +320,7 @@ function playEventsRebuildAggregate() {
     });
     playEventsAggregatedAt = Date.now();
     // 重建完成后刷新首页(它是异步的, 首次渲染时事件表可能还没读回来)
+    try { if (typeof smartShuffleHomeInsightInvalidate === 'function') smartShuffleHomeInsightInvalidate(); } catch (e) { }
     try { if (typeof renderHomeInsightDock === 'function') renderHomeInsightDock(); } catch (e) { }
     return { songs: playEventsSongStats, artists: playEventsArtistStats, count: (list || []).length };
   }, function () {

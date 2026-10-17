@@ -57,6 +57,7 @@
     'js/modules/05-playback/02-listen-stats.js',
     'js/modules/05-playback/02b-play-events.js',
     'js/modules/05-playback/02c-shuffle-score.js',
+    'js/modules/05-playback/02d-shuffle-insight.js',
     'js/modules/05-playback/03-home-discover-weather.js',
     'js/modules/05-playback/03a-home-dashboard.js',
     'js/modules/05-playback/04-home-empty-wallpaper.js',

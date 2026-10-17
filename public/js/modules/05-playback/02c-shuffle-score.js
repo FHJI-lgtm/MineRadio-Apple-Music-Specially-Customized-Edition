@@ -696,6 +696,14 @@ var smartShufflePoolState = { at: 0, candidates: [], error: '' };
 var SMART_SHUFFLE_POOL_TTL_MS = 60 * 1000;
 var smartShufflePoolInflight = null;
 
+// 只读: 拿**已有缓存**里的候选池, 绝不发起请求(主页卡片用)。
+// 返回空数组 = 还没跑过任何一次 decisions -> 上层回退学习态。
+function smartShuffleCachedPool() {
+  return (smartShufflePoolState && Array.isArray(smartShufflePoolState.candidates))
+    ? smartShufflePoolState.candidates
+    : [];
+}
+
 function smartShuffleFetchPool(force) {
   var now = Date.now();
   if (!force && smartShufflePoolState.at && now - smartShufflePoolState.at < SMART_SHUFFLE_POOL_TTL_MS) {

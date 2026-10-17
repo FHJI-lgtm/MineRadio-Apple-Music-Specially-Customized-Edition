@@ -419,6 +419,7 @@ function renderHomeDashboardHero() {
   homeDashboardRenderVideoActions();
   homeDashboardUpdateVideoPower();
   homeDashboardUpdateClock();
+  renderHomeSmartShuffleCard();
 }
 
 function homeDashboardNextReview() {
@@ -800,7 +801,94 @@ function playHomeDashboardDiscoverySong(index) {
   })).catch(function (error) { console.warn('[HomeDashboardDiscovery]', error); });
 }
 
+// ------------------------------------------------------------
+// Smart Shuffle 主页卡片 —— **只读展示**
+// ------------------------------------------------------------
+// 边界: 只读 02d 的快照与推荐预览, 不触发任何播放决策、不发请求、不改队列。
+// 进度实时算(便宜), 全池打分由 02d 自己做 60 秒节流。
+var HOME_SS_REFRESH_MS = 60 * 1000;
+
+function homeSmartShuffleInsight() {
+  try {
+    if (typeof smartShuffleHomeInsightCached === 'function') {
+      return smartShuffleHomeInsightCached(2, HOME_SS_REFRESH_MS);
+    }
+    if (typeof smartShuffleHomeInsight === 'function') return smartShuffleHomeInsight(2);
+  } catch (err) {
+    // 任何异常都只是"不显示", 绝不影响主页与播放
+  }
+  return null;
+}
+
+function homeSmartShuffleEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function homeSmartShuffleSongHtml(song) {
+  var cover = song && song.cover ? homeSmartShuffleEscape(song.cover) : '';
+  var coverHtml = cover
+    ? '<img src="' + cover + '" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display=\'none\'">'
+    : '';
+  return '<div class="home-ss-song">' +
+    '<div class="home-ss-cover">' + coverHtml + '</div>' +
+    '<div class="home-ss-meta">' +
+    '<div class="home-ss-name">' + homeSmartShuffleEscape(song.name) + '</div>' +
+    '<div class="home-ss-artist">' + homeSmartShuffleEscape(song.artist) + '</div>' +
+    '<div class="home-ss-reason">' + homeSmartShuffleEscape(song.reason) + '</div>' +
+    '</div></div>';
+}
+
+function renderHomeSmartShuffleCard() {
+  var card = document.querySelector('#empty-home .daily-review-card');
+  if (!card) return;
+  var insight = homeSmartShuffleInsight();
+  if (!insight) return;   // 数据没准备好 -> 整块不渲染, 保持原卡片外观
+
+  var block = document.getElementById('home-ss-block');
+  if (!block) {
+    block = document.createElement('div');
+    block.id = 'home-ss-block';
+    block.className = 'home-ss-block';
+    block.setAttribute('aria-live', 'polite');
+    // 放在操作按钮**之前**: 日期/时钟/热评在上, 进度或推荐居中, 按钮仍在最下面
+    var actions = card.querySelector('.daily-review-actions');
+    if (actions) card.insertBefore(block, actions);
+    else card.appendChild(block);
+  }
+  var songKeys = (insight.songs || []).map(function (s) { return s.key + '|' + s.reason; }).join(',');
+  var fingerprint = insight.phase + '|' + insight.progress + '|' + songKeys + '|' + (insight.fallback || '');
+  if (block.dataset.ssFingerprint === fingerprint) return;
+  block.dataset.ssFingerprint = fingerprint;
+  block.dataset.ssPhase = insight.phase;
+
+  if (insight.phase === 'ready') {
+    var songs = insight.songs || [];
+    if (!songs.length) return;
+    block.innerHTML = '<div class="home-ss-head">' +
+      '<span class="home-ss-kicker">SMART SHUFFLE</span>' +
+      '<span class="home-ss-badge">已就绪</span></div>' +
+      '<div class="home-ss-title">今日歌曲推荐</div>' +
+      '<div class="home-ss-songs">' + songs.map(homeSmartShuffleSongHtml).join('') + '</div>';
+    return;
+  }
+
+  var snap = insight.snapshot || {};
+  var pct = Math.max(0, Math.min(100, Math.round(Number(insight.progress) || 0)));
+  block.innerHTML = '<div class="home-ss-head">' +
+    '<span class="home-ss-kicker">SMART SHUFFLE</span>' +
+    '<span class="home-ss-pct">' + pct + '%</span></div>' +
+    '<div class="home-ss-title">正在了解你的音乐偏好</div>' +
+    '<div class="home-ss-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '">' +
+    '<span style="width:' + pct + '%"></span></div>' +
+    '<div class="home-ss-note">根据你的播放记录，逐步了解歌曲偏好与重复习惯。</div>' +
+    '<div class="home-ss-stats">有效播放 ' + (Number(snap.plays) || 0) + ' 次 · 覆盖 '
+    + (Number(snap.distinctSongs) || 0) + ' 首 / ' + (Number(snap.distinctArtists) || 0) + ' 位艺人'
+    + ' · 候选池 ' + (Number(snap.poolSize) || 0) + ' 首</div>';
+}
+
 function renderHomeInsightDock() {
+  renderHomeSmartShuffleCard();
   if (!document.getElementById('home-insight-dock')) return;
   var metrics = homeDashboardTodayListenMetrics();
   var time = document.getElementById('home-today-time');

@@ -19687,3 +19687,141 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 @media (hover: none) {
   .am-album-actions .am-smart-shuffle-btn { opacity: 1; transform: none; pointer-events: auto; }
 }
+
+
+/* ------------------------------------------------------------
+   Smart Shuffle 主页卡片 —— 只读展示(学习中 / 今日歌曲推荐)
+   与 #empty-home .daily-review-card 的深色玻璃风格一致;
+   高度受控, 不允许把时钟/热评/按钮挤出卡片。
+   ------------------------------------------------------------ */
+#empty-home .home-ss-block {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .028));
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-width: 100%;
+  max-height: 40vh;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex: 0 0 auto
+}
+#empty-home .home-ss-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px
+}
+#empty-home .home-ss-kicker {
+  font-size: 10px;
+  letter-spacing: .16em;
+  font-weight: 700;
+  color: rgba(255, 255, 255, .55)
+}
+#empty-home .home-ss-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(var(--fc-accent-rgb), .95)
+}
+#empty-home .home-ss-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--fc-accent-rgb), .45);
+  background: rgba(var(--fc-accent-rgb), .12);
+  color: rgba(var(--fc-accent-rgb), .95)
+}
+#empty-home .home-ss-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.3
+}
+#empty-home .home-ss-bar {
+  position: relative;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+  overflow: hidden
+}
+#empty-home .home-ss-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--fc-accent-rgb), .72), rgba(var(--fc-accent-rgb), 1));
+  transition: width .4s ease
+}
+#empty-home .home-ss-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .62)
+}
+#empty-home .home-ss-stats {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, .45)
+}
+#empty-home .home-ss-songs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 1px
+}
+#empty-home .home-ss-song {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0
+}
+#empty-home .home-ss-cover {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 9px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .04))
+}
+#empty-home .home-ss-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block
+}
+#empty-home .home-ss-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px
+}
+#empty-home .home-ss-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+#empty-home .home-ss-artist {
+  font-size: 11px;
+  color: rgba(255, 255, 255, .6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+#empty-home .home-ss-reason {
+  font-size: 10.5px;
+  color: rgba(var(--fc-accent-rgb), .82)
+}
+@media (max-width: 720px) {
+  #empty-home .home-ss-block { padding: 9px 11px }
+  #empty-home .home-ss-cover { width: 30px; height: 30px }
+}
+@media (max-height: 860px) {
+  /* 矮窗口: 只显示第一条推荐, 保证时钟/热评/按钮不被挤出去 */
+  #empty-home .home-ss-song:nth-child(n+2) { display: none }
+  #empty-home .home-ss-stats { display: none }
+}
