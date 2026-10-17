@@ -322,6 +322,39 @@ test('TEST 28 — 发现池必须剔除资料库里已有的歌', () => {
   });
 });
 
+test('TEST 29 — 同艺人发现(artist-more)与 simi 一样算"发现位"', () => {
+  const sb = makeSandbox();
+  const queue = [];
+  for (let i = 0; i < 24; i += 1) queue.push(fixtureCandidate('q' + i, { plays: 2, lastPlayedAt: NOW - 3 * 24 * HOUR }));
+  const lib = [];
+  for (let i = 0; i < 6; i += 1) lib.push(fixtureCandidate('L' + i, { plays: 20, lastPlayedAt: NOW - 5 * 24 * HOUR }, { candidateSource: 'personal-playlists' }));
+  // 同艺人搜索回来的候选
+  const artistMore = ['A1', 'A2', 'A3', 'A4'].map(k =>
+    fixtureCandidate(k, {}, { candidateSource: 'artist-more', provider: 'qq', seedArtist: 'The Score' }));
+  const plan = sb.planSmartShuffleInsertions(queue, lib.concat(artistMore), {
+    now: NOW, weights: sb.shuffleDefaultWeights(), discoveryShare: 0.5, rng: fixedRng(new Array(600).fill(0.5)),
+  });
+  assert.ok(plan.applied, 'reason=' + plan.reason);
+  const disc = plan.insertions.filter(x => x.discovery);
+  assert.ok(disc.length >= 1, 'artist-more 候选必须能占到发现位, 实际=' + disc.length);
+  assert.ok(disc.every(x => x.song && x.song.candidateSource === 'artist-more'));
+});
+
+test('TEST 30 — 同艺人发现的种子艺人: 有收听历史时按播放次数取, 无历史按池内出现次数', () => {
+  const sb = makeSandbox();
+  const pool = [
+    { provider: 'qq', id: '1', name: 'a', artist: 'Alpha / X' },
+    { provider: 'qq', id: '2', name: 'b', artist: 'Beta' },
+    { provider: 'qq', id: '3', name: 'c', artist: 'Beta' },
+    { provider: 'qq', id: '4', name: 'd', artist: 'Beta' },
+  ];
+  const withHistory = sb.smartShufflePickArtists(pool, { artistStats: { Beta: { plays: 9 }, Alpha: { plays: 3 } } }, 2);
+  // 跨 vm 领域: sandbox 里的 Array 原型不同, 必须先转成本地数组
+  assert.deepStrictEqual(arr(withHistory), ['Beta', 'Alpha'], '按播放次数降序');
+  const noHistory = sb.smartShufflePickArtists(pool, { artistStats: {} }, 2);
+  assert.strictEqual(noHistory[0], 'Beta', '无历史时按池内出现次数');
+});
+
 test('TEST 24 — 首页今日口径: 事件表同时覆盖内部播放与 AM 外部播放', () => {
   const sb = makeSandbox();
   endSession(sb, 'inner1', 60000, 0.9, 'ended', { completed: true });   // 内部播放

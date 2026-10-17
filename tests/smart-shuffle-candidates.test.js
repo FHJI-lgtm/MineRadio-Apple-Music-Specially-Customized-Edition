@@ -68,6 +68,24 @@ function track(provider, id, name, artist, durationSec, extra) {
 }
 
 // ------------------------------------------------------------
+test('同艺人发现: 必须按艺人名过滤, 且不得写 playable:false', () => {
+  const start = SERVER.indexOf('function smartShuffleArtistMoreCandidate(');
+  assert.ok(start > 0, '必须有同艺人候选归一化函数');
+  const body = SERVER.slice(start, SERVER.indexOf('\n}', start) + 2);
+  const code = body.replace(/\/\/[^\n]*/g, '');
+  assert.ok(!/playable\s*:\s*false/.test(code), '不得写 playable:false（会被插入计划丢弃）');
+  assert.ok(/candidateSource\s*:\s*'artist-more'/.test(code), "必须标记 candidateSource='artist-more'");
+  assert.ok(/seedArtist\s*:/.test(code), '必须带 seedArtist');
+  // 艺人名匹配器: 精确到"之一相等", 不能做包含匹配(否则 The Score 会吃掉 The Scorez)
+  assert.ok(/function smartShuffleArtistNameMatches\(/.test(SERVER), '必须有艺人名匹配器');
+  const mStart = SERVER.indexOf('function smartShuffleArtistNameMatches(');
+  const mBody = SERVER.slice(mStart, SERVER.indexOf('\n}', mStart) + 2).replace(/\/\/[^\n]*/g, '');
+  assert.ok(/\.some\(/.test(mBody), '必须逐段比较(多艺人用 / & 、 , 分隔)');
+  assert.ok(!/indexOf\(/.test(mBody), '不得用包含匹配 —— 会误吞同名前缀艺人');
+  // 路由存在
+  assert.ok(SERVER.indexOf("'/api/smart-shuffle/artist-more'") > 0, '必须有 artist-more 路由');
+});
+
 test('发现层: 相似候选不得被打成 playable:false（否则会被插入计划整批丢弃）', () => {
   const start = SERVER.indexOf('function smartShuffleSimilarCandidate(');
   assert.ok(start > 0, '必须能找到相似候选归一化函数');

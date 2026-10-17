@@ -4813,6 +4813,57 @@ function smartShuffleSimilarCacheSet(key, value) {
 
 // 网易云 simiSong 的一行 -> 与资料库候选**完全同构**的形状, 并打上发现层标记。
 // 注意: 该接口的 score/popularity 字段实测等于热度(不是相似度), 不能拿来当质量阈值。
+// "同艺人搜索"发现层: 有些源没有相似歌曲接口(QQ/酷狗/汽水), 但**都有搜索**。
+// 用用户常听艺人的名字搜, 再按艺人名精确匹配 -> 得到"老艺人的其他歌"。
+// 与网易云 simiSong(能给新艺人但易混翻唱)正好互补。
+const smartShuffleArtistMoreCache = new Map();
+
+function smartShuffleArtistMoreCacheSet(key, value) {
+  if (smartShuffleArtistMoreCache.size >= SMART_SHUFFLE_SIMILAR_CACHE_MAX) {
+    const oldest = smartShuffleArtistMoreCache.keys().next();
+    if (!oldest.done) smartShuffleArtistMoreCache.delete(oldest.value);
+  }
+  smartShuffleArtistMoreCache.set(key, { at: Date.now(), value: value });
+}
+
+function smartShuffleNormalizeArtistName(value) {
+  return String(value || '').toLowerCase().replace(/[\s·・._\-—()（）\[\]【】/\\&,，、]+/g, '');
+}
+
+// 精确到"艺人名之一相等", 不做包含匹配 —— 否则 "The Score" 会吃掉 "The Scorez"。
+function smartShuffleArtistNameMatches(resultArtist, seedArtist) {
+  const target = smartShuffleNormalizeArtistName(seedArtist);
+  if (!target) return false;
+  const parts = String(resultArtist || '').split(/\s*\/\s*|\s*&\s*|、|,/);
+  return parts.some((part) => smartShuffleNormalizeArtistName(part) === target);
+}
+
+function smartShuffleArtistMoreCandidate(song, seedArtist, source) {
+  song = song && typeof song === 'object' ? song : {};
+  const provider = String(song.provider || song.source || source || '').trim();
+  const artists = Array.isArray(song.artists) ? song.artists.map((a) => (a && a.name) || '').filter(Boolean) : [];
+  const durationMs = Number(song.durationMs) || (Number(song.duration) > 0 ? Number(song.duration) * 1000 : 0);
+  return {
+    provider: provider,
+    source: provider,
+    id: String(song.id || song.mid || song.hash || ''),
+    mid: String(song.mid || song.songmid || ''),
+    name: String(song.name || ''),
+    artist: String(song.artist || artists.join(' / ')),
+    album: String(song.album || ''),
+    albumId: String(song.albumId || song.albumMid || ''),
+    durationMs: durationMs,
+    cover: String(song.cover || ''),
+    fee: Number(song.fee) || 0,
+    // 同 smartShuffleSimilarCandidate: 不写 playable:false, 那会让插入计划整批丢弃
+    crossSource: false,
+    needsSourceSwitch: false,
+    candidateSource: 'artist-more',
+    seedArtist: String(seedArtist || ''),
+    similaritySource: 'artist-search',
+  };
+}
+
 function smartShuffleSimilarCandidate(song, seedId) {
   song = song && typeof song === 'object' ? song : {};
   const album = song.album || song.al || {};
@@ -9430,6 +9481,83 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[SmartShuffleSimilar]', err);
       sendJSON(res, { ok: false, error: err.code || err.message, candidates: [], counts: { seeds: 0, raw: 0, returned: 0 } });
+    }
+    return;
+  }
+  // 发现层 2: "同艺人的其他歌"。用各源已有的搜索接口 + 艺人名精确匹配。
+  if (pn === '/api/smart-shuffle/artist-more') {
+    try {
+      const limit = Math.max(1, Math.min(16, parseInt(url.searchParams.get('limit') || '6', 10) || 6));
+      const artists = String(url.searchParams.get('artists') || '')
+        .split('|').map((s) => s.trim()).filter(Boolean).slice(0, 4);
+      const allowedSources = ['qq', 'kugou', 'qishui'];
+      const sources = String(url.searchParams.get('sources') || 'qq,kugou,qishui')
+        .split(',').map((s) => s.trim().toLowerCase())
+        .filter((s) => allowedSources.indexOf(s) >= 0);
+      if (!artists.length || !sources.length) {
+        sendJSON(res, { ok: false, error: 'NO_ARTISTS', candidates: [], counts: { artists: 0, raw: 0, returned: 0 } });
+        return;
+      }
+      const cacheKey = artists.join('|') + '|' + sources.join(',') + '|' + limit;
+      const cached = smartShuffleArtistMoreCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < SMART_SHUFFLE_SIMILAR_TTL_MS) {
+        sendJSON(res, cached.value);
+        return;
+      }
+      const seen = new Set();
+      const built = [];
+      const artistStats = [];
+      for (let i = 0; i < artists.length; i += 1) {
+        const artist = artists[i];
+        for (let s = 0; s < sources.length; s += 1) {
+          const source = sources[s];
+          let rows = [];
+          try {
+            if (source === 'qq') rows = (await handleQQSearch(artist, limit * 3, 0)) || [];
+            else if (source === 'kugou') rows = (await handleKugouSearch(artist, limit * 3, kugouCookie, 0)) || [];
+            else if (source === 'qishui') {
+              const page = await handleQishuiSearch(artist, limit * 3, qishuiCookie, 0);
+              rows = (page && Array.isArray(page.songs)) ? page.songs : [];
+            }
+          } catch (err) {
+            rows = [];
+          }
+          let kept = 0;
+          rows.forEach((song) => {
+            // 每个(艺人, 源)最多留 limit 首: 搜索一次能回 limit*3 条,
+            // 全收会让发现池被一两个艺人灌满, 稀释掉别的候选。
+            if (kept >= limit) return;
+            const candidate = smartShuffleArtistMoreCandidate(song, artist, source);
+            if (!candidate.id || !candidate.name || !candidate.artist) return;
+            // 关键: 搜索会按"歌名"命中, 必须再按**艺人名**过滤, 否则会把同名歌混进来
+            if (!smartShuffleArtistNameMatches(candidate.artist, artist)) return;
+            const key = source + ':' + candidate.id;
+            if (seen.has(key)) return;
+            seen.add(key);
+            built.push(candidate);
+            kept += 1;
+          });
+          artistStats.push({ artist: artist, source: source, got: rows.length, kept: kept });
+        }
+      }
+      const payload = {
+        ok: true,
+        scoring: 'renderer',
+        playabilityVerified: false,
+        source: 'artist-search',
+        artists: artistStats,
+        counts: {
+          artists: artists.length,
+          raw: artistStats.reduce((n, item) => n + item.got, 0),
+          returned: built.length,
+        },
+        candidates: built,
+      };
+      smartShuffleArtistMoreCacheSet(cacheKey, payload);
+      sendJSON(res, payload);
+    } catch (err) {
+      console.error('[SmartShuffleArtistMore]', err);
+      sendJSON(res, { ok: false, error: err.code || err.message, candidates: [], counts: { artists: 0, raw: 0, returned: 0 } });
     }
     return;
   }
