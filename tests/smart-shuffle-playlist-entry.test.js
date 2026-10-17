@@ -79,8 +79,11 @@ test('入口 6 — 控制条也有智能随机, 且只动 currentIdx 之后的�
 });
 
 test('入口 7 — 两个入口用同一个图标（四角星 + 交叉箭头 + 圆点）', () => {
-  const stars = HTML.match(/M8\.6 2\.25/g) || [];
-  assert.strictEqual(stars.length, 2, '歌单详情与控制条应各有一处同一图标, 实际=' + stars.length);
+  // 用字符串计数, 不用正则 —— 点号在正则里有特殊含义, 容易过度转义
+  const starMark = 'M7.2 2.5';
+  const count = HTML.split(starMark).length - 1;
+  assert.strictEqual(count, 2, '歌单详情与控制条应各有一处同一图标, 实际=' + count);
+
 });
 
 test('入口 5 — 只对非 Apple 源生效, 且带 provenance', () => {
