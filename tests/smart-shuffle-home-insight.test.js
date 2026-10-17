@@ -15,6 +15,23 @@ const appRoot = path.resolve(__dirname, '..');
 const SCORE = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02c-shuffle-score.js'), 'utf8');
 const INSIGHT = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
 
+// 按函数边界切源码(比用注释当锚点稳, 注释随时会改)
+function extractFn(src, name) {
+  const start = src.indexOf('function ' + name + '(');
+  if (start < 0) return '';
+  const end = src.indexOf('\n}\n', start);
+  return end > start ? src.slice(start, end + 2) : src.slice(start);
+}
+
+function makeStorage() {
+  const map = new Map();
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: (k) => { map.delete(k); },
+  };
+}
+
 function makeSandbox(opts) {
   opts = opts || {};
   const sb = {
@@ -27,7 +44,7 @@ function makeSandbox(opts) {
   };
   sb.window = sb;
   sb.globalThis = sb;
-  sb.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  sb.localStorage = opts.localStorage || makeStorage();
   // 故意让 fetch 计数并抛错: 02d 一旦联网就会暴露
   sb.fetch = function () { sb.fetchCallCount += 1; return Promise.reject(new Error('network should not be used')); };
   // 数据来源(02b 的聚合 + 02c 的池缓存)
@@ -224,20 +241,20 @@ test('12 进度实时: 统计变化后立刻反映, 不被推荐缓存拖住', (
   assert.ok(after.progress > before.progress, '进度必须实时增长: ' + before.progress + ' -> ' + after.progress);
 });
 
-test('13 推荐打分有节流, 失效后重算', () => {
+test('13 每日冻结: 同一天只生成一次, 不重复打分', () => {
   const pool = buildPool(210);
   const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
   const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
-  let calls = 0;
-  const original = sb.smartShuffleHomeRecommendation;
-  sb.smartShuffleHomeRecommendation = function (limit) { calls += 1; return original(limit); };
-  sb.smartShuffleHomeInsightCached(2, 60 * 60 * 1000);
-  sb.smartShuffleHomeInsightCached(2, 60 * 60 * 1000);
-  sb.smartShuffleHomeInsightCached(2, 60 * 60 * 1000);
-  assert.strictEqual(calls, 1, '节流期内只应打一次分, 实际=' + calls);
-  sb.smartShuffleHomeInsightInvalidate();
-  sb.smartShuffleHomeInsightCached(2, 60 * 60 * 1000);
-  assert.strictEqual(calls, 2, '失效后应重算一次');
+  let bucketCalls = 0;
+  const original = sb.smartShuffleHomeBuckets;
+  sb.smartShuffleHomeBuckets = function (limit, exclude) { bucketCalls += 1; return original(limit, exclude); };
+  const a = sb.smartShuffleHomeInsight(2);
+  const b = sb.smartShuffleHomeInsight(2);
+  const c = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(a.phase, 'ready');
+  assert.strictEqual(bucketCalls, 1, '同一天只应打一次分, 实际=' + bucketCalls);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(a.songs)), JSON.parse(JSON.stringify(b.songs)));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(b.songs)), JSON.parse(JSON.stringify(c.songs)));
 });
 
 test('14 四状态映射: learning / pool-pending / ready 各有明确判定', () => {
@@ -342,7 +359,7 @@ test('20 主页按需拉池的边界: 只在 pool-empty 触发, 且有防重入�
   assert.ok(/insight\.fallback === 'pool-empty'/.test(DASH), '只对 pool-empty 触发');
   assert.ok(/homeSmartShufflePoolRequested/.test(DASH), '必须有防重入标志');
   const INS = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
-  const ensure = INS.slice(INS.indexOf('function smartShuffleEnsurePoolCached('), INS.indexOf('// 播放能力探测'));
+  const ensure = extractFn(INS, 'smartShuffleEnsurePoolCached');
   assert.ok(/smartShuffleFetchPool/.test(ensure), '必须复用既有数据通路');
   assert.ok(!/playQueueAt|playSongEntry|playInApp|playQueue\s*(\.length\s*=|\.push|\.splice)/.test(ensure),
     '拉池不得触发播放或改队列');
@@ -420,8 +437,103 @@ test('25 发现候选按需拉取: 复用 composePool, 不碰播放, 有 TTL 与
   assert.ok(/HOME_SS_DISCOVERY_RETRY_MS/.test(DASH), '必须有重试时间戳, 防止每轮渲染都拉');
   assert.ok(/home-ss-tag/.test(DASH), '每条推荐要标出来源(资料库/新发现)');
   const INS = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
-  const ensure = INS.slice(INS.indexOf('function smartShuffleEnsureDiscoveryCached('), INS.indexOf('// 播放能力探测'));
+  const ensure = extractFn(INS, 'smartShuffleEnsureDiscoveryCached');
   assert.ok(/smartShuffleComposePool/.test(ensure), '必须复用既有 composePool 取发现候选');
   assert.ok(!/playQueueAt|playSongEntry|smartShuffleFetchPool\(/.test(ensure), '取发现候选不得触发播放或直接拉资料库池');
   assert.ok(/SMART_SHUFFLE_INSIGHT_DISCOVERY_TTL_MS/.test(INS), '必须有 TTL');
+});
+
+test('26 同一天冻结: 之后统计发生变化, 推荐也不变', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  const first = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(first.phase, 'ready');
+  const firstKeys = Array.from(first.songs.map(s => s.key));
+  // 换一份完全不同的统计 -> 推荐仍然必须是同一批
+  const other = buildSongStats(pool.slice(100, 145), { plays: 9, completed: 1, earlySkips: 1, listenMs: 300000, lastPlayedAt: Date.now() - 40 * 24 * 3600 * 1000 });
+  sb.playEventsSongStatsMap = () => other;
+  sb.playEventsArtistStatsMap = () => buildArtistStats(20);
+  const second = sb.smartShuffleHomeInsight(2);
+  assert.deepStrictEqual(Array.from(second.songs.map(s => s.key)), firstKeys, '当天推荐必须冻结');
+  assert.strictEqual(second.dayKey, sb.smartShuffleDailyKey());
+});
+
+test('27 跨天重新生成(昨天的冻结不算今天)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  const today = sb.smartShuffleDailyKey();
+  // 手工塞一份"昨天"的冻结
+  sb.localStorage.setItem('mineradio-smart-shuffle-daily-v1', JSON.stringify({
+    day: '2000-01-01',
+    songs: [{ key: 'old:1', name: 'Old', artist: 'Old', reason: 'x', source: 'library' }],
+    failed: [],
+  }));
+  const insight = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(insight.phase, 'ready');
+  assert.strictEqual(insight.dayKey, today, '必须是今天的 key');
+  const store = sb.smartShuffleDailyRead();
+  assert.strictEqual(store.day, today, '应已重写为今天的冻结');
+  assert.ok(Array.from(insight.songs.map(s => s.key)).indexOf('old:1') < 0, '不得沿用昨天的推荐');
+});
+
+test('28 某首失效: 只替换那一首, 另一首保持不变', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  sb.smartShuffleInsightDiscovery = {
+    at: Date.now(),
+    list: [{ provider: 'netease', id: 'DISC1', name: 'Fresh', artist: 'New Artist', durationMs: 200000, candidateSource: 'similar' }],
+  };
+  const before = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(before.phase, 'ready');
+  assert.strictEqual(before.songs.length, 2);
+  const victim = before.songs[0];
+  const survivor = before.songs[1];
+  const replaced = sb.smartShuffleDailyMarkFailed(victim.key);
+  assert.strictEqual(replaced, true, '失效标记应生效');
+  const after = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(after.phase, 'ready');
+  const keys = Array.from(after.songs.map(s => s.key));
+  assert.ok(keys.indexOf(victim.key) < 0, '失效那首不得再出现');
+  assert.ok(keys.indexOf(survivor.key) >= 0, '另一首必须保持不变');
+  assert.strictEqual(after.songs.length, 2, '应补回一首');
+});
+
+test('29 发现候选未尝试时不冻结(requireDiscoveryAttempt)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  const pending = sb.smartShuffleHomeInsight(2, { requireDiscoveryAttempt: true });
+  assert.strictEqual(pending.phase, 'pool-pending');
+  assert.strictEqual(pending.fallback, 'discovery-pending');
+  assert.strictEqual(sb.smartShuffleDailyRead(), null, '未尝试发现前不得写冻结');
+  // 尝试过(哪怕结果为空)之后就允许生成
+  sb.smartShuffleInsightDiscovery = { at: Date.now(), list: [] };
+  const ready = sb.smartShuffleHomeInsight(2, { requireDiscoveryAttempt: true });
+  assert.strictEqual(ready.phase, 'ready');
+});
+
+test('30 重启后仍是同一批(冻结持久化在 localStorage)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const storage = makeStorage();
+  const sb1 = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14), localStorage: storage });
+  const first = sb1.smartShuffleHomeInsight(2);
+  const firstKeys = Array.from(first.songs.map(s => s.key));
+  // 模拟重启: 新 sandbox, 共用同一份 localStorage(内存聚合也在, 但冻结来自存储)
+  const sb2 = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14), localStorage: storage });
+  const second = sb2.smartShuffleHomeInsight(2);
+  assert.deepStrictEqual(Array.from(second.songs.map(s => s.key)), firstKeys, '重启后应沿用当天冻结');
+});
+
+test('31 主页播放失败时只标记当日这一首(静态契约)', () => {
+  const DASH = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '03a-home-dashboard.js'), 'utf8');
+  const play = DASH.slice(DASH.indexOf('function homeSmartShufflePlay('), DASH.indexOf('var homeSmartShufflePoolRequested'));
+  assert.ok(/smartShuffleDailyMarkFailed\(key\)/.test(play), '失败时必须标记当日失效');
+  assert.ok(/renderHomeSmartShuffleCard\(\)/.test(play), '标记后要重新渲染补一首');
+  const INS = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
+  assert.ok(/mineradio-smart-shuffle-daily-v1/.test(INS), '冻结必须有独立存储键');
+  assert.ok(/samplesMet/.test(INS) && /poolMet/.test(INS), '学习完成与候选池仍分开判定');
 });

@@ -808,12 +808,16 @@ function playHomeDashboardDiscoverySong(index) {
 // 进度实时算(便宜), 全池打分由 02d 自己做 60 秒节流。
 var HOME_SS_REFRESH_MS = 60 * 1000;
 
+var HOME_SS_INSIGHT_OPTIONS = { requireDiscoveryAttempt: true };
+
 function homeSmartShuffleInsight() {
   try {
+    // requireDiscoveryAttempt: 生成"当天"的推荐之前必须先尝试过发现候选,
+    // 否则会把两条资料库的歌冻结一整天(发现歌要等下一次才可能进来)。
     if (typeof smartShuffleHomeInsightCached === 'function') {
-      return smartShuffleHomeInsightCached(2, HOME_SS_REFRESH_MS);
+      return smartShuffleHomeInsightCached(2, HOME_SS_REFRESH_MS, HOME_SS_INSIGHT_OPTIONS);
     }
-    if (typeof smartShuffleHomeInsight === 'function') return smartShuffleHomeInsight(2);
+    if (typeof smartShuffleHomeInsight === 'function') return smartShuffleHomeInsight(2, HOME_SS_INSIGHT_OPTIONS);
   } catch (err) {
     // 任何异常都只是"不显示", 绝不影响主页与播放
   }
@@ -863,7 +867,17 @@ function homeSmartShufflePlay(key) {
   Promise.resolve(playSongEntry(song, {
     context: { type: 'smart-shuffle-home', provider: String(song.provider || '') },
   })).then(function (ok) {
-    if (!ok && typeof showToast === 'function') showToast('播放失败，可稍后重试');
+    if (ok) return;
+    // 当日这条确实播不了 -> 从冻结列表里摘掉它(只换这一首, 不重算整张表),
+    // 下次渲染会自动补一首新的。
+    var replaced = false;
+    try {
+      if (typeof smartShuffleDailyMarkFailed === 'function') replaced = smartShuffleDailyMarkFailed(key);
+    } catch (e) { replaced = false; }
+    if (typeof showToast === 'function') {
+      showToast(replaced ? '这首暂时播不了，已为你换一首' : '播放失败，可稍后重试');
+    }
+    if (replaced) renderHomeSmartShuffleCard();
   }).catch(function () { });
 }
 try { window.homeSmartShufflePlay = homeSmartShufflePlay; } catch (e) { }
@@ -901,12 +915,14 @@ function renderHomeSmartShuffleCard() {
     if (actions) card.insertBefore(block, actions);
     else card.appendChild(block);
   }
-  // 推荐里还没有"资料库外"的歌时, 拉一次发现候选(纯读取, 10 分钟 TTL)。
+  // 需要发现候选的两种情形: ①还没尝试过(生成前) ②已经就绪但列表里没有资料库外的歌。
   // 用时间戳防重试风暴: 拉到的东西可能全被冷却挡掉, 不能每轮渲染都再拉一遍。
-  if (insight.phase === 'ready' && !homeSmartShuffleDiscoveryRequested
+  var homeSsNeedDiscovery = insight.fallback === 'discovery-pending'
+    || (insight.phase === 'ready'
+      && !(insight.songs || []).some(function (s) { return s && s.source === 'discovery'; }));
+  if (homeSsNeedDiscovery && !homeSmartShuffleDiscoveryRequested
       && (Date.now() - homeSmartShuffleDiscoveryTriedAt) > HOME_SS_DISCOVERY_RETRY_MS
-      && typeof smartShuffleEnsureDiscoveryCached === 'function'
-      && !(insight.songs || []).some(function (s) { return s && s.source === 'discovery'; })) {
+      && typeof smartShuffleEnsureDiscoveryCached === 'function') {
     homeSmartShuffleDiscoveryRequested = true;
     homeSmartShuffleDiscoveryTriedAt = Date.now();
     Promise.resolve(smartShuffleEnsureDiscoveryCached()).then(function (list) {
