@@ -865,11 +865,24 @@ function homeSmartShufflePlay(key) {
 }
 try { window.homeSmartShufflePlay = homeSmartShufflePlay; } catch (e) { }
 
+var homeSmartShufflePoolRequested = false;
+
 function renderHomeSmartShuffleCard() {
   var card = document.querySelector('#empty-home .daily-review-card');
   if (!card) return;
   var insight = homeSmartShuffleInsight();
   if (!insight) return;   // 数据没准备好 -> 整块不渲染, 保持原卡片外观
+
+  // 候选池缓存为空时, 走既有数据通路按需拉一次(纯读取, 无播放决策)。
+  // 只对 pool-empty 触发; 用标志位防重入, 真正的节流在 fetch 自身的 TTL + in-flight 去重。
+  if (insight.phase === 'pool-pending' && insight.fallback === 'pool-empty'
+      && !homeSmartShufflePoolRequested && typeof smartShuffleEnsurePoolCached === 'function') {
+    homeSmartShufflePoolRequested = true;
+    Promise.resolve(smartShuffleEnsurePoolCached()).then(function (ok) {
+      homeSmartShufflePoolRequested = false;
+      if (ok) renderHomeSmartShuffleCard();
+    }).catch(function () { homeSmartShufflePoolRequested = false; });
+  }
 
   var block = document.getElementById('home-ss-block');
   if (!block) {

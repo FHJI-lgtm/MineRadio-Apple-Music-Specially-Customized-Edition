@@ -306,3 +306,44 @@ test('17 播放链路契约: 公共入口复用 queueSong/playQueueAt, 主页不
   assert.ok(!/playQueueAt|playQueue\s*\.|provider/.test(play.replace(/provider: String\(song\.provider/, '')), '主页不得直接改队列或选源');
   assert.ok(/dataset\.ssFingerprint/.test(DASH), '仍保留幂等保护');
 });
+
+test('18 池缓存已有数据时, ensurePool 不再发起任何请求', () => {
+  const pool = buildPool(210);
+  const sb = makeSandbox({ pool, songStats: {}, artistStats: {} });
+  let fetchPoolCalls = 0;
+  sb.smartShuffleFetchPool = function () { fetchPoolCalls += 1; return Promise.resolve(pool); };
+  return sb.smartShuffleEnsurePoolCached().then(ok => {
+    assert.strictEqual(ok, true);
+    assert.strictEqual(fetchPoolCalls, 0, '缓存命中时不得重复拉取');
+    assert.strictEqual(sb.fetchCallCount, 0);
+  });
+});
+
+test('19 池为空时 ensurePool 只拉一次(并发去重), 且不碰播放/队列', () => {
+  const pool = buildPool(210);
+  const queue = [{ id: 'cur', name: 'Current', artist: 'X' }];
+  const sb = makeSandbox({ pool: [], songStats: {}, artistStats: {}, queue });
+  let fetchPoolCalls = 0;
+  sb.smartShuffleFetchPool = function () {
+    fetchPoolCalls += 1;
+    sb.smartShufflePoolState = { at: Date.now(), candidates: pool, error: '' };
+    return Promise.resolve(pool);
+  };
+  const before = JSON.stringify(sb.playQueue);
+  return Promise.all([sb.smartShuffleEnsurePoolCached(), sb.smartShuffleEnsurePoolCached()]).then(results => {
+    assert.deepStrictEqual(Array.from(results), [true, true]);
+    assert.strictEqual(fetchPoolCalls, 1, '并发调用应合并为一次, 实际=' + fetchPoolCalls);
+    assert.strictEqual(JSON.stringify(sb.playQueue), before, '不得修改播放队列');
+  });
+});
+
+test('20 主页按需拉池的边界: 只在 pool-empty 触发, 且有防重入标志', () => {
+  const DASH = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '03a-home-dashboard.js'), 'utf8');
+  assert.ok(/insight\.fallback === 'pool-empty'/.test(DASH), '只对 pool-empty 触发');
+  assert.ok(/homeSmartShufflePoolRequested/.test(DASH), '必须有防重入标志');
+  const INS = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
+  const ensure = INS.slice(INS.indexOf('function smartShuffleEnsurePoolCached('), INS.indexOf('// 播放能力探测'));
+  assert.ok(/smartShuffleFetchPool/.test(ensure), '必须复用既有数据通路');
+  assert.ok(!/playQueueAt|playSongEntry|playInApp|playQueue\s*(\.length\s*=|\.push|\.splice)/.test(ensure),
+    '拉池不得触发播放或改队列');
+});

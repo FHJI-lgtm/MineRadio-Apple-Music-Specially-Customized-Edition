@@ -206,7 +206,36 @@ try {
   window.smartShuffleHomeInsight = smartShuffleHomeInsight;
   window.smartShuffleHomeInsightCached = smartShuffleHomeInsightCached;
   window.smartShuffleHomeInsightInvalidate = smartShuffleHomeInsightInvalidate;
+  window.smartShuffleEnsurePoolCached = smartShuffleEnsurePoolCached;
 } catch (e) { }
+
+// ------------------------------------------------------------
+// 池缓存的**按需填充**(主页专用)
+// ------------------------------------------------------------
+// 候选池缓存只由探针/手动入口填充, 而探针要求"有歌开始播" —— 用户重启后只看主页时缓存是空的,
+// 卡片就会一直停在"等待候选"。这里走**同一条既有数据通路** smartShuffleFetchPool()
+// (10 分钟 TTL + in-flight 去重), 它是纯数据读取: 不产生播放决策, 不改队列, 不动冷却。
+// 注意: 与上面的 insight 函数分开 —— insight 仍然保证"零网络、零副作用"(有测试钉住)。
+var smartShuffleEnsurePoolInflight = null;
+
+function smartShuffleEnsurePoolCached() {
+  var current = (typeof smartShuffleCachedPool === 'function') ? smartShuffleCachedPool() : [];
+  if (current.length) return Promise.resolve(true);
+  if (typeof smartShuffleFetchPool !== 'function') return Promise.resolve(false);
+  if (smartShuffleEnsurePoolInflight) return smartShuffleEnsurePoolInflight;
+  smartShuffleEnsurePoolInflight = Promise.resolve()
+    .then(function () { return smartShuffleFetchPool(); })
+    .then(function (list) {
+      smartShuffleEnsurePoolInflight = null;
+      smartShuffleHomeInsightInvalidate();
+      return !!(Array.isArray(list) && list.length);
+    })
+    .catch(function () {
+      smartShuffleEnsurePoolInflight = null;
+      return false;
+    });
+  return smartShuffleEnsurePoolInflight;
+}
 
 // 播放能力探测: 「算出了歌」≠「能安全播这首歌」, 两条能力分别验证。
 // 入口必须存在, 且交给它的必须是带稳定身份的歌曲对象。
