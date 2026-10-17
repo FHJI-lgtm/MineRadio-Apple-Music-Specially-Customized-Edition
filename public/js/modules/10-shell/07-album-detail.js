@@ -1144,44 +1144,59 @@
     // 2) 再在随机结果里插歌。池挂了也不影响随机播放（那才是主诉求）。
     plSetStatus('正在读取候选池…', '');
     return smartShuffleFetchPool().then(function (pool) {
-      var plan = null;
-      try {
-        var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
-        var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
-        var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
-        plan = (typeof planSmartShuffleInsertions === 'function')
-          ? planSmartShuffleInsertions(base, pool, {
-              now: Date.now(),
-              weights: cfg.weights,
-              songStats: maps.songStats,
-              artistStats: maps.artistStats,
-              signatureStats: maps.signatureStats,
-              looseStats: maps.looseStats,
-              artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
-              recentKeys: recent.recentKeys,
-              recentArtists: recent.recentArtists,
-              recentAlbums: recent.recentAlbums,
-              rng: Math.random
-            })
-          : null;
-      } catch (err) {
-        plan = null;
-      }
+      var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
+      var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
+      // 2b) 发现层: 用几首种子换"资料库之外"的相似歌, 合并进池子。
+      //     失败或没有新歌时退回原池 —— 发现是加分项, 不能拖垮随机播放。
+      var compose = (typeof smartShuffleComposePool === 'function')
+        ? smartShuffleComposePool(pool, maps, cfg.weights)
+        : Promise.resolve({ pool: pool, discovery: 0 });
+      return compose.then(function (composed) {
+        var effectivePool = (composed && composed.pool) || pool;
+        var discoveryCount = (composed && composed.discovery) || 0;
 
-      if (plan && plan.applied) {
-        var inserted = (plan.insertions || []).length;
-        plSetStatus('智能随机：' + base.length + ' 首随机 + 插入 ' + inserted + ' 首', 'ok');
-        return playInApp(plan.order, 0, {
-          playlistName: name, shuffled: true, smartShuffle: true, inserted: inserted
+        var plan = null;
+        try {
+          var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
+          plan = (typeof planSmartShuffleInsertions === 'function')
+            ? planSmartShuffleInsertions(base, effectivePool, {
+                now: Date.now(),
+                weights: cfg.weights,
+                songStats: maps.songStats,
+                artistStats: maps.artistStats,
+                signatureStats: maps.signatureStats,
+                looseStats: maps.looseStats,
+                artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
+                recentKeys: recent.recentKeys,
+                recentArtists: recent.recentArtists,
+                recentAlbums: recent.recentAlbums,
+                // 发现位配额: 每 ~K 次插入留一个给资料库外的歌
+                discoveryShare: (cfg.weights && cfg.weights.discoveryShare) || 0,
+                rng: Math.random
+              })
+            : null;
+        } catch (err) {
+          plan = null;
+        }
+
+        if (plan && plan.applied) {
+          var inserted = (plan.insertions || []).length;
+          var newOnes = (plan.insertions || []).filter(function (x) { return x && x.discovery; }).length;
+          plSetStatus('智能随机：' + base.length + ' 首随机 + 插入 ' + inserted + ' 首'
+            + (newOnes ? '（其中 ' + newOnes + ' 首资料库外）' : ''), 'ok');
+          return playInApp(plan.order, 0, {
+            playlistName: name, shuffled: true, smartShuffle: true, inserted: inserted,
+            discovery: newOnes, discoveryPool: discoveryCount
+          }, plProv);
+        }
+
+        // 插歌没成不谎报 —— 随机本身已经完成，照常播打乱后的歌单
+        var why = (plan && plan.reason) || 'unavailable';
+        plSetStatus('已随机播放 ' + base.length + ' 首（未插歌：' + why + '）', 'warn');
+        return playInApp(base, 0, {
+          playlistName: name, shuffled: true, smartShuffle: true, inserted: 0
         }, plProv);
-      }
-
-      // 插歌没成不谎报 —— 随机本身已经完成，照常播打乱后的歌单
-      var why = (plan && plan.reason) || 'unavailable';
-      plSetStatus('已随机播放 ' + base.length + ' 首（未插歌：' + why + '）', 'warn');
-      return playInApp(base, 0, {
-        playlistName: name, shuffled: true, smartShuffle: true, inserted: 0
-      }, plProv);
+      });
     });
   };
   window.playAmPlaylistFromStart = function () { return plPlay('这个歌单'); };

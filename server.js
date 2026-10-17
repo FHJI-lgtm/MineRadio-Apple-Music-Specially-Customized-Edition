@@ -53,6 +53,7 @@ const {
   sati_resource_sub_list,
   lyric,
   lyric_new,
+  simi_song,
 } = require('NeteaseCloudMusicApi');
 const neteaseLibrary = require('./netease-library-adapter');
 const http = require('http');
@@ -4795,6 +4796,47 @@ const SMART_SHUFFLE_POOL_TTL_MS = 10 * 60 * 1000;
 const SMART_SHUFFLE_POOL_CACHE_MAX = 8;
 const smartShufflePoolCache = new Map();
 
+// 相似歌曲(发现层)缓存。**必须放在模块级** —— 放进请求处理函数里每次请求都会重建,
+// 那正是四源资料库缓存早就存在的坑。
+// 相似结果随种子变, TTL 比资料库短; 一个种子 30 分钟内基本不会变。
+const SMART_SHUFFLE_SIMILAR_TTL_MS = 30 * 60 * 1000;
+const SMART_SHUFFLE_SIMILAR_CACHE_MAX = 32;
+const smartShuffleSimilarCache = new Map();
+
+function smartShuffleSimilarCacheSet(key, value) {
+  if (smartShuffleSimilarCache.size >= SMART_SHUFFLE_SIMILAR_CACHE_MAX) {
+    const oldest = smartShuffleSimilarCache.keys().next();
+    if (!oldest.done) smartShuffleSimilarCache.delete(oldest.value);
+  }
+  smartShuffleSimilarCache.set(key, { at: Date.now(), value: value });
+}
+
+// 网易云 simiSong 的一行 -> 与资料库候选**完全同构**的形状, 并打上发现层标记。
+// 注意: 该接口的 score/popularity 字段实测等于热度(不是相似度), 不能拿来当质量阈值。
+function smartShuffleSimilarCandidate(song, seedId) {
+  song = song && typeof song === 'object' ? song : {};
+  const album = song.album || song.al || {};
+  const artists = (song.artists || song.ar || []).map((a) => (a && a.name) || '').filter(Boolean);
+  return {
+    provider: 'netease',
+    source: 'netease',
+    id: String(song.id || ''),
+    name: String(song.name || ''),
+    artist: artists.join(' / '),
+    album: String(album.name || ''),
+    albumId: String(album.id || ''),
+    durationMs: Number(song.duration || song.dt) || 0,
+    cover: String(album.picUrl || ''),
+    fee: Number(song.fee) || 0,
+    playable: false,
+    crossSource: false,
+    needsSourceSwitch: false,
+    candidateSource: 'similar',
+    seedId: String(seedId || ''),
+    similaritySource: 'netease-simi',
+  };
+}
+
 // 把任意源的标准化曲目映射成 neteaseSourceMatch* 期望的形状。
 // 这一层是"复用指纹"的关键: 指纹逻辑一字不改, 只负责把输入喂对。
 function smartShuffleMatchShape(song) {
@@ -9321,6 +9363,72 @@ const server = http.createServer(async (req, res) => {
       console.error('[SmartShuffleCandidates]', err);
       // 全链路失败 -> 空池 + ok:false, 让渲染端走"原队列"安全阀
       sendJSON(res, { ok: false, error: err.code || err.message, candidates: [], counts: { raw: 0, merged: 0, returned: 0, crossSource: 0 } }, 500);
+    }
+    return;
+  }
+  // 发现层: 给几个**种子**歌曲取"相似、但不在资料库"的候选。
+  // 只负责取数与归一化, 不打分不排序(与服务端"从不评分"的约束一致)。
+  if (pn === '/api/smart-shuffle/similar') {
+    try {
+      const limit = Math.max(1, Math.min(12, parseInt(url.searchParams.get('limit') || '8', 10) || 8));
+      const seedIds = String(url.searchParams.get('seeds') || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => /^\d+$/.test(s))
+        .slice(0, 8);
+      if (!seedIds.length) {
+        sendJSON(res, { ok: false, error: 'NO_SEEDS', candidates: [], counts: { seeds: 0, raw: 0, returned: 0 } });
+        return;
+      }
+      const cacheKey = seedIds.join(',') + '|' + limit;
+      const cached = smartShuffleSimilarCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < SMART_SHUFFLE_SIMILAR_TTL_MS) {
+        sendJSON(res, cached.value);
+        return;
+      }
+      const cookie = typeof userCookie === 'string' ? userCookie : '';
+      const seen = new Set(seedIds);
+      const built = [];
+      const seedStats = [];
+      for (let i = 0; i < seedIds.length; i++) {
+        const seedId = seedIds[i];
+        let rows = [];
+        let error = '';
+        try {
+          const resp = await simi_song({ id: seedId, limit: limit, cookie: cookie });
+          rows = (resp && resp.body && Array.isArray(resp.body.songs)) ? resp.body.songs : [];
+        } catch (err) {
+          error = (err && err.message) || 'SIMI_FAILED';
+        }
+        let kept = 0;
+        rows.forEach((song) => {
+          const candidate = smartShuffleSimilarCandidate(song, seedId);
+          if (!candidate.id || !candidate.name || !candidate.artist) return;
+          if (seen.has(candidate.id)) return;
+          seen.add(candidate.id);
+          built.push(candidate);
+          kept += 1;
+        });
+        seedStats.push({ seedId: seedId, got: rows.length, kept: kept, error: error });
+      }
+      const payload = {
+        ok: true,
+        scoring: 'renderer',
+        playabilityVerified: false,
+        source: 'netease-simi',
+        seeds: seedStats,
+        counts: {
+          seeds: seedIds.length,
+          raw: seedStats.reduce((n, s) => n + s.got, 0),
+          returned: built.length,
+        },
+        candidates: built,
+      };
+      smartShuffleSimilarCacheSet(cacheKey, payload);
+      sendJSON(res, payload);
+    } catch (err) {
+      console.error('[SmartShuffleSimilar]', err);
+      sendJSON(res, { ok: false, error: err.code || err.message, candidates: [], counts: { seeds: 0, raw: 0, returned: 0 } });
     }
     return;
   }

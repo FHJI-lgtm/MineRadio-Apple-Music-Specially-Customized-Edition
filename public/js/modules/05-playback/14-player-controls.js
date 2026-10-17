@@ -708,48 +708,61 @@ function smartShuffleQueue() {
   // 1) 尾部先随机 —— 这是主诉求, 池挂了也要完成
   shuffleArrayInPlace(tail);
 
-  function applyTail(next, inserted, reason, okPlan) {
+  function applyTail(next, inserted, reason, okPlan, newOnes) {
     // 只替换 currentIdx 之后的部分: 不动正在播的, 不动已播的
     playQueue.length = startIdx + 1;
     for (var i = 0; i < next.length; i++) playQueue.push(next[i]);
     safeRenderQueuePanel('smart-shuffle-queue', { animate: false, scrollCurrent: false, deferWhenHidden: false });
     safeShelfRebuild('smart-shuffle-queue', true);
     if (typeof saveLastPlaybackSnapshot === 'function') saveLastPlaybackSnapshot(true, 'smart-shuffle-queue');
-    if (okPlan) showToast('智能随机：' + tail.length + ' 首随机 + 插入 ' + inserted + ' 首');
+    if (okPlan) {
+      showToast('智能随机：' + tail.length + ' 首随机 + 插入 ' + inserted + ' 首'
+        + (newOnes ? '（其中 ' + newOnes + ' 首资料库外）' : ''));
+    }
     else showToast('已随机 ' + tail.length + ' 首（未插歌：' + reason + '）');
   }
 
   return Promise.resolve(typeof smartShuffleFetchPool === 'function' ? smartShuffleFetchPool() : [])
     .then(function (pool) {
-      var plan = null;
-      try {
-        var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
-        var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
-        var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
-        plan = (typeof planSmartShuffleInsertions === 'function')
-          ? planSmartShuffleInsertions(tail, pool, {
-              now: Date.now(),
-              weights: cfg.weights,
-              songStats: maps.songStats,
-              artistStats: maps.artistStats,
-              signatureStats: maps.signatureStats,
-              looseStats: maps.looseStats,
-              artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
-              recentKeys: recent.recentKeys,
-              recentArtists: recent.recentArtists,
-              recentAlbums: recent.recentAlbums,
-              rng: Math.random
-            })
-          : null;
-      } catch (err) {
-        plan = null;
-      }
-      if (plan && plan.applied && Array.isArray(plan.order)) {
-        applyTail(plan.order, (plan.insertions || []).length, 'ok', true);
-        return true;
-      }
-      applyTail(tail, 0, (plan && plan.reason) || 'unavailable', false);
-      return false;
+      var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
+      var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
+      // 发现层: 用几首种子换资料库外的相似歌, 合并进池。失败就退回原池。
+      var compose = (typeof smartShuffleComposePool === 'function')
+        ? smartShuffleComposePool(pool, maps, cfg.weights)
+        : Promise.resolve({ pool: pool, discovery: 0 });
+      return compose.then(function (composed) {
+        var effectivePool = (composed && composed.pool) || pool;
+        var plan = null;
+        try {
+          var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
+          plan = (typeof planSmartShuffleInsertions === 'function')
+            ? planSmartShuffleInsertions(tail, effectivePool, {
+                now: Date.now(),
+                weights: cfg.weights,
+                songStats: maps.songStats,
+                artistStats: maps.artistStats,
+                signatureStats: maps.signatureStats,
+                looseStats: maps.looseStats,
+                artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
+                recentKeys: recent.recentKeys,
+                recentArtists: recent.recentArtists,
+                recentAlbums: recent.recentAlbums,
+                discoveryShare: (cfg.weights && cfg.weights.discoveryShare) || 0,
+                rng: Math.random
+              })
+            : null;
+        } catch (err) {
+          plan = null;
+        }
+        if (plan && plan.applied && Array.isArray(plan.order)) {
+          var inserted = (plan.insertions || []).length;
+          var newOnes = (plan.insertions || []).filter(function (x) { return x && x.discovery; }).length;
+          applyTail(plan.order, inserted, 'ok', true, newOnes);
+          return true;
+        }
+        applyTail(tail, 0, (plan && plan.reason) || 'unavailable', false);
+        return false;
+      });
     })
     .catch(function () {
       applyTail(tail, 0, 'pool-failed', false);

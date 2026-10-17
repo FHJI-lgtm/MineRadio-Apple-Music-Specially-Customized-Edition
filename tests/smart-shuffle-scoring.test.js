@@ -265,6 +265,63 @@ test('TEST 14 — 事件表在无 IndexedDB 环境下也不抛异常', () => {
   assert.strictEqual(sb.playEventCount(), 3);
 });
 
+test('TEST 27 — 发现位配额: 资料库外的歌按配额插入, 且不连续', () => {
+  const sb = makeSandbox();
+  const queue = [];
+  for (let i = 0; i < 30; i += 1) queue.push(fixtureCandidate('q' + i, { plays: 2, lastPlayedAt: NOW - 3 * 24 * HOUR }));
+  // 资料库内候选(分数更高) + 资料库外候选(无历史, 分数天然低)
+  const lib = [];
+  for (let i = 0; i < 6; i += 1) {
+    lib.push(fixtureCandidate('L' + i, { plays: 20, completed: 18, lastPlayedAt: NOW - 5 * 24 * HOUR }, { candidateSource: 'personal-playlists' }));
+  }
+  const disc = [];
+  for (let i = 0; i < 4; i += 1) disc.push(fixtureCandidate('D' + i, {}, { candidateSource: 'similar', provider: 'netease' }));
+  const pool = lib.concat(disc);
+  const base = { now: NOW, weights: sb.shuffleDefaultWeights(), rng: fixedRng(new Array(800).fill(0.5)) };
+
+  const none = sb.planSmartShuffleInsertions(queue, pool, Object.assign({}, base, { discoveryShare: 0 }));
+  assert.ok(none.applied, 'reason=' + none.reason);
+  assert.strictEqual(none.insertions.filter(x => x.discovery).length, 0, '配额 0 时不得插入发现歌');
+
+  // 配额 1 = 最大密度: 每隔一首插入一首发现歌(绝不连续两首都是新的)
+  const all = sb.planSmartShuffleInsertions(queue, pool, Object.assign({}, base, { discoveryShare: 1 }));
+  assert.ok(all.applied, 'reason=' + all.reason);
+  assert.ok(all.insertions.length >= 6, '长队列应有多次插入, 实际=' + all.insertions.length);
+  const discCount = all.insertions.filter(x => x.discovery).length;
+  assert.strictEqual(discCount, Math.floor(all.insertions.length / 2),
+    '配额 1 时约为半数, 实际 ' + discCount + '/' + all.insertions.length);
+  for (let i = 1; i < all.insertions.length; i += 1) {
+    assert.ok(!(all.insertions[i].discovery && all.insertions[i - 1].discovery), '不得连续两首都是资料库外');
+  }
+
+  // 默认 0.35 也要真的能插进来(否则等于没做)
+  const some = sb.planSmartShuffleInsertions(queue, pool, Object.assign({}, base, { discoveryShare: 0.35 }));
+  assert.ok(some.applied, 'reason=' + some.reason);
+  assert.ok(some.insertions.filter(x => x.discovery).length >= 1, '默认配额下至少要插进 1 首资料库外的歌');
+});
+
+test('TEST 28 — 发现池必须剔除资料库里已有的歌', () => {
+  const sb = makeSandbox();
+  const basePool = [
+    { provider: 'netease', id: '1', name: 'Known Song', artist: 'Artist A', durationMs: 200000 },
+    { provider: 'netease', id: '2', name: 'Another', artist: 'Artist B', durationMs: 210000 },
+  ];
+  // 服务端回来的相似歌: 第 1 首与资料库同曲(签名相同), 第 2 首是新歌
+  const similar = [
+    { provider: 'netease', id: '1', name: 'Known Song', artist: 'Artist A', durationMs: 200000, candidateSource: 'similar' },
+    { provider: 'netease', id: '9', name: 'Brand New', artist: 'Artist Z', durationMs: 190000, candidateSource: 'similar' },
+  ];
+  sb.smartShuffleFetchSimilar = () => Promise.resolve(similar);
+  sb.smartShufflePickSeeds = () => [{ provider: 'netease', id: '1' }];
+  return sb.smartShuffleComposePool(basePool, { songStats: {} }, sb.shuffleDefaultWeights()).then(res => {
+    assert.strictEqual(res.discovery, 1, '只应加进 1 首新歌, 实际=' + res.discovery);
+    assert.strictEqual(res.pool.length, 3, '合并后应为 3 首');
+    const added = res.pool.filter(c => c.candidateSource === 'similar');
+    assert.strictEqual(added.length, 1);
+    assert.strictEqual(added[0].name, 'Brand New');
+  });
+});
+
 test('TEST 24 — 首页今日口径: 事件表同时覆盖内部播放与 AM 外部播放', () => {
   const sb = makeSandbox();
   endSession(sb, 'inner1', 60000, 0.9, 'ended', { completed: true });   // 内部播放
