@@ -14,6 +14,8 @@ const appRoot = path.resolve(__dirname, '..');
 const HTML = fs.readFileSync(path.join(appRoot, 'public', 'index.html'), 'utf8');
 const MOD = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '10-shell', '07-album-detail.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(appRoot, 'public', 'css', 'index.css'), 'utf8');
+const CTRL = fs.readFileSync(
+  path.join(appRoot, 'public', 'js', 'modules', '05-playback', '14-player-controls.js'), 'utf8');
 
 test('入口 1 — 按钮在歌单详情操作区里, 且指向智能随机 handler', () => {
   assert.match(HTML, /id="am-playlist-detail-smart-shuffle"/, '必须有按钮');
@@ -57,6 +59,28 @@ test('入口 3 — 语义是「歌单先随机 + 再插歌」, 不是纯重排',
 test('入口 4 — Apple 歌单里直接隐藏该按钮', () => {
   assert.match(MOD, /am-playlist-detail-smart-shuffle/, '要在 plRenderInfo 里控制显隐');
   assert.match(MOD, /smartBtn\.hidden = !isNonAppleSource/, '非四源必须隐藏');
+});
+
+test('入口 6 — 控制条也有智能随机, 且只动 currentIdx 之后的部分', () => {
+  assert.match(HTML, /id="smart-shuffle-queue-btn"/, '控制条必须有按钮');
+  assert.ok(HTML.indexOf('onclick="smartShuffleQueue()"') >= 0, '必须指向 handler');
+  assert.match(CTRL, /function smartShuffleQueue\(\)/, '必须有实现');
+  assert.match(CTRL, /smartShuffleApplyGuard/, '必须过唯一接管判定点');
+  assert.match(CTRL, /planSmartShuffleInsertions/, '必须插歌（不是纯重排）');
+
+  const i = CTRL.indexOf('function smartShuffleQueue()');
+  const body = CTRL.slice(i, i + 5200);
+  // 只截断 currentIdx 之后: 正在播的和已播前缀都不许动
+  assert.ok(body.indexOf('playQueue.length = startIdx + 1') >= 0, '只能替换未播部分');
+  // 顺序: 先随机尾部, 再拉池插歌
+  assert.ok(body.indexOf('shuffleArrayInPlace') > 0, '尾部必须先随机');
+  assert.ok(body.indexOf('shuffleArrayInPlace') < body.indexOf('smartShuffleFetchPool'),
+    '必须先随机再拉池');
+});
+
+test('入口 7 — 两个入口用同一个图标（四角星 + 交叉箭头 + 圆点）', () => {
+  const stars = HTML.match(/M7 3\.4C7\.35 4\.9/g) || [];
+  assert.strictEqual(stars.length, 2, '歌单详情与控制条应各有一处同一图标, 实际=' + stars.length);
 });
 
 test('入口 5 — 只对非 Apple 源生效, 且带 provenance', () => {

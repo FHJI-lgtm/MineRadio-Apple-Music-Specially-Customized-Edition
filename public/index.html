@@ -1465,6 +1465,19 @@
               <path d="M7 22l-4-4 4-4" />
               <path d="M21 13v2a4 4 0 0 1-4 4H3" />
             </svg></button>
+          <!-- 智能随机：作用于**当前队列 currentIdx 之后**的未播部分，已播前缀不动。
+               只对 MineRadio 自己的源生效（Apple 队列会被 applyGuard 拒绝）。 -->
+          <button id="smart-shuffle-queue-btn" class="ctrl-btn" onclick="smartShuffleQueue()"
+            title="智能随机（只对 MineRadio 自己的源生效）" aria-label="智能随机">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3.4C7.35 4.9 7.95 5.5 9.45 5.85 7.95 6.2 7.35 6.8 7 8.3 6.65 6.8 6.05 6.2 4.55 5.85 6.05 5.5 6.65 4.9 7 3.4Z" fill="currentColor"/>
+                    <path d="M10.6 17.9 18.2 10.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <path d="M15 10.3h3.4v3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M10.6 9.7 18.2 17.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <path d="M15 17.3h3.4v-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <circle cx="7.6" cy="19.6" r="1.15" fill="currentColor"/>
+                  </svg>
+          </button>
           <button id="cuefield-automix-btn" class="ctrl-btn" onclick="toggleCuefieldAutoMix()"
             title="Cuefield AutoMix（实验功能，默认关闭）" aria-pressed="false">
             <svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
@@ -2087,10 +2100,13 @@
                   type="button" data-smart-shuffle="playlist"
                   title="智能随机 · 按你的收听习惯重排（只用于 MineRadio 自己的源）"
                   aria-label="智能随机播放歌单" onclick="playAmPlaylistSmartShuffled()">
-                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5" />
-                    <circle cx="12" cy="12" r="3.2" />
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3.4C7.35 4.9 7.95 5.5 9.45 5.85 7.95 6.2 7.35 6.8 7 8.3 6.65 6.8 6.05 6.2 4.55 5.85 6.05 5.5 6.65 4.9 7 3.4Z" fill="currentColor"/>
+                    <path d="M10.6 17.9 18.2 10.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <path d="M15 10.3h3.4v3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M10.6 9.7 18.2 17.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    <path d="M15 17.3h3.4v-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <circle cx="7.6" cy="19.6" r="1.15" fill="currentColor"/>
                   </svg>
                 </button>
               </div>
