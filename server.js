@@ -4828,7 +4828,8 @@ function smartShuffleSimilarCandidate(song, seedId) {
     durationMs: Number(song.duration || song.dt) || 0,
     cover: String(album.picUrl || ''),
     fee: Number(song.fee) || 0,
-    playable: false,
+    // 注意: **不要**写 playable:false —— 插入计划会据此丢弃候选(见 02c "not-playable"),
+    // 发现歌会被整批扔掉。这里如实表示"未验证"(undefined), 由取流端点最终判定。
     crossSource: false,
     needsSourceSwitch: false,
     candidateSource: 'similar',

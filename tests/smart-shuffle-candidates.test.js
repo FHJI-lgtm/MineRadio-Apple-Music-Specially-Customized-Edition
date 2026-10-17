@@ -68,6 +68,19 @@ function track(provider, id, name, artist, durationSec, extra) {
 }
 
 // ------------------------------------------------------------
+test('发现层: 相似候选不得被打成 playable:false（否则会被插入计划整批丢弃）', () => {
+  const start = SERVER.indexOf('function smartShuffleSimilarCandidate(');
+  assert.ok(start > 0, '必须能找到相似候选归一化函数');
+  const body = SERVER.slice(start, SERVER.indexOf('\n}', start) + 2);
+  // 先剥掉注释再断言 —— 注释里为了说明问题本身就会提到 playable:false
+  const code = body.replace(/\/\/[^\n]*/g, '');
+  // 插入计划第一步是 `if (candidate.playable === false && !candidate.crossSource) -> dropped`
+  // 所以归一化时写 playable:false 会把发现歌整批扔掉 —— 实测就是这条让发现层静默失效。
+  assert.ok(!/playable\s*:\s*false/.test(code), '相似候选不得写 playable:false（会触发插入计划的 not-playable 丢弃）');
+  assert.ok(/candidateSource\s*:\s*'similar'/.test(body), '必须标记 candidateSource=similar, 插入计划靠它识别发现位');
+  assert.ok(/seedId\s*:/.test(body), '必须带 seedId 以便回溯');
+});
+
 test('TEST 1 — 跨源同一首歌必须归并成一个候选, 并保留全部来源', () => {
   const sb = makeSandbox();
   const clusters = sb.smartShuffleMergeCandidates([

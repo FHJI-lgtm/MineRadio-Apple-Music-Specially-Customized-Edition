@@ -762,12 +762,17 @@ function smartShuffleFetchSimilar(seedIds, limit) {
 
 // 挑种子: 优先**用户真听过/听完的**网易云歌(只有网易云 id 能查相似);
 // 没有任何收听历史时才退化成随机取, 否则新装用户永远拿不到发现位。
-function smartShufflePickSeeds(pool, stats, limit) {
+function smartShufflePickSeeds(pool, stats, limit, offset) {
   var max = Math.max(1, Math.min(8, Math.round(Number(limit) || 4)));
   var songStats = (stats && stats.songStats) || {};
+  var list = Array.isArray(pool) ? pool : [];
   var netease = [];
-  (Array.isArray(pool) ? pool : []).forEach(function (candidate) {
-    if (!candidate || candidate.provider !== 'netease') return;
+  var artistCount = Object.create(null);
+  list.forEach(function (candidate) {
+    if (!candidate) return;
+    var a = shuffleArtistPrimary(candidate.artist);
+    if (a) artistCount[a] = (artistCount[a] || 0) + 1;
+    if (candidate.provider !== 'netease') return;
     if (!/^\d+$/.test(String(candidate.id || ''))) return;
     netease.push(candidate);
   });
@@ -778,50 +783,80 @@ function smartShufflePickSeeds(pool, stats, limit) {
       candidate: candidate,
       plays: s ? (Number(s.plays) || 0) : 0,
       lastAt: s ? (Number(s.lastPlayedAt) || 0) : 0,
+      coverage: artistCount[shuffleArtistPrimary(candidate.artist)] || 1,
     };
   });
+  // 先按"爱听程度"取一个宽名单, 再在其中优先**同艺人覆盖最少**的当种子:
+  // 收录得多说明相似歌也大概率已经在库里, 全被签名去重挡掉 -> 发现层白跑。
   ranked.sort(function (a, b) {
     if (b.plays !== a.plays) return b.plays - a.plays;
     return b.lastAt - a.lastAt;
   });
-  // 有历史就取 top; 全无历史则打散后取, 避免每次都挑同样几首
   var withHistory = ranked.filter(function (r) { return r.plays > 0; });
-  var picked = [];
-  if (withHistory.length) {
-    picked = withHistory.slice(0, max);
-  } else {
-    var shuffled = ranked.slice();
-    for (var i = shuffled.length - 1; i > 0; i -= 1) {
-      var j = Math.floor(Math.random() * (i + 1));
-      var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
-    }
-    picked = shuffled.slice(0, max);
-  }
-  return picked.map(function (r) { return r.candidate; });
+  var wide = (withHistory.length ? withHistory : ranked).slice(0, Math.max(max * 6, 24));
+  wide.sort(function (a, b) {
+    if (a.coverage !== b.coverage) return a.coverage - b.coverage;
+    return b.plays - a.plays;
+  });
+  var off = Math.max(0, Math.round(Number(offset) || 0));
+  return wide.slice(off, off + max).map(function (r) { return r.candidate; });
 }
 
 // 资料库池 + 发现层 -> 合并池。**剔除资料库已有的歌**(按签名), 其余标为发现候选。
+// 相似歌常常"全都已经在库里"(尤其你收藏了很多同艺人时) —— 那时第一批种子的
+// added 会是 0, 所以这里换一批种子再试一次, 而不是直接报"没有新歌"。
 function smartShuffleComposePool(basePool, stats, weights) {
   var w = weights || shuffleDefaultWeights();
   var share = Number(w.discoveryShare);
   if (!isFinite(share) || share <= 0) return Promise.resolve({ pool: basePool, discovery: 0 });
-  var seeds = smartShufflePickSeeds(basePool, stats, w.discoverySeeds);
-  if (!seeds.length) return Promise.resolve({ pool: basePool, discovery: 0 });
-  var ids = seeds.map(function (s) { return s.id; });
-  return smartShuffleFetchSimilar(ids, w.similarLimit).then(function (similar) {
-    if (!Array.isArray(similar) || !similar.length) return { pool: basePool, discovery: 0 };
-    var have = Object.create(null);
-    (basePool || []).forEach(function (c) { have[shuffleSongSignature(c)] = true; });
-    var added = [];
-    similar.forEach(function (c) {
+
+  var seedLimit = Math.max(1, Math.round(Number(w.discoverySeeds) || 4));
+  var have = Object.create(null);
+  (basePool || []).forEach(function (c) { have[shuffleSongSignature(c)] = true; });
+
+  function collectFresh(rows) {
+    var fresh = [];
+    (Array.isArray(rows) ? rows : []).forEach(function (c) {
       var sig = shuffleSongSignature(c);
       if (!sig || have[sig]) return;
       have[sig] = true;
-      added.push(c);
+      fresh.push(c);
     });
-    if (!added.length) return { pool: basePool, discovery: 0 };
-    return { pool: (basePool || []).concat(added), discovery: added.length };
+    return fresh;
+  }
+
+  function attempt(offset) {
+    var seeds = smartShufflePickSeeds(basePool, stats, seedLimit, offset);
+    if (!seeds.length) return Promise.resolve({ fresh: [], seeds: [], raw: 0 });
+    var ids = seeds.map(function (s) { return String(s.id); });
+    return smartShuffleFetchSimilar(ids, w.similarLimit).then(function (rows) {
+      return { fresh: collectFresh(rows), seeds: seeds, raw: (Array.isArray(rows) ? rows.length : 0) };
+    });
+  }
+
+  return attempt(0).then(function (first) {
+    if (first.fresh.length) return finish(first, 1);
+    if (!first.seeds.length) {
+      console.log('[SmartShuffle][discovery] 没有可用的网易云种子(池里无 netease id)');
+      return { pool: basePool, discovery: 0 };
+    }
+    // 第一批全是库内歌 -> 换一批种子再试
+    return attempt(seedLimit).then(function (second) {
+      if (second.fresh.length) {
+        console.log('[SmartShuffle][discovery] 第一批全在库内(raw=' + first.raw + '), 换种子后成功');
+        return finish(second, 2);
+      }
+      console.log('[SmartShuffle][discovery] seeds=' + first.seeds.length + ' raw=' + (first.raw + second.raw)
+        + ' added=0 (两批相似歌全在资料库内) share=' + share);
+      return { pool: basePool, discovery: 0 };
+    });
   });
+
+  function finish(result, batches) {
+    console.log('[SmartShuffle][discovery] seeds=' + result.seeds.length + ' raw=' + result.raw
+      + ' added=' + result.fresh.length + ' batches=' + batches + ' share=' + share);
+    return { pool: (basePool || []).concat(result.fresh), discovery: result.fresh.length };
+  }
 }
 
 // 队列内 / 候选池之间的"同一首歌"签名。
