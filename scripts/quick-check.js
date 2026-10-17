@@ -227,6 +227,7 @@ function runSmartShuffleRegressionCheck() {
     path.join(appRoot, 'tests', 'smart-shuffle-candidates.test.js'),
     path.join(appRoot, 'tests', 'smtc-listen-session.test.js'),
     path.join(appRoot, 'tests', 'smart-shuffle-toggle.test.js'),
+    path.join(appRoot, 'tests', 'smart-shuffle-playlist-entry.test.js'),
   ];
   const result = spawnSync(process.execPath, ['--test'].concat(testFiles), {
     cwd: appRoot,
