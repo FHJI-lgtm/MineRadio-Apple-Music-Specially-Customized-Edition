@@ -842,7 +842,8 @@ function homeSmartShuffleSongHtml(song, canPlay) {
   return '<div class="home-ss-song">' +
     '<div class="home-ss-cover">' + coverHtml + '</div>' +
     '<div class="home-ss-meta">' +
-    '<div class="home-ss-name">' + homeSmartShuffleEscape(song.name) + '</div>' +
+    '<div class="home-ss-name">' + homeSmartShuffleEscape(song.name) +
+      '<span class="home-ss-tag">' + (song.source === 'discovery' ? '新发现' : '资料库') + '</span></div>' +
     '<div class="home-ss-artist">' + homeSmartShuffleEscape(song.artist) + '</div>' +
     '<div class="home-ss-reason">' + homeSmartShuffleEscape(song.reason) + '</div>' +
     '</div>' + playBtn + '</div>';
@@ -868,6 +869,9 @@ function homeSmartShufflePlay(key) {
 try { window.homeSmartShufflePlay = homeSmartShufflePlay; } catch (e) { }
 
 var homeSmartShufflePoolRequested = false;
+var homeSmartShuffleDiscoveryRequested = false;
+var homeSmartShuffleDiscoveryTriedAt = 0;
+var HOME_SS_DISCOVERY_RETRY_MS = 10 * 60 * 1000;
 
 function renderHomeSmartShuffleCard() {
   var card = document.querySelector('#empty-home .daily-review-card');
@@ -897,7 +901,20 @@ function renderHomeSmartShuffleCard() {
     if (actions) card.insertBefore(block, actions);
     else card.appendChild(block);
   }
-  var songKeys = (insight.songs || []).map(function (s) { return s.key + '|' + s.reason; }).join(',');
+  // 推荐里还没有"资料库外"的歌时, 拉一次发现候选(纯读取, 10 分钟 TTL)。
+  // 用时间戳防重试风暴: 拉到的东西可能全被冷却挡掉, 不能每轮渲染都再拉一遍。
+  if (insight.phase === 'ready' && !homeSmartShuffleDiscoveryRequested
+      && (Date.now() - homeSmartShuffleDiscoveryTriedAt) > HOME_SS_DISCOVERY_RETRY_MS
+      && typeof smartShuffleEnsureDiscoveryCached === 'function'
+      && !(insight.songs || []).some(function (s) { return s && s.source === 'discovery'; })) {
+    homeSmartShuffleDiscoveryRequested = true;
+    homeSmartShuffleDiscoveryTriedAt = Date.now();
+    Promise.resolve(smartShuffleEnsureDiscoveryCached()).then(function (list) {
+      homeSmartShuffleDiscoveryRequested = false;
+      if (Array.isArray(list) && list.length) renderHomeSmartShuffleCard();
+    }).catch(function () { homeSmartShuffleDiscoveryRequested = false; });
+  }
+  var songKeys = (insight.songs || []).map(function (s) { return s.source + '|' + s.key + '|' + s.reason; }).join(',');
   var fingerprint = insight.phase + '|' + insight.progress + '|' + (insight.canPlay ? '1' : '0') + '|'
     + songKeys + '|' + (insight.fallback || '');
   if (block.dataset.ssFingerprint === fingerprint) return;

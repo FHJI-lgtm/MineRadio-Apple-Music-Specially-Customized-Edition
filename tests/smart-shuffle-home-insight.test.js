@@ -365,3 +365,63 @@ test('21 播放按钮必须真的绑上点击处理(不能只有 data 属性)', 
   assert.ok(!/playQueueAt|provider/.test(fn.replace(/context: \{ type: 'smart-shuffle-home', provider: String\(song\.provider/, '')),
     '处理器不得自行选源或直接调底层播放器');
 });
+
+function discoveryPool() {
+  return [
+    { provider: 'netease', id: 'D1', name: 'Fresh One', artist: 'Discovery A', album: 'DA', durationMs: 200000, cover: '', candidateSource: 'similar' },
+    { provider: 'netease', id: 'D2', name: 'Fresh Two', artist: 'Discovery B', album: 'DB', durationMs: 210000, cover: '', candidateSource: 'artist-more' },
+  ];
+}
+
+test('22 推荐默认"一首资料库 + 一首资料库外"', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  sb.smartShuffleInsightDiscovery = { at: Date.now(), list: discoveryPool() };
+  const insight = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(insight.phase, 'ready');
+  assert.strictEqual(insight.songs.length, 2);
+  const sources = Array.from(insight.songs.map(s => s.source)).sort();
+  assert.deepStrictEqual(sources, ['discovery', 'library'], '应各一首, 实际=' + JSON.stringify(sources));
+  // 资料库外那首必须带完整对象, 可播
+  const disc = insight.songs.filter(s => s.source === 'discovery')[0];
+  assert.ok(disc.song && disc.song.id === 'D1' || disc.song.id === 'D2');
+});
+
+test('23 没有发现候选时, 两首都可以来自资料库(不报错)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  sb.smartShuffleInsightDiscovery = { at: Date.now(), list: [] };
+  const insight = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(insight.phase, 'ready');
+  assert.strictEqual(insight.songs.length, 2);
+  assert.ok(insight.songs.every(s => s.source === 'library'));
+});
+
+test('24 两条推荐之间不重复艺人(跨两桶)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  // 发现候选的艺人故意取成池里最常见的 "Artist 0"
+  sb.smartShuffleInsightDiscovery = {
+    at: Date.now(),
+    list: [{ provider: 'netease', id: 'DX', name: 'Same Artist Fresh', artist: 'Artist 0', durationMs: 200000, candidateSource: 'similar' }],
+  };
+  const insight = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(insight.phase, 'ready');
+  const artists = insight.songs.map(s => s.artist);
+  assert.strictEqual(new Set(artists).size, artists.length, '不得重复艺人: ' + artists.join(' / '));
+});
+
+test('25 发现候选按需拉取: 复用 composePool, 不碰播放, 有 TTL 与防重试', () => {
+  const DASH = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '03a-home-dashboard.js'), 'utf8');
+  assert.ok(/smartShuffleEnsureDiscoveryCached/.test(DASH), '主页必须能按需拉发现候选');
+  assert.ok(/HOME_SS_DISCOVERY_RETRY_MS/.test(DASH), '必须有重试时间戳, 防止每轮渲染都拉');
+  assert.ok(/home-ss-tag/.test(DASH), '每条推荐要标出来源(资料库/新发现)');
+  const INS = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '02d-shuffle-insight.js'), 'utf8');
+  const ensure = INS.slice(INS.indexOf('function smartShuffleEnsureDiscoveryCached('), INS.indexOf('// 播放能力探测'));
+  assert.ok(/smartShuffleComposePool/.test(ensure), '必须复用既有 composePool 取发现候选');
+  assert.ok(!/playQueueAt|playSongEntry|smartShuffleFetchPool\(/.test(ensure), '取发现候选不得触发播放或直接拉资料库池');
+  assert.ok(/SMART_SHUFFLE_INSIGHT_DISCOVERY_TTL_MS/.test(INS), '必须有 TTL');
+});

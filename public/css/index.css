@@ -19852,3 +19852,18 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
   outline-offset: 2px
 }
 #empty-home .home-ss-play svg { width: 14px; height: 14px; fill: currentColor }
+
+#empty-home .home-ss-tag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  vertical-align: middle;
+  color: rgba(var(--fc-accent-rgb), .95);
+  border: 1px solid rgba(var(--fc-accent-rgb), .38);
+  background: rgba(var(--fc-accent-rgb), .10)
+}
+#empty-home .home-ss-name { display: flex; align-items: center; min-width: 0 }
+#empty-home .home-ss-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }

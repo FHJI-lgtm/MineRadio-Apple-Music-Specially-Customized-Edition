@@ -116,7 +116,23 @@ function smartShuffleHomeReason(entry) {
 // 也**不消耗 rng**: 按分数确定性排序, 所以反复渲染结果稳定。
 function smartShuffleHomeRecommendation(limit) {
   var pool = (typeof smartShuffleCachedPool === 'function') ? smartShuffleCachedPool() : [];
-  if (!pool.length) return { ok: false, reason: 'pool-empty', songs: [] };
+  // 发现候选是**单独缓存**的(composePool 的临时合并结果不会回写池缓存),
+  // 出推荐前必须把它并进来, 否则永远只有资料库的歌。
+  var discoveryList = (smartShuffleInsightDiscovery && Array.isArray(smartShuffleInsightDiscovery.list))
+    ? smartShuffleInsightDiscovery.list : [];
+  if (!pool.length && !discoveryList.length) return { ok: false, reason: 'pool-empty', songs: [] };
+  var candidates = pool.slice();
+  if (discoveryList.length) {
+    var seenSig = Object.create(null);
+    pool.forEach(function (c) { var s = shuffleSongSignature(c); if (s) seenSig[s] = true; });
+    discoveryList.forEach(function (c) {
+      var sig = shuffleSongSignature(c);
+      if (sig && seenSig[sig]) return;   // 库内已有的不重复加(composePool 已防过一次)
+      if (sig) seenSig[sig] = true;
+      candidates.push(c);
+    });
+  }
+  if (!candidates.length) return { ok: false, reason: 'pool-empty', songs: [] };
   if (typeof scoreCandidate !== 'function' || typeof applyCooldown !== 'function') {
     return { ok: false, reason: 'scoring-unavailable', songs: [] };
   }
@@ -135,38 +151,69 @@ function smartShuffleHomeRecommendation(limit) {
     recentArtists: recent.recentArtists || [],
     recentAlbums: recent.recentAlbums || [],
   };
-  var scored = pool.map(function (candidate) { return scoreCandidate(candidate, ctx); });
+  var scored = candidates.map(function (candidate) { return scoreCandidate(candidate, ctx); });
   var gate = applyCooldown(scored, ctx);
   var kept = (gate && gate.kept) || [];
-  if (!kept.length) return { ok: false, reason: 'all-cooled', songs: [], poolSize: pool.length };
+  if (!kept.length) return { ok: false, reason: 'all-cooled', songs: [], poolSize: candidates.length };
 
   var sorted = kept.slice().sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
   var max = Math.max(1, Math.min(6, Math.round(Number(limit) || 3)));
+
+  // 分两桶: 资料库内的歌 / 资料库外的发现歌。
+  // 发现歌没有播放历史, 分数天然低于熟悉的歌 —— 只按分数取 top-N 会永远是资料库,
+  // 所以要**分别取**: 一首资料库 + 一首资料库外(不足时互相补齐)。
+  var buckets = { library: [], discovery: [] };
+  for (var b = 0; b < sorted.length; b++) {
+    var entryB = sorted[b];
+    var candB = (entryB && entryB.candidate) || {};
+    if (!candB.name || !candB.artist) continue;
+    buckets[smartShuffleIsDiscoveryCandidate(candB) ? 'discovery' : 'library'].push(entryB);
+  }
   var songs = [];
   var usedArtist = Object.create(null);
-  for (var i = 0; i < sorted.length && songs.length < max; i++) {
-    var entry = sorted[i];
-    var candidate = (entry && entry.candidate) || {};
-    var artistKey = (entry.meta && entry.meta.artistKey) || '';
-    if (artistKey && usedArtist[artistKey]) continue;
-    if (!candidate.name || !candidate.artist) continue; // 元数据不全 -> 不显示半成品
-    if (artistKey) usedArtist[artistKey] = true;
-    songs.push({
-      key: String(entry.key || ''),
-      name: String(candidate.name),
-      artist: String(candidate.artist),
-      album: String(candidate.album || ''),
-      cover: String(candidate.cover || ''),
-      provider: String(candidate.provider || ''),
-      reason: smartShuffleHomeReason(entry),
-      // 交给公共播放入口的**完整歌曲对象**(带 provider/id/跨源指纹), 不是裸歌名+艺人
-      song: candidate,
-      playKey: String(entry.key || ''),
-      fingerprint: String(candidate.fingerprint || ''),
-    });
+  var usedEntry = Object.create(null);
+
+  function takeFrom(list) {
+    for (var i = 0; i < list.length; i++) {
+      var entry = list[i];
+      if (!entry || usedEntry[entry.key]) continue;
+      var candidate = entry.candidate || {};
+      if (!candidate.name || !candidate.artist) continue;
+      var artistKey = (entry.meta && entry.meta.artistKey) || '';
+      if (artistKey && usedArtist[artistKey]) continue;   // 同一条推荐里不重复艺人
+      usedEntry[entry.key] = true;
+      if (artistKey) usedArtist[artistKey] = true;
+      songs.push({
+        key: String(entry.key || ''),
+        name: String(candidate.name),
+        artist: String(candidate.artist),
+        album: String(candidate.album || ''),
+        cover: String(candidate.cover || ''),
+        provider: String(candidate.provider || ''),
+        reason: smartShuffleHomeReason(entry),
+        // 展示用: 这首歌来自资料库还是"资料库外的新发现"
+        source: smartShuffleIsDiscoveryCandidate(candidate) ? 'discovery' : 'library',
+        song: candidate,
+        playKey: String(entry.key || ''),
+        fingerprint: String(candidate.fingerprint || ''),
+      });
+      return true;
+    }
+    return false;
   }
+
+  if (max >= 2) {
+    takeFrom(buckets.library);    // 先保证一首资料库内的
+    takeFrom(buckets.discovery);  // 再保证一首资料库外的
+  }
+  while (songs.length < max) {
+    var gotLibrary = takeFrom(buckets.library);
+    var gotDiscovery = gotLibrary ? false : takeFrom(buckets.discovery);
+    if (!gotLibrary && !gotDiscovery) break;
+  }
+
   if (!songs.length) return { ok: false, reason: 'no-displayable', songs: [] };
-  return { ok: true, reason: 'ok', songs: songs, poolSize: pool.length };
+  return { ok: true, reason: 'ok', songs: songs, poolSize: candidates.length };
 }
 
 // 主页用的带缓存版本。
@@ -207,6 +254,7 @@ try {
   window.smartShuffleHomeInsightCached = smartShuffleHomeInsightCached;
   window.smartShuffleHomeInsightInvalidate = smartShuffleHomeInsightInvalidate;
   window.smartShuffleEnsurePoolCached = smartShuffleEnsurePoolCached;
+  window.smartShuffleEnsureDiscoveryCached = smartShuffleEnsureDiscoveryCached;
 } catch (e) { }
 
 // ------------------------------------------------------------
@@ -235,6 +283,51 @@ function smartShuffleEnsurePoolCached() {
       return false;
     });
   return smartShuffleEnsurePoolInflight;
+}
+
+// ------------------------------------------------------------
+// 发现候选缓存(主页专用)
+// ------------------------------------------------------------
+// 候选池缓存里只有**资料库**的歌; 发现歌是 smartShuffleComposePool 临时合并出来的,
+// 不会回写缓存。主页要展示"一首资料库 + 一首资料库外", 就得自己取一次发现候选。
+// 复用既有的 composePool(内部走 similar / artist-more 两个只读接口, 各自有 TTL 缓存),
+// 只把其中的发现候选留下来缓存 10 分钟。同样是纯数据读取, 不产生播放决策。
+var SMART_SHUFFLE_INSIGHT_DISCOVERY_TTL_MS = 10 * 60 * 1000;
+var smartShuffleInsightDiscovery = { at: 0, list: [] };
+var smartShuffleInsightDiscoveryInflight = null;
+
+function smartShuffleIsDiscoveryCandidate(candidate) {
+  var src = candidate && candidate.candidateSource;
+  return src === 'similar' || src === 'artist-more';
+}
+
+function smartShuffleEnsureDiscoveryCached(force) {
+  var now = Date.now();
+  if (!force && smartShuffleInsightDiscovery.at
+      && now - smartShuffleInsightDiscovery.at < SMART_SHUFFLE_INSIGHT_DISCOVERY_TTL_MS) {
+    return Promise.resolve(smartShuffleInsightDiscovery.list);
+  }
+  if (smartShuffleInsightDiscoveryInflight) return smartShuffleInsightDiscoveryInflight;
+  var basePool = (typeof smartShuffleCachedPool === 'function') ? smartShuffleCachedPool() : [];
+  if (!basePool.length || typeof smartShuffleComposePool !== 'function') return Promise.resolve([]);
+  var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
+  var buckets = smartShufflePlayedBuckets();
+  smartShuffleInsightDiscoveryInflight = Promise.resolve()
+    .then(function () { return smartShuffleComposePool(basePool, buckets, cfg.weights); })
+    .then(function (composed) {
+      var merged = (composed && Array.isArray(composed.pool)) ? composed.pool : [];
+      var list = merged.filter(smartShuffleIsDiscoveryCandidate);
+      smartShuffleInsightDiscovery = { at: Date.now(), list: list };
+      smartShuffleInsightDiscoveryInflight = null;
+      smartShuffleHomeInsightInvalidate();
+      return list;
+    })
+    .catch(function () {
+      smartShuffleInsightDiscovery = { at: Date.now(), list: [] };
+      smartShuffleInsightDiscoveryInflight = null;
+      return [];
+    });
+  return smartShuffleInsightDiscoveryInflight;
 }
 
 // 播放能力探测: 「算出了歌」≠「能安全播这首歌」, 两条能力分别验证。
