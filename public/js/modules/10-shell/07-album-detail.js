@@ -885,6 +885,9 @@
         : '';
     }
     setKicker('am-playlist-detail-kicker', playlist.provider, playlist.isLiked ? '个人库 · 喜欢的音乐' : '个人库歌单');
+    // 智能随机只服务 MineRadio 自己的源；Apple 歌单由它自己的随机播放负责，这里直接隐藏
+    var smartBtn = plEl('am-playlist-detail-smart-shuffle');
+    if (smartBtn) smartBtn.hidden = !isNonAppleSource(String(playlist.provider || 'apple'));
     var h = plEl('am-playlist-detail-heading');
     if (h) { h.textContent = playlist.name || '未命名歌单'; h.title = playlist.name || ''; }
     var creator = plEl('am-playlist-detail-creator');
@@ -1096,6 +1099,81 @@
       plSetBusy(false);
       plSetStatus('随机播放失败（IPC 错误）', 'warn');
     });
+  };
+
+  // 智能随机：**只重排，不新增**（planSmartShuffleOrder 保证输入输出是同一批歌）。
+  // 任何一步失败都退回普通随机 —— 用户点了按钮，绝不能什么都不发生。
+  window.playAmPlaylistSmartShuffled = function () {
+    var playlist = plState.playlist;
+    var name = String((playlist && playlist.name) || '').trim();
+    if (!name) { plSetStatus('这个歌单没有可用的名称', 'warn'); return; }
+    var plProv = String((playlist && playlist.provider) || 'apple');
+    if (!isNonAppleSource(plProv)) {
+      plSetStatus('智能随机只用于 MineRadio 自己的源；Apple Music 请用原生随机', 'warn');
+      return;
+    }
+    var list = (plState.tracks || []).slice();
+    if (list.length < 2) { plSetStatus('这个歌单曲目太少，不需要智能随机', 'warn'); return; }
+
+    // 唯一的接管判定点：只要有一首不是四源，就不接管
+    var guard = (typeof smartShuffleApplyGuard === 'function')
+      ? smartShuffleApplyGuard(list)
+      : { allowed: false, reason: 'guard-unavailable' };
+    if (!guard.allowed) {
+      plSetStatus('智能随机不接管这个歌单（' + guard.reason + '），已改用普通随机', 'warn');
+      return window.playAmPlaylistShuffled();
+    }
+
+    var plan = null;
+    try {
+      var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
+      var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
+      var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
+      plan = (typeof planSmartShuffleOrder === 'function')
+        ? planSmartShuffleOrder(list, {
+            now: Date.now(),
+            weights: cfg.weights,
+            songStats: maps.songStats,
+            artistStats: maps.artistStats,
+            signatureStats: maps.signatureStats,
+            looseStats: maps.looseStats,
+            artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
+            recentKeys: recent.recentKeys,
+            recentArtists: recent.recentArtists,
+            recentAlbums: recent.recentAlbums,
+            rng: Math.random
+          })
+        : null;
+    } catch (err) {
+      plan = null;
+    }
+
+    if (!plan || !plan.applied || !Array.isArray(plan.order) || plan.order.length !== list.length) {
+      plSetStatus('智能随机未生效（' + ((plan && plan.reason) || 'unavailable') + '），已改用普通随机', 'warn');
+      return window.playAmPlaylistShuffled();
+    }
+
+    // order 是 key 数组，映射回歌曲对象；映射不全就退回普通随机（不丢歌）
+    var byKey = Object.create(null);
+    list.forEach(function (song) {
+      var k = (typeof queueItemKey === 'function') ? queueItemKey(song) : '';
+      if (!k) return;
+      byKey[k] = byKey[k] || song;
+    });
+    var ordered = [];
+    var used = Object.create(null);
+    plan.order.forEach(function (k) {
+      if (!byKey[k] || used[k]) return;
+      used[k] = true;
+      ordered.push(byKey[k]);
+    });
+    if (ordered.length !== list.length) {
+      plSetStatus('智能随机结果不完整，已改用普通随机', 'warn');
+      return window.playAmPlaylistShuffled();
+    }
+
+    plSetStatus('正在智能随机播放…', '');
+    playInApp(ordered, 0, { playlistName: name, shuffled: true, smartShuffle: true }, plProv);
   };
 
   window.playAmPlaylistFromStart = function () { return plPlay('这个歌单'); };

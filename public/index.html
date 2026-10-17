@@ -2080,6 +2080,19 @@
                     <path d="M17.5 9.5 20 7l-2.5-2.5" />
                   </svg>
                 </button>
+                <!-- 智能随机：悬浮在操作区才出现（用户要求"鼠标悬浮出现"）。
+                     只对 MineRadio 自己的源生效；Apple 歌单由 plRenderInfo 直接隐藏。
+                     真正的排序由 02c 的 planSmartShuffleOrder 算，这里只是入口。 -->
+                <button class="am-smart-shuffle-btn" id="am-playlist-detail-smart-shuffle"
+                  type="button" data-smart-shuffle="playlist"
+                  title="智能随机 · 按你的收听习惯重排（只用于 MineRadio 自己的源）"
+                  aria-label="智能随机播放歌单" onclick="playAmPlaylistSmartShuffled()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5" />
+                    <circle cx="12" cy="12" r="3.2" />
+                  </svg>
+                </button>
               </div>
               <div class="am-album-status" id="am-playlist-detail-status" role="status" aria-live="polite" hidden></div>
             </div>

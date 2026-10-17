@@ -19639,3 +19639,51 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 }
 #smart-shuffle-btn.ss-btn span { pointer-events: none; }
 #smart-shuffle-btn.ss-on { color: #ffd479; }
+
+
+/* 智能随机：独立 class（不复用 .am-shuffle-btn，避免破坏"全页只有一个原生随机按钮"的既有契约）。
+   视觉上沿用同一套浅色玻璃圆钮 —— 复制属性而不是改既有选择器。 */
+.am-smart-shuffle-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .62);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .82);
+  color: #14161a;
+  cursor: pointer;
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .26), inset 0 1px 0 rgba(255, 255, 255, .9);
+  transition: background .18s, border-color .18s, box-shadow .18s, transform .16s
+}
+.am-smart-shuffle-btn svg { width: 19px; height: 19px }
+.am-smart-shuffle-btn:hover {
+  background: rgba(255, 255, 255, .96);
+  border-color: rgba(255, 255, 255, .85);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .95);
+}
+.am-smart-shuffle-btn:active { transform: translateY(0) scale(.96) }
+
+/* 默认隐藏，悬浮歌单操作区（或键盘聚焦）才出现 */
+.am-album-actions .am-smart-shuffle-btn {
+  opacity: 0;
+  transform: scale(.9);
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.am-album-actions:hover .am-smart-shuffle-btn,
+.am-album-actions:focus-within .am-smart-shuffle-btn,
+.am-smart-shuffle-btn:focus-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+/* 触摸设备没有 hover：直接常驻，否则点不到 */
+@media (hover: none) {
+  .am-album-actions .am-smart-shuffle-btn { opacity: 1; transform: none; pointer-events: auto; }
+}
