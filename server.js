@@ -4861,6 +4861,9 @@ function smartShuffleArtistMoreCandidate(song, seedArtist, source) {
     candidateSource: 'artist-more',
     seedArtist: String(seedArtist || ''),
     similaritySource: 'artist-search',
+    fingerprint: 'fp:' + neteaseSourceMatchText(song.name || '') + '|'
+      + neteaseSourceMatchText((song.artist || artists.join(' / '))) + '|'
+      + Math.round(durationMs / 1000),
   };
 }
 
@@ -4886,6 +4889,10 @@ function smartShuffleSimilarCandidate(song, seedId) {
     candidateSource: 'similar',
     seedId: String(seedId || ''),
     similaritySource: 'netease-simi',
+    // 与资料库候选同格式的跨源指纹: 主页"安全播放"要求拿到的不是裸歌名/艺人
+    fingerprint: 'fp:' + neteaseSourceMatchText(song.name || '') + '|'
+      + neteaseSourceMatchText(artists.join(' / ')) + '|'
+      + Math.round((Number(song.duration || song.dt) || 0) / 1000),
   };
 }
 

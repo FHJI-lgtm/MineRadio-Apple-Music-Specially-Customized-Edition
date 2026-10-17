@@ -19825,3 +19825,30 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
   #empty-home .home-ss-song:nth-child(n+2) { display: none }
   #empty-home .home-ss-stats { display: none }
 }
+
+#empty-home .home-ss-play {
+  margin-left: auto;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .26);
+  background: rgba(255, 255, 255, .10);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, transform .16s ease
+}
+#empty-home .home-ss-play:hover {
+  background: rgba(255, 255, 255, .20);
+  border-color: rgba(255, 255, 255, .46)
+}
+#empty-home .home-ss-play:active { transform: scale(.94) }
+#empty-home .home-ss-play:focus-visible {
+  outline: 2px solid rgba(var(--fc-accent-rgb), .85);
+  outline-offset: 2px
+}
+#empty-home .home-ss-play svg { width: 14px; height: 14px; fill: currentColor }

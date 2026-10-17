@@ -825,10 +825,17 @@ function homeSmartShuffleEscape(value) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function homeSmartShuffleSongHtml(song) {
+function homeSmartShuffleSongHtml(song, canPlay) {
   var cover = song && song.cover ? homeSmartShuffleEscape(song.cover) : '';
   var coverHtml = cover
     ? '<img src="' + cover + '" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display=\'none\'">'
+    : '';
+  // 播放按钮只在 canPlay 为真时出现: 「算法算出歌」和「能安全播」是两件事,
+  // canPlay 由 02d 校验(公共入口存在 + 每首都有稳定身份)后才为真。
+  var playBtn = canPlay
+    ? '<button type="button" class="home-ss-play" data-ss-play="' + homeSmartShuffleEscape(song.key) + '"' +
+      ' aria-label="播放 ' + homeSmartShuffleEscape(song.name) + '" title="播放">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>'
     : '';
   return '<div class="home-ss-song">' +
     '<div class="home-ss-cover">' + coverHtml + '</div>' +
@@ -836,8 +843,27 @@ function homeSmartShuffleSongHtml(song) {
     '<div class="home-ss-name">' + homeSmartShuffleEscape(song.name) + '</div>' +
     '<div class="home-ss-artist">' + homeSmartShuffleEscape(song.artist) + '</div>' +
     '<div class="home-ss-reason">' + homeSmartShuffleEscape(song.reason) + '</div>' +
-    '</div></div>';
+    '</div>' + playBtn + '</div>';
 }
+
+// 主页的**唯一**播放动作: 找回首屏展示的那首完整歌曲对象, 交给公共入口。
+// 这里不选源、不改队列、不碰播放器 —— 全部由 playSongEntry 走既有链路。
+var homeSmartShuffleSongs = Object.create(null);
+
+function homeSmartShufflePlay(key) {
+  var song = key ? homeSmartShuffleSongs[key] : null;
+  if (!song) return;
+  if (typeof playSongEntry !== 'function') {
+    if (typeof showToast === 'function') showToast('播放入口尚未就绪');
+    return;
+  }
+  Promise.resolve(playSongEntry(song, {
+    context: { type: 'smart-shuffle-home', provider: String(song.provider || '') },
+  })).then(function (ok) {
+    if (!ok && typeof showToast === 'function') showToast('播放失败，可稍后重试');
+  }).catch(function () { });
+}
+try { window.homeSmartShufflePlay = homeSmartShufflePlay; } catch (e) { }
 
 function renderHomeSmartShuffleCard() {
   var card = document.querySelector('#empty-home .daily-review-card');
@@ -857,27 +883,44 @@ function renderHomeSmartShuffleCard() {
     else card.appendChild(block);
   }
   var songKeys = (insight.songs || []).map(function (s) { return s.key + '|' + s.reason; }).join(',');
-  var fingerprint = insight.phase + '|' + insight.progress + '|' + songKeys + '|' + (insight.fallback || '');
+  var fingerprint = insight.phase + '|' + insight.progress + '|' + (insight.canPlay ? '1' : '0') + '|'
+    + songKeys + '|' + (insight.fallback || '');
   if (block.dataset.ssFingerprint === fingerprint) return;
   block.dataset.ssFingerprint = fingerprint;
   block.dataset.ssPhase = insight.phase;
 
+  var head = '<div class="home-ss-head">' +
+    '<span class="home-ss-kicker">SMART SHUFFLE</span>' +
+    '<span class="home-ss-badge">' + homeSmartShuffleEscape(insight.phase === 'ready' ? '已就绪'
+      : (insight.phase === 'pool-pending' ? '等待候选' : (insight.progress + '%'))) + '</span></div>';
+
   if (insight.phase === 'ready') {
     var songs = insight.songs || [];
     if (!songs.length) return;
-    block.innerHTML = '<div class="home-ss-head">' +
-      '<span class="home-ss-kicker">SMART SHUFFLE</span>' +
-      '<span class="home-ss-badge">已就绪</span></div>' +
+    homeSmartShuffleSongs = Object.create(null);
+    songs.forEach(function (s) { if (s && s.key) homeSmartShuffleSongs[s.key] = s.song; });
+    block.innerHTML = head +
       '<div class="home-ss-title">今日歌曲推荐</div>' +
-      '<div class="home-ss-songs">' + songs.map(homeSmartShuffleSongHtml).join('') + '</div>';
+      '<div class="home-ss-songs">' + songs.map(function (s) { return homeSmartShuffleSongHtml(s, insight.canPlay); }).join('') + '</div>' +
+      (insight.canPlay ? '' : '<div class="home-ss-note">暂不支持安全播放，仅展示推荐结果。</div>');
+    return;
+  }
+
+  if (insight.phase === 'pool-pending') {
+    // 学完了但没有可用候选: 如实说"在等候选", 不摆假推荐
+    block.innerHTML = head +
+      '<div class="home-ss-title">偏好分析已完成</div>' +
+      '<div class="home-ss-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span style="width:100%"></span></div>' +
+      '<div class="home-ss-note">正在等待可用候选。</div>';
     return;
   }
 
   var snap = insight.snapshot || {};
   var pct = Math.max(0, Math.min(100, Math.round(Number(insight.progress) || 0)));
-  block.innerHTML = '<div class="home-ss-head">' +
+  head = '<div class="home-ss-head">' +
     '<span class="home-ss-kicker">SMART SHUFFLE</span>' +
-    '<span class="home-ss-pct">' + pct + '%</span></div>' +
+    '<span class="home-ss-pct">' + pct + '%</span></div>';
+  block.innerHTML = head +
     '<div class="home-ss-title">正在了解你的音乐偏好</div>' +
     '<div class="home-ss-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '">' +
     '<span style="width:' + pct + '%"></span></div>' +

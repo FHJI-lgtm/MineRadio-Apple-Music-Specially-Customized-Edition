@@ -84,6 +84,42 @@ function moveQueueIndex(fromIdx, toIdx, opts) {
   if (opts.persistSnapshot !== false && typeof saveLastPlaybackSnapshot === 'function') saveLastPlaybackSnapshot(true, 'queue-reorder');
   return true;
 }
+// ------------------------------------------------------------
+// 公共播放入口：把一个**带稳定身份的歌曲对象**安全交给现有播放链
+// ------------------------------------------------------------
+// 只做三件事: 队列管理(复用 queueSong: clone + 按 queueItemKey 去重 + 插入)、
+// 切到它、调 playQueueAt。**不做来源选择** —— 换源由 playQueueAt 内部
+// -> 11-provider-fallback 那条既有链路负责, 这里一行都不碰。
+//
+// 安全校验: 没有稳定身份键(只有歌名/艺人的裸数据)一律拒绝, 且不改队列。
+// 返回 Promise<boolean>, false = 没播成(调用方如实提示, 不谎报)。
+function playSongEntry(song, opts) {
+  opts = opts || {};
+  if (!song || typeof song !== 'object') return Promise.resolve(false);
+  if (typeof queueSong !== 'function' || typeof playQueueAt !== 'function') return Promise.resolve(false);
+  if (typeof queueItemKey !== 'function') return Promise.resolve(false);
+  var key = '';
+  try { key = queueItemKey(song) || ''; } catch (e) { key = ''; }
+  if (!key) return Promise.resolve(false);
+
+  var idx = -1;
+  try {
+    idx = queueSong(song, { position: 'next' });
+  } catch (e) {
+    idx = -1;
+  }
+  if (typeof idx !== 'number' || idx < 0 || idx >= playQueue.length) return Promise.resolve(false);
+  currentIdx = idx;
+  try {
+    return Promise.resolve(playQueueAt(currentIdx, { manual: true, context: opts.context || null }))
+      .then(function (ok) { return ok !== false; })
+      .catch(function () { return false; });
+  } catch (e) {
+    return Promise.resolve(false);
+  }
+}
+try { window.playSongEntry = playSongEntry; } catch (e) { }
+
 function playSearchResult(i) {
   var song = playlist[i]; if (!song) return;
   homeForcedOpen = false;

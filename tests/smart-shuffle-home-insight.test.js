@@ -133,13 +133,13 @@ test('04 候选池为空 -> 回退学习态(不伪造推荐)', () => {
   assert.strictEqual(insight.songs.length, 0);
 });
 
-test('05 全部候选都在冷却窗内 -> 回退学习态且原因可查', () => {
+test('05 全部候选都在冷却窗内 -> 回退「等待候选」态且原因可查', () => {
   const pool = buildPool(210);
   // 所有候选刚播过 1 分钟 -> 冷却期(24h)内, 全被排除
   const stats = buildSongStats(pool, { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 60 * 1000 });
   const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
   const insight = sb.smartShuffleHomeInsight(2);
-  assert.strictEqual(insight.phase, 'learning', '全冷却时必须回退');
+  assert.strictEqual(insight.phase, 'pool-pending', '全冷却时必须回退到"等待候选", 不摆假推荐');
   assert.strictEqual(insight.fallback, 'all-cooled');
   assert.strictEqual(insight.songs.length, 0);
 });
@@ -238,4 +238,71 @@ test('13 推荐打分有节流, 失效后重算', () => {
   sb.smartShuffleHomeInsightInvalidate();
   sb.smartShuffleHomeInsightCached(2, 60 * 60 * 1000);
   assert.strictEqual(calls, 2, '失效后应重算一次');
+});
+
+test('14 四状态映射: learning / pool-pending / ready 各有明确判定', () => {
+  const pool = buildPool(210);
+  // 1) 样本不足 -> learning
+  const sb1 = makeSandbox({ pool, songStats: {}, artistStats: {} });
+  assert.strictEqual(sb1.smartShuffleHomeInsight(2).phase, 'learning');
+  // 2) 样本够了但候选池为空 -> pool-pending
+  const full = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb2 = makeSandbox({ pool: [], songStats: full, artistStats: buildArtistStats(14) });
+  const s2 = sb2.smartShuffleHomeInsight(2);
+  assert.strictEqual(s2.phase, 'pool-pending');
+  assert.strictEqual(s2.fallback, 'pool-empty');
+  // 3) 样本够 + 池太小 -> pool-pending(pool-too-small)
+  const sb2b = makeSandbox({ pool: buildPool(50), songStats: full, artistStats: buildArtistStats(14) });
+  const s2b = sb2b.smartShuffleHomeInsight(2);
+  assert.strictEqual(s2b.phase, 'pool-pending');
+  assert.strictEqual(s2b.fallback, 'pool-too-small');
+  // 4) 全齐 -> ready
+  const sb3 = makeSandbox({ pool, songStats: full, artistStats: buildArtistStats(14) });
+  assert.strictEqual(sb3.smartShuffleHomeInsight(2).phase, 'ready');
+});
+
+test('15 推荐项必须携带完整歌曲对象与稳定身份(不是裸歌名)', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  const sb = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  const insight = sb.smartShuffleHomeInsight(2);
+  assert.strictEqual(insight.phase, 'ready');
+  insight.songs.forEach(s => {
+    assert.ok(s.song && typeof s.song === 'object', '必须带完整歌曲对象');
+    assert.ok(s.song.provider, '对象必须带 provider');
+    assert.ok(s.song.id, '对象必须带 id');
+    assert.ok(s.playKey, '必须有稳定身份键');
+  });
+});
+
+test('16 播放能力与推荐结果分离验证: 入口缺失时 canPlay=false, 存在时=true', () => {
+  const pool = buildPool(210);
+  const stats = buildSongStats(pool.slice(0, 45), { plays: 4, completed: 1, earlySkips: 1, listenMs: 200000, lastPlayedAt: Date.now() - 30 * 24 * 3600 * 1000 });
+  // 没有公共入口 -> 有推荐但不可播
+  const sbNo = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  sbNo.queueItemKey = (s) => (s && s.id ? 'song:' + s.id : '');   // 身份键能力存在, 但播放入口缺失
+  const noEntry = sbNo.smartShuffleHomeInsight(2);
+  assert.strictEqual(noEntry.phase, 'ready', '推荐仍要显示');
+  assert.strictEqual(noEntry.canPlay, false, '没有入口时不得声称可播');
+  // 有入口 -> canPlay=true
+  const sbYes = makeSandbox({ pool, songStats: stats, artistStats: buildArtistStats(14) });
+  sbYes.queueItemKey = (s) => (s && s.id ? 'song:' + s.id : '');
+  sbYes.playSongEntry = function () { return Promise.resolve(true); };
+  const withEntry = sbYes.smartShuffleHomeInsight(2);
+  assert.strictEqual(withEntry.phase, 'ready');
+  assert.strictEqual(withEntry.canPlay, true);
+});
+
+test('17 播放链路契约: 公共入口复用 queueSong/playQueueAt, 主页不自行换源或改队列', () => {
+  const QUEUE = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '10-queue-actions.js'), 'utf8');
+  const DASH = fs.readFileSync(path.join(appRoot, 'public', 'js', 'modules', '05-playback', '03a-home-dashboard.js'), 'utf8');
+  const entry = QUEUE.slice(QUEUE.indexOf('function playSongEntry('), QUEUE.indexOf('function playSearchResult('));
+  assert.ok(/queueSong\(song, \{ position: 'next' \}\)/.test(entry), '必须复用 queueSong 做队列管理');
+  assert.ok(/playQueueAt\(currentIdx/.test(entry), '必须走 playQueueAt');
+  assert.ok(/queueItemKey\(song\)/.test(entry), '必须校验稳定身份');
+  assert.ok(!/provider.*switch|resolvePlaybackProvider|switchPlaybackSource/.test(entry), '入口不得自行换源');
+  const play = DASH.slice(DASH.indexOf('function homeSmartShufflePlay('), DASH.indexOf('function renderHomeSmartShuffleCard('));
+  assert.ok(/playSongEntry\(/.test(play), '主页必须只调公共入口');
+  assert.ok(!/playQueueAt|playQueue\s*\.|provider/.test(play.replace(/provider: String\(song\.provider/, '')), '主页不得直接改队列或选源');
+  assert.ok(/dataset\.ssFingerprint/.test(DASH), '仍保留幂等保护');
 });

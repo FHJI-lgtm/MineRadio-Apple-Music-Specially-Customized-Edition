@@ -75,9 +75,15 @@ function smartShuffleLearningSnapshot() {
   });
   var progress = weightSum > 0 ? ratioSum / weightSum : 0;
   var percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
-  var ready = allMet && pool.length >= targets.poolSize;
+  // 两件事必须分开判断: "样本学够了" 与 "候选池够用"。
+  // 前者 = 学习完成; 后者才允许出推荐(池空/太小 -> 等待可用候选, 不伪造推荐)。
+  var samplesMet = allMet;
+  var poolMet = pool.length >= targets.poolSize;
+  var ready = samplesMet && poolMet;
   return {
     ready: ready,
+    samplesMet: samplesMet,
+    poolMet: poolMet,
     percent: percent,
     poolSize: pool.length,
     plays: plays,
@@ -153,6 +159,10 @@ function smartShuffleHomeRecommendation(limit) {
       cover: String(candidate.cover || ''),
       provider: String(candidate.provider || ''),
       reason: smartShuffleHomeReason(entry),
+      // 交给公共播放入口的**完整歌曲对象**(带 provider/id/跨源指纹), 不是裸歌名+艺人
+      song: candidate,
+      playKey: String(entry.key || ''),
+      fingerprint: String(candidate.fingerprint || ''),
     });
   }
   if (!songs.length) return { ok: false, reason: 'no-displayable', songs: [] };
@@ -198,24 +208,71 @@ try {
   window.smartShuffleHomeInsightInvalidate = smartShuffleHomeInsightInvalidate;
 } catch (e) { }
 
-// 主页要的最终形态: 学习态 / 推荐态 / 回退。
-function smartShuffleHomeInsight(limit) {
-  var snapshot = smartShuffleLearningSnapshot();
-  var base = { progress: snapshot.percent, snapshot: snapshot, songs: [] };
-  if (!snapshot.ready) {
+// 播放能力探测: 「算出了歌」≠「能安全播这首歌」, 两条能力分别验证。
+// 入口必须存在, 且交给它的必须是带稳定身份的歌曲对象。
+function smartShufflePlayEntryAvailable() {
+  return typeof playSongEntry === 'function' && typeof queueItemKey === 'function';
+}
+
+// 把快照 + 推荐结果组装成主页要的 4 种状态:
+//   learning     : 样本不足        -> 显示进度
+//   pool-pending : 样本够但没候选  -> 等待可用候选
+//   ready        : 有推荐          -> canPlay 决定是否给播放操作
+function smartShuffleComposeHomeInsight(snapshot, rec) {
+  var base = { progress: snapshot.percent, snapshot: snapshot, songs: [], canPlay: false, fallback: '' };
+  if (!snapshot.samplesMet) {
     base.phase = 'learning';
     base.fallback = 'not-ready';
     return base;
   }
-  var rec = smartShuffleHomeRecommendation(limit);
+  if (!snapshot.poolMet) {
+    base.phase = 'pool-pending';
+    base.fallback = snapshot.poolSize ? 'pool-too-small' : 'pool-empty';
+    return base;
+  }
   if (!rec || !rec.ok) {
-    // 学完了但没有可展示的推荐 -> 仍然回退学习态, 不伪造推荐
-    base.phase = 'learning';
+    base.phase = 'pool-pending';
     base.fallback = (rec && rec.reason) || 'recommendation-unavailable';
     return base;
   }
   base.phase = 'ready';
-  base.fallback = '';
   base.songs = rec.songs;
+  base.canPlay = smartShufflePlayEntryAvailable() && rec.songs.every(function (s) {
+    return !!(s && s.song && s.playKey);
+  });
   return base;
 }
+
+function smartShuffleHomeInsight(limit) {
+  var snapshot = smartShuffleLearningSnapshot();
+  if (!snapshot.samplesMet || !snapshot.poolMet) return smartShuffleComposeHomeInsight(snapshot, null);
+  return smartShuffleComposeHomeInsight(snapshot, smartShuffleHomeRecommendation(limit));
+}
+
+// 主页用的带缓存版本: **进度每次实时算**(只遍历内存聚合), 只有"全池打分"走节流。
+// 否则事件表重建后进度要被缓存卡住, 用户会看到过期百分比。
+var smartShuffleInsightCache = { at: 0, rec: null };
+
+function smartShuffleHomeInsightCached(limit, ttlMs) {
+  var snapshot = smartShuffleLearningSnapshot();
+  if (!snapshot.samplesMet || !snapshot.poolMet) return smartShuffleComposeHomeInsight(snapshot, null);
+  var ttl = Math.max(1000, Number(ttlMs) || 60000);
+  var now = Date.now();
+  if (!smartShuffleInsightCache.rec || now - smartShuffleInsightCache.at >= ttl) {
+    var rec = null;
+    try { rec = smartShuffleHomeRecommendation(limit); } catch (err) { rec = null; }
+    smartShuffleInsightCache = { at: now, rec: rec };
+  }
+  return smartShuffleComposeHomeInsight(snapshot, smartShuffleInsightCache.rec);
+}
+
+// 事件表重建后强制重算推荐(进度本来就实时, 只需清推荐缓存)
+function smartShuffleHomeInsightInvalidate() {
+  smartShuffleInsightCache = { at: 0, rec: null };
+}
+
+try {
+  window.smartShuffleHomeInsight = smartShuffleHomeInsight;
+  window.smartShuffleHomeInsightCached = smartShuffleHomeInsightCached;
+  window.smartShuffleHomeInsightInvalidate = smartShuffleHomeInsightInvalidate;
+} catch (e) { }
