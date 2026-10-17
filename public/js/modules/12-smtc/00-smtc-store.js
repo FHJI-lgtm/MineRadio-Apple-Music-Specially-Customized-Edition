@@ -2,9 +2,17 @@
 // 12-smtc/00-smtc-store.js
 // 统一媒体状态存储 + 本地时间轴平滑器（v4：锚点外推模型）
 //
+// 数据流（v2.2.0 起，Timeline Stabilizer Plus 为正常路径）：
+//   SMTC state ──校准──► 12-smtc/08 Timeline Stabilizer Plus (QPC 主时钟)
+//                            └─► stablePosition ──► 歌词 / 进度条 / 主循环 / 节拍相机
+//   v4 锚点外推（本文件）保留为 legacy 回退 / A-B 对比
+//     window.smtcTspSetMode('legacy') 切回；'tsp' 切回 Plus。
+//   下游统一入口：smtcStablePositionMsNow() / smtcPositionSecondsNow()（含 Session Delay）。
+//
 // 只接收主进程转发的 SMTC 快照（mineradio-smtc-state），对外提供：
-//   smtcStore                —— 当前 MediaState（播放器无关）
-//   smtcPositionSecondsNow() —— 本地平滑后的播放进度（秒）
+//   smtcStore                   —— 当前 MediaState（播放器无关）
+//   smtcStablePositionMsNow()   —— 统一下游时间源（stablePosition, ms）
+//   smtcPositionSecondsNow()    —— 本地平滑后的播放进度（秒，含 Session Delay）
 //   smtcIsPlayingExternal()  —— 外部媒体是否正在播放
 //   smtcSessionActive()      —— 是否有 SMTC 会话
 //   smtcConsumeSeekFlag()    —— 消费"发生跳变"标记（供歌词行选择重置）
@@ -95,11 +103,23 @@ function smtcStableMs(active, isPlaying) {
   return Math.max(0, stable);
 }
 
+// 统一下游时间源（12-smtc/08 Timeline Stabilizer Plus）：
+//   TSP 启用 -> QPC 主时钟的 stablePosition（不是每帧读 SMTC）
+//   legacy / TSP 不可用 -> v4 锚点外推（保留为 A/B 回退，行为与改造前一致）
+// 歌词 / 进度条 / 主循环 / 节拍相机一律只经过这里。
+function smtcStablePositionMsNow() {
+  if (typeof tspIsTimelineActive === 'function' && tspIsTimelineActive() &&
+      typeof tspStableMsNow === 'function') {
+    return tspStableMsNow();
+  }
+  return smtcStableMs();
+}
+
 function smtcPositionSecondsNow() {
   if (!smtcStore.active) return -1;
   // Session Delay 只作用于稳定器最终输出：outputPosition = stablePosition + sessionDelayMs
   // （负值提前 / 正值延后；稳定器内部 anchor/predicted/error/seek 完全不受影响）
-  var pos = (smtcStableMs() + smtcUserSessionDelayMs) / 1000;
+  var pos = (smtcStablePositionMsNow() + smtcUserSessionDelayMs) / 1000;
   var duration = smtcDurationSeconds();
   if (duration > 0 && pos > duration + 2) pos = duration;
   return Math.max(0, pos);
@@ -111,6 +131,18 @@ function smtcSessionActive() {
 
 function smtcIsPlayingExternal() {
   return smtcStore.active === true && smtcStore.isPlaying === true;
+}
+
+// A/B 切换用：把 v4 legacy 平滑器【就地锚定】到给定位置。
+// Timeline Stabilizer Plus 关闭时（window.smtcTspSetMode('legacy')）调用，
+// 保证回退瞬间时间轴连续，而不是等 v4 自己走完 seek-pending 才恢复。
+function smtcSeedLegacyAnchor(positionMs) {
+  var ms = Math.max(0, Number(positionMs) || 0);
+  smtcAnchorPositionMs = ms;
+  smtcAnchorAt = performance.now();
+  smtcFrozenAt = ms + SMTC_MAX_PREDICT_MS;
+  smtcSeekConfirm = null;
+  return ms;
 }
 
 function smtcConsumeSeekFlag() {
@@ -182,6 +214,23 @@ function smtcApplyBridgeState(state) {
   var action = 'hold';
   var seekThisSample = false;
 
+  // ---- Timeline Stabilizer Plus (12-smtc/08)：SMTC 降级为周期校准源 ----
+  // 返回 null 时（未启用 / legacy A-B 模式 / 无高精度单调时钟 / 内部异常）
+  // 完全走下面保留的 v4 锚点外推路径，行为与改造前一致。
+  var tspResult = null;
+  try {
+    if (typeof tspHandleBridgeState === 'function' && tspHandleBridgeState) {
+      tspResult = tspHandleBridgeState(state, now, {
+        rawPositionMs: rawAdjusted,
+        active: newActive,
+        playing: newPlaying,
+      });
+    }
+  } catch (tspErr) {
+    tspResult = null;
+    console.error('[TSP] calibration failed, falling back to v4 smoother:', tspErr && tspErr.message || tspErr);
+  }
+
   if (!newActive) {
     // 会话结束：清除稳定器状态，保持 inactive
     smtcAnchorPositionMs = 0;
@@ -202,6 +251,11 @@ function smtcApplyBridgeState(state) {
     } else if (prevActive) {
       console.log('[Renderer][' + Date.now() + '] SMTC visualizer cover HELD (inactive state, bridge not ready / internal playing)');
     }
+  } else if (tspResult) {
+    // TSP 独占时间轴：不修改 v4 anchor，只采纳它给出的 action / seek 事件。
+    action = tspResult.action;
+    seekThisSample = tspResult.seekEvent === true;
+    if (seekThisSample) smtcSeekedFlag = true;   // 切歌 / 确认 seek → 歌词允许立即跳转
   } else if (trackChanged) {
     // 切歌：立即重置锚点 + seek flag（不等 2 样本确认）
     smtcAnchorPositionMs = rawAdjusted;
@@ -269,7 +323,7 @@ function smtcApplyBridgeState(state) {
     status: String(state.status || ''),
     isPlaying: newPlaying,
     durationMs: Math.max(0, Number(state.durationMs) || 0),
-    positionMs: smtcStableMs(newActive, newPlaying),
+    positionMs: tspResult ? Math.max(0, Number(tspResult.stableMs) || 0) : smtcStableMs(newActive, newPlaying),
     lastUpdatedMs: Math.max(0, Number(state.lastUpdatedMs) || 0),
     source: 'smtc',
     bridgeReady: state.bridgeReady === true,
@@ -278,14 +332,18 @@ function smtcApplyBridgeState(state) {
     updatedAt: Date.now(),
   });
   // 紧凑时间轴日志（每次 SMTC state 更新打印一次）
-  // raw/predicted/stable/error 保持 v4 原语义；delay/output 仅最终显示层信息
-  console.log('[TL] raw=' + Math.round(newBase) + ' predicted=' + Math.round(predicted) +
-    ' stable=' + Math.round(smtcStore.positionMs) + ' error=' + Math.round(error) +
-    ' delay=' + smtcUserSessionDelayMs + ' output=' + Math.round(smtcStore.positionMs + smtcUserSessionDelayMs) +
-    ' playing=' + newPlaying + ' trackChanged=' + trackChanged + ' seek=' + seekThisSample +
-    ' action=' + action);
-  console.log('[CLOCK][' + Date.now() + '] smtc=' + Math.round(newBase) + ' local=' + Math.round(predicted) +
-    ' error=' + Math.round(error) + 'ms action=' + action);
+  // raw/predicted/stable/error 保持 v4 原语义；delay/output 仅最终显示层信息。
+  // TSP 接管时不打印这两行（否则会打印并非实际输出的 v4 数值）；
+  // TSP 自己的诊断日志默认关闭，需要时用 window.smtcTspSetDebug(true) 打开。
+  if (!tspResult) {
+    console.log('[TL] raw=' + Math.round(newBase) + ' predicted=' + Math.round(predicted) +
+      ' stable=' + Math.round(smtcStore.positionMs) + ' error=' + Math.round(error) +
+      ' delay=' + smtcUserSessionDelayMs + ' output=' + Math.round(smtcStore.positionMs + smtcUserSessionDelayMs) +
+      ' playing=' + newPlaying + ' trackChanged=' + trackChanged + ' seek=' + seekThisSample +
+      ' action=' + action);
+    console.log('[CLOCK][' + Date.now() + '] smtc=' + Math.round(newBase) + ' local=' + Math.round(predicted) +
+      ' error=' + Math.round(error) + 'ms action=' + action);
+  }
   console.log('[STORE][' + Date.now() + '] state updated (T5/T6): active=' + smtcStore.active +
     ' title=' + (smtcStore.title || '') +
     ' artist=' + (smtcStore.artist || '') +

@@ -158,7 +158,16 @@ function updatePlaybackProgressUi() {
   // channel has no seek command (see commitProgressSeek).
   if (typeof smtcExternalOwnsUi === 'function' && smtcExternalOwnsUi()) {
     var extDurationMs = Number(typeof smtcStore === 'object' && smtcStore ? smtcStore.durationMs : 0) || 0;
-    var extPositionMs = Number(typeof smtcStore === 'object' && smtcStore ? smtcStore.positionMs : 0) || 0;
+    // 统一时间源: 与歌词走同一个 stablePosition (Timeline Stabilizer Plus, QPC 主时钟),
+    // 不再读只在 SMTC 采样时更新的 smtcStore.positionMs —— 否则进度条会 5s 一跳。
+    var extPositionMs = 0;
+    if (typeof smtcPositionSecondsNow === 'function') {
+      var extSeconds = smtcPositionSecondsNow();
+      if (isFinite(extSeconds) && extSeconds >= 0) extPositionMs = extSeconds * 1000;
+    }
+    if (!(extPositionMs > 0)) {
+      extPositionMs = Number(typeof smtcStore === 'object' && smtcStore ? smtcStore.positionMs : 0) || 0;
+    }
     if (extPositionMs > extDurationMs && extDurationMs > 0) extPositionMs = extDurationMs;
     setProgressVisual(extDurationMs > 0 ? (extPositionMs / extDurationMs * 100) : 0);
     var extTimeDisplay = document.getElementById('time-display');

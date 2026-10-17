@@ -242,6 +242,23 @@ function runSmartShuffleRegressionCheck() {
   process.stdout.write(result.stdout || '');
 }
 
+function runTimelineStabilizerPlusRegressionCheck() {
+  logStep('Timeline Stabilizer Plus: anchor/calibration, anomaly isolation, seek/track/pause handling, lyric quality');
+  const testFiles = [
+    path.join(appRoot, 'tests', 'smtc-timeline-stabilizer-plus.test.js'),
+  ];
+  const result = spawnSync(process.execPath, ['--test'].concat(testFiles), {
+    cwd: appRoot,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
+    fail('timeline stabilizer plus regression failed: ' + testFiles.map(rel).join(', '));
+  }
+  process.stdout.write(result.stdout || '');
+}
+
 function runQishuiProviderDistributionRegressionCheck() {
   logStep('Qishui provider distribution, entitlement, and signed Passport QR regression');
   const testFiles = [
@@ -5472,6 +5489,7 @@ async function main() {
   runPlatformAccountSyncGuardCheck();
   runHomeDailyRecommendationRegressionCheck();
   runSmartShuffleRegressionCheck();
+  runTimelineStabilizerPlusRegressionCheck();
   parseCombinedIndexModules();
   checkBridgeScriptEncoding();
   scanForbiddenMarkers();
