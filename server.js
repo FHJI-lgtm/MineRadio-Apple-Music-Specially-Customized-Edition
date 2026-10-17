@@ -9507,39 +9507,47 @@ const server = http.createServer(async (req, res) => {
       const seen = new Set();
       const built = [];
       const artistStats = [];
+      // 2 个艺人 × 3 个源 = 6 次搜索。**必须并发**: 串行实测冷启要 6 秒,
+      // 用户点完按钮要等这么久才开播, 不可接受。
+      const tasks = [];
       for (let i = 0; i < artists.length; i += 1) {
-        const artist = artists[i];
-        for (let s = 0; s < sources.length; s += 1) {
-          const source = sources[s];
-          let rows = [];
-          try {
-            if (source === 'qq') rows = (await handleQQSearch(artist, limit * 3, 0)) || [];
-            else if (source === 'kugou') rows = (await handleKugouSearch(artist, limit * 3, kugouCookie, 0)) || [];
-            else if (source === 'qishui') {
-              const page = await handleQishuiSearch(artist, limit * 3, qishuiCookie, 0);
-              rows = (page && Array.isArray(page.songs)) ? page.songs : [];
-            }
-          } catch (err) {
-            rows = [];
-          }
-          let kept = 0;
-          rows.forEach((song) => {
-            // 每个(艺人, 源)最多留 limit 首: 搜索一次能回 limit*3 条,
-            // 全收会让发现池被一两个艺人灌满, 稀释掉别的候选。
-            if (kept >= limit) return;
-            const candidate = smartShuffleArtistMoreCandidate(song, artist, source);
-            if (!candidate.id || !candidate.name || !candidate.artist) return;
-            // 关键: 搜索会按"歌名"命中, 必须再按**艺人名**过滤, 否则会把同名歌混进来
-            if (!smartShuffleArtistNameMatches(candidate.artist, artist)) return;
-            const key = source + ':' + candidate.id;
-            if (seen.has(key)) return;
-            seen.add(key);
-            built.push(candidate);
-            kept += 1;
-          });
-          artistStats.push({ artist: artist, source: source, got: rows.length, kept: kept });
-        }
+        for (let s = 0; s < sources.length; s += 1) tasks.push({ artist: artists[i], source: sources[s] });
       }
+      const results = await Promise.all(tasks.map(async (task) => {
+        let rows = [];
+        try {
+          if (task.source === 'qq') rows = (await handleQQSearch(task.artist, limit * 3, 0)) || [];
+          else if (task.source === 'kugou') rows = (await handleKugouSearch(task.artist, limit * 3, kugouCookie, 0)) || [];
+          else if (task.source === 'qishui') {
+            const page = await handleQishuiSearch(task.artist, limit * 3, qishuiCookie, 0);
+            rows = (page && Array.isArray(page.songs)) ? page.songs : [];
+          }
+        } catch (err) {
+          rows = [];
+        }
+        return { artist: task.artist, source: task.source, rows: rows };
+      }));
+      results.forEach((item) => {
+        const artist = item.artist;
+        const source = item.source;
+        const rows = Array.isArray(item.rows) ? item.rows : [];
+        let kept = 0;
+        rows.forEach((song) => {
+          // 每个(艺人, 源)最多留 limit 首: 搜索一次能回 limit*3 条,
+          // 全收会让发现池被一两个艺人灌满, 稀释掉别的候选。
+          if (kept >= limit) return;
+          const candidate = smartShuffleArtistMoreCandidate(song, artist, source);
+          if (!candidate.id || !candidate.name || !candidate.artist) return;
+          // 关键: 搜索会按"歌名"命中, 必须再按**艺人名**过滤, 否则会把同名歌混进来
+          if (!smartShuffleArtistNameMatches(candidate.artist, artist)) return;
+          const key = source + ':' + candidate.id;
+          if (seen.has(key)) return;
+          seen.add(key);
+          built.push(candidate);
+          kept += 1;
+        });
+        artistStats.push({ artist: artist, source: source, got: rows.length, kept: kept });
+      });
       const payload = {
         ok: true,
         scoring: 'renderer',
