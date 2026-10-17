@@ -33,13 +33,25 @@ test('入口 2 — 默认隐藏, 悬浮操作区才出现', () => {
   assert.match(CSS, /@media \(hover: none\)/, '触摸设备要常驻, 否则点不到');
 });
 
-test('入口 3 — handler 存在且走"先判源、再重排、失败回退"', () => {
+test('入口 3 — 语义是「歌单先随机 + 再插歌」, 不是纯重排', () => {
   assert.match(MOD, /window\.playAmPlaylistSmartShuffled = function/, '必须有全局入口');
   assert.match(MOD, /smartShuffleApplyGuard/, '必须过唯一接管判定点');
-  assert.match(MOD, /planSmartShuffleOrder/, '必须用纯重排（不新增歌曲）');
-  assert.match(MOD, /playAmPlaylistShuffled/, '失败必须回退普通随机');
-  // 不允许出现"新增候选"的调用 —— 歌单入口只做重排
-  assert.ok(MOD.indexOf('planSmartShuffleInsertions') < 0 || true);
+  assert.match(MOD, /smartShuffleFetchPool/, '必须拉候选池');
+  assert.match(MOD, /planSmartShuffleInsertions/, '必须用「追加」而不是纯重排');
+
+  const handlerStart = MOD.indexOf('window.playAmPlaylistSmartShuffled = function');
+  const handlerEnd = MOD.indexOf('window.playAmPlaylistFromStart = function');
+  assert.ok(handlerStart > 0 && handlerEnd > handlerStart, '要能切出 handler 本体');
+  const body = MOD.slice(handlerStart, handlerEnd);
+
+  // 纯重排是另一件事, 歌单入口不应再用它
+  assert.ok(body.indexOf('planSmartShuffleOrder') < 0, '歌单入口不应再用纯重排');
+  // 插歌失败也必须照常播放「打乱后的歌单」, 不能什么都不做
+  assert.match(body, /playInApp\(base/, '插歌失败要照常随机播放');
+  // 先随机再插: Fisher-Yates 必须出现在拉池之前
+  const shuffleAt = body.indexOf('Math.random() * (i + 1)');
+  const poolAt = body.indexOf('smartShuffleFetchPool');
+  assert.ok(shuffleAt > 0 && poolAt > shuffleAt, '必须先打乱歌单, 再拉池插歌');
 });
 
 test('入口 4 — Apple 歌单里直接隐藏该按钮', () => {

@@ -269,10 +269,20 @@
   }
 
   function toPlayableSong(song, provider) {
+    // 跨源插进来的候选**自带 provider**，必须尊重它 —— 否则会被打成歌单的源，
+    // 取流端点拿错 ID 就直接播不出来。
+    var own = String((song && (song.provider || song.source)) || '').trim();
+    var useProvider = own || provider;
+    // duration 的单位是**秒**(fmtTotalDuration 按秒算)，而候选池带的是 durationMs
+    var durationSec = Number((song && song.duration) || 0);
+    if (!(durationSec > 0)) {
+      var durationMs = Number((song && song.durationMs) || 0);
+      if (durationMs > 0) durationSec = Math.round(durationMs / 1000);
+    }
     return {
       id: String((song && (song.id || song.sourceSongId)) || ''),
-      provider: provider,
-      source: provider,
+      provider: useProvider,
+      source: useProvider,
       name: String((song && song.name) || ''),
       artist: String((song && song.artist) || ''),
       artists: Array.isArray(song && song.artists) ? song.artists : [],
@@ -280,7 +290,7 @@
       album: String((song && (song.albumName || song.album)) || ''),
       albumId: String((song && song.albumId) || ''),
       cover: String((song && song.cover) || ''),
-      duration: Number((song && song.duration) || 0),
+      duration: durationSec,
       // 试听/权益由取流端点判定，这里不预判
       playable: !!(song && song.playable),
     };
@@ -1101,8 +1111,9 @@
     });
   };
 
-  // 智能随机：**只重排，不新增**（planSmartShuffleOrder 保证输入输出是同一批歌）。
-  // 任何一步失败都退回普通随机 —— 用户点了按钮，绝不能什么都不发生。
+  // 智能随机 = **歌单本身先随机，再在随机结果里插入候选**。
+  // 注意区别于 planSmartShuffleOrder（那是纯重排、同一批歌）；用户要的是"随机 + 加歌"，
+  // 所以这里用 planSmartShuffleInsertions（只在原曲之间追加，绝不替换）。
   window.playAmPlaylistSmartShuffled = function () {
     var playlist = plState.playlist;
     var name = String((playlist && playlist.name) || '').trim();
@@ -1112,70 +1123,67 @@
       plSetStatus('智能随机只用于 MineRadio 自己的源；Apple Music 请用原生随机', 'warn');
       return;
     }
-    var list = (plState.tracks || []).slice();
-    if (list.length < 2) { plSetStatus('这个歌单曲目太少，不需要智能随机', 'warn'); return; }
+    var base = (plState.tracks || []).slice();
+    if (base.length < 2) { plSetStatus('这个歌单曲目太少，不需要智能随机', 'warn'); return; }
 
     // 唯一的接管判定点：只要有一首不是四源，就不接管
     var guard = (typeof smartShuffleApplyGuard === 'function')
-      ? smartShuffleApplyGuard(list)
+      ? smartShuffleApplyGuard(base)
       : { allowed: false, reason: 'guard-unavailable' };
     if (!guard.allowed) {
       plSetStatus('智能随机不接管这个歌单（' + guard.reason + '），已改用普通随机', 'warn');
       return window.playAmPlaylistShuffled();
     }
 
-    var plan = null;
-    try {
-      var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
-      var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
-      var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
-      plan = (typeof planSmartShuffleOrder === 'function')
-        ? planSmartShuffleOrder(list, {
-            now: Date.now(),
-            weights: cfg.weights,
-            songStats: maps.songStats,
-            artistStats: maps.artistStats,
-            signatureStats: maps.signatureStats,
-            looseStats: maps.looseStats,
-            artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
-            recentKeys: recent.recentKeys,
-            recentArtists: recent.recentArtists,
-            recentAlbums: recent.recentAlbums,
-            rng: Math.random
-          })
-        : null;
-    } catch (err) {
-      plan = null;
+    // 1) 歌单本身先随机
+    for (var i = base.length - 1; i > 0; i -= 1) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = base[i]; base[i] = base[j]; base[j] = tmp;
     }
 
-    if (!plan || !plan.applied || !Array.isArray(plan.order) || plan.order.length !== list.length) {
-      plSetStatus('智能随机未生效（' + ((plan && plan.reason) || 'unavailable') + '），已改用普通随机', 'warn');
-      return window.playAmPlaylistShuffled();
-    }
+    // 2) 再在随机结果里插歌。池挂了也不影响随机播放（那才是主诉求）。
+    plSetStatus('正在读取候选池…', '');
+    return smartShuffleFetchPool().then(function (pool) {
+      var plan = null;
+      try {
+        var cfg = (typeof readShuffleConfig === 'function') ? readShuffleConfig() : { weights: null };
+        var maps = (typeof shuffleStatsMaps === 'function') ? shuffleStatsMaps() : {};
+        var recent = (typeof shuffleRecentContext === 'function') ? shuffleRecentContext({}) : {};
+        plan = (typeof planSmartShuffleInsertions === 'function')
+          ? planSmartShuffleInsertions(base, pool, {
+              now: Date.now(),
+              weights: cfg.weights,
+              songStats: maps.songStats,
+              artistStats: maps.artistStats,
+              signatureStats: maps.signatureStats,
+              looseStats: maps.looseStats,
+              artistStatsByKey: (typeof shuffleArtistIndex === 'function') ? shuffleArtistIndex(maps.artistStats) : null,
+              recentKeys: recent.recentKeys,
+              recentArtists: recent.recentArtists,
+              recentAlbums: recent.recentAlbums,
+              rng: Math.random
+            })
+          : null;
+      } catch (err) {
+        plan = null;
+      }
 
-    // order 是 key 数组，映射回歌曲对象；映射不全就退回普通随机（不丢歌）
-    var byKey = Object.create(null);
-    list.forEach(function (song) {
-      var k = (typeof queueItemKey === 'function') ? queueItemKey(song) : '';
-      if (!k) return;
-      byKey[k] = byKey[k] || song;
+      if (plan && plan.applied) {
+        var inserted = (plan.insertions || []).length;
+        plSetStatus('智能随机：' + base.length + ' 首随机 + 插入 ' + inserted + ' 首', 'ok');
+        return playInApp(plan.order, 0, {
+          playlistName: name, shuffled: true, smartShuffle: true, inserted: inserted
+        }, plProv);
+      }
+
+      // 插歌没成不谎报 —— 随机本身已经完成，照常播打乱后的歌单
+      var why = (plan && plan.reason) || 'unavailable';
+      plSetStatus('已随机播放 ' + base.length + ' 首（未插歌：' + why + '）', 'warn');
+      return playInApp(base, 0, {
+        playlistName: name, shuffled: true, smartShuffle: true, inserted: 0
+      }, plProv);
     });
-    var ordered = [];
-    var used = Object.create(null);
-    plan.order.forEach(function (k) {
-      if (!byKey[k] || used[k]) return;
-      used[k] = true;
-      ordered.push(byKey[k]);
-    });
-    if (ordered.length !== list.length) {
-      plSetStatus('智能随机结果不完整，已改用普通随机', 'warn');
-      return window.playAmPlaylistShuffled();
-    }
-
-    plSetStatus('正在智能随机播放…', '');
-    playInApp(ordered, 0, { playlistName: name, shuffled: true, smartShuffle: true }, plProv);
   };
-
   window.playAmPlaylistFromStart = function () { return plPlay('这个歌单'); };
 
   function plBindTracks() {
