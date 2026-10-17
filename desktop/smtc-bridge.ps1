@@ -64,59 +64,214 @@ function global:Await($WinRtTask, [Type]$ResultType) {
 }
 
 # ---- Phase 4A: album cover (Thumbnail -> base64 data URL) ----
-# 只在歌曲 identity 变化时读取; 切歌瞬间封面可能还在加载 -> 重试 2~3 次。
-# 任何失败返回 $null (绝不崩溃), 前端 fallback 到默认封面。
+# Read only when the track identity changes; any failure returns $null (never crashes),
+# the renderer falls back to a default cover.
+#
+# [THUMB-FIX 2026-10-06] Root cause of the long-standing "thumbnail=null" (measured, see
+# docs/ARTWORK_PIPELINE_AUDIT.md section 7):
+#   WinRT OpenReadAsync() hands back a System.__ComObject;
+#   PowerShell's [Type] cast goes through LanguagePrimitives and FAILS 100% of the time
+#   ("Cannot convert System.__ComObject to IRandomAccessStream").
+#   The working channel is MethodInfo.Invoke: the CLR binder performs the COM QI itself.
+#   Measured gain: 66024B JPEG / 600x600 / 15ms (the old path wasted 3 x ~3s per track, then failed).
+# Contract unchanged: data:image/...;base64,... on success, $null on failure.
+#
+# MethodInfo cache policy: lazy init + automatic rebuild on any failure.
+#   Never assume $global: is visible in every runspace; every call reads the cache and,
+#   if it is missing or throws, drops it and rebuilds once -- a stale cache can never
+#   turn into a permanent fallback.
+# NOTE: keep comments in this file ASCII-only. This script is UTF-8 *without* BOM and
+#   PowerShell 5.1 decodes it as ANSI; non-ASCII bytes can swallow following punctuation
+#   and break the parser. (Pre-existing non-ASCII comments elsewhere are untouched.)
+$global:ThumbProbeCache = $null
+
+function global:GetThumbProbe {
+  param([switch]$Force)
+  if (-not $Force -and $null -ne $global:ThumbProbeCache) {
+    $c = $global:ThumbProbeCache
+    if ($null -ne $c.GetStream -and $null -ne $c.AsStream) { return $c }
+  }
+  try {
+    $null = [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime]
+    $null = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType=WindowsRuntime]
+    $null = [System.IO.WindowsRuntimeStreamExtensions]
+    $iracT = [Type]::GetType('Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime')
+    if ($null -eq $iracT) { $global:ThumbProbeCache = $null; return $null }
+    $getIn = $iracT.GetMethod('GetInputStreamAt')
+    $getSize = $iracT.GetMethod('get_Size')
+    $asStream = ([System.IO.WindowsRuntimeStreamExtensions].GetMethods() | Where-Object {
+      $_.Name -eq 'AsStreamForRead' -and $_.GetParameters().Count -eq 1 -and
+      $_.GetParameters()[0].ParameterType.Name -eq 'IInputStream'
+    })[0]
+    if ($null -eq $getIn -or $null -eq $asStream) { $global:ThumbProbeCache = $null; return $null }
+    $global:ThumbProbeCache = @{ GetStream = $getIn; GetSize = $getSize; AsStream = $asStream }
+    return $global:ThumbProbeCache
+  } catch {
+    $global:ThumbProbeCache = $null
+    return $null
+  }
+}
+
+# pure helper: magic sniff (ContentType is measured EMPTY -> never rely on it)
+function global:ThumbBytesToFormat($bytes) {
+  if ($null -eq $bytes -or $bytes.Length -lt 12) { return 'unknown' }
+  if ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xD8) { return 'jpeg' }
+  if ($bytes[0] -eq 0x89 -and $bytes[1] -eq 0x50 -and $bytes[2] -eq 0x4E -and $bytes[3] -eq 0x47) { return 'png' }
+  if ($bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49 -and $bytes[2] -eq 0x46 -and $bytes[3] -eq 0x46 -and
+      $bytes[8] -eq 0x57 -and $bytes[9] -eq 0x45 -and $bytes[10] -eq 0x42 -and $bytes[11] -eq 0x50) { return 'webp' }
+  return 'unknown'
+}
+
+# pure helper: image size from header (logging/acceptance only; no full decode)
+function global:ThumbImageSize($bytes, $format) {
+  try {
+    if ($format -eq 'png') {
+      $w = [int]$bytes[16] * 16777216 + [int]$bytes[17] * 65536 + [int]$bytes[18] * 256 + [int]$bytes[19]
+      $h = [int]$bytes[20] * 16777216 + [int]$bytes[21] * 65536 + [int]$bytes[22] * 256 + [int]$bytes[23]
+      return @($w, $h)
+    }
+    if ($format -eq 'webp') {
+      $tag = [System.Text.Encoding]::ASCII.GetString($bytes, 12, 4)
+      if ($tag -eq 'VP8X') {
+        $w = ([int]$bytes[24] + ([int]$bytes[25] -shl 8) + ([int]$bytes[26] -shl 16)) + 1
+        $h = ([int]$bytes[27] + ([int]$bytes[28] -shl 8) + ([int]$bytes[29] -shl 16)) + 1
+        return @($w, $h)
+      }
+      if ($tag -eq 'VP8L') {
+        $b0 = [int]$bytes[21]; $b1 = [int]$bytes[22]; $b2 = [int]$bytes[23]; $b3 = [int]$bytes[24]
+        $w = (($b0 -bor ($b1 -shl 8)) -band 0x3FFF) + 1
+        $h = (((($b1 -shr 6) -bor ($b2 -shl 2) -bor ($b3 -shl 10)) -band 0x3FFF)) + 1
+        return @($w, $h)
+      }
+      $w = (([int]$bytes[26] -bor ([int]$bytes[27] -shl 8))) -band 0x3FFF
+      $h = (([int]$bytes[28] -bor ([int]$bytes[29] -shl 8))) -band 0x3FFF
+      return @($w, $h)
+    }
+    if ($format -eq 'jpeg') {
+      $i = 2
+      while ($i -lt $bytes.Length - 9) {
+        if ($bytes[$i] -ne 0xFF) { $i++; continue }
+        $m = $bytes[$i + 1]
+        if ($m -eq 0xD8 -or $m -eq 0x01 -or ($m -ge 0xD0 -and $m -le 0xD7)) { $i += 2; continue }
+        $len = ([int]$bytes[$i + 2] -shl 8) + [int]$bytes[$i + 3]
+        if (($m -ge 0xC0 -and $m -le 0xC3) -or ($m -ge 0xC5 -and $m -le 0xC7) -or
+            ($m -ge 0xC9 -and $m -le 0xCB) -or ($m -ge 0xCD -and $m -le 0xCF)) {
+          $h = ([int]$bytes[$i + 5] -shl 8) + [int]$bytes[$i + 6]
+          $w = ([int]$bytes[$i + 7] -shl 8) + [int]$bytes[$i + 8]
+          return @($w, $h)
+        }
+        if ($len -lt 2) { break }
+        $i += 2 + $len
+      }
+    }
+  } catch { }
+  return $null
+}
+
+# pure helper: bytes -> data URL (keeps the original 5MB guard)
+function global:ThumbBytesToDataUrl($bytes) {
+  if ($null -eq $bytes -or $bytes.Length -lt 4 -or $bytes.Length -gt 5242880) { return $null }
+  $format = global:ThumbBytesToFormat $bytes
+  $mime = 'image/jpeg'
+  if ($format -eq 'png') { $mime = 'image/png' }
+  elseif ($format -eq 'webp') { $mime = 'image/webp' }
+  return ('data:' + $mime + ';base64,' + [Convert]::ToBase64String($bytes))
+}
 
 function global:ReadThumbnailDataUrl($props) {
-  # PS 5.1 无法投影 WinRT 流接口(__ComObject), 此处尝试后优雅返回 null;
-  # 前端 fallback 到默认封面。任何失败绝不崩溃。
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
   try {
-    if ($null -eq $props -or $null -eq $props.Thumbnail) { return $null }
-    $stream = global:Await ($props.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
-    if ($null -eq $stream) { return $null }
-    $contentType = ''
-    try { $contentType = [string]$stream.ContentType } catch { }
-    $netStream = $null
-    try {
-      $ir = [Windows.Storage.Streams.IRandomAccessStream]$stream
-      $netStream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($ir)
-    } catch { }
-    if ($null -eq $netStream) { return $null }
-    $ms = New-Object System.IO.MemoryStream
-    # [SMTC-LIFECYCLE-FIX] 封面流同步 CopyTo 可能永久阻塞 (WinRT 流在切歌瞬间挂起)
-    # -> 与 Await 同类问题: runspace 卡死 -> 事件池耗尽 -> SMTC 停更.
-    # 改用 CopyToAsync + 有限超时; 超时/异常返回 null (封面丢失可接受, 绝不阻塞 SMTC).
-    try {
-      $copyTask = $netStream.CopyToAsync($ms)
-      if ($null -ne $copyTask -and -not $copyTask.Wait(3000)) {
-        global:Log 'async task timeout (3000ms): thumbnail stream copy'
-        return $null
-      }
-    } catch {
-      global:Log ('thumbnail copy failed: ' + $_.Exception.Message)
+    if ($null -eq $props -or $null -eq $props.Thumbnail) {
+      global:Log '[SMTC][THUMB] read failed: no thumbnail reference'
       return $null
     }
-    $bytes = $ms.ToArray()
-    if ($bytes.Length -lt 4 -or $bytes.Length -gt 5242880) { return $null }
-    if ([string]::IsNullOrEmpty($contentType)) {
-      $contentType = 'image/jpeg'
-      if ($bytes[0] -eq 0x89 -and $bytes[1] -eq 0x50 -and $bytes[2] -eq 0x4E -and $bytes[3] -eq 0x47) { $contentType = 'image/png' }
-      elseif ($bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49 -and $bytes[2] -eq 0x46 -and $bytes[3] -eq 0x46) { $contentType = 'image/webp' }
+    $stream = global:Await ($props.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+    if ($null -eq $stream) {
+      global:Log '[SMTC][THUMB] read failed: OpenReadAsync returned null'
+      return $null
     }
-    return ('data:' + $contentType + ';base64,' + [Convert]::ToBase64String($bytes))
+    # [THUMB-FIX] get IInputStream through MethodInfo.Invoke (a [Type] cast always fails here)
+    $probe = global:GetThumbProbe
+    $netStream = $null
+    for ($attempt = 0; $attempt -lt 2 -and $null -eq $netStream; $attempt++) {
+      if ($null -eq $probe) { $probe = global:GetThumbProbe -Force }
+      if ($null -eq $probe) { break }
+      try {
+        $inStream = $probe.GetStream.Invoke($stream, @([uint64]0))
+        if ($null -ne $inStream) { $netStream = $probe.AsStream.Invoke($null, @($inStream)) }
+      } catch { }
+      if ($null -eq $netStream) {
+        # stale cached MethodInfo (runspace lifecycle change etc.) -> drop and rebuild once
+        $global:ThumbProbeCache = $null
+        $probe = $null
+      }
+    }
+    if ($null -eq $netStream) {
+      global:Log '[SMTC][THUMB] read failed: cannot project thumbnail stream'
+      return $null
+    }
+    $streamSize = 0
+    try { if ($null -ne $probe.GetSize) { $streamSize = [int64]$probe.GetSize.Invoke($stream, @()) } } catch { }
+    $ms = New-Object System.IO.MemoryStream
+    # [SMTC-LIFECYCLE-FIX] bounded synchronous read.
+    #   The old CopyToAsync path throws on this stream type (InputStreamOverStream:
+    #   "Value cannot be ..."), so read in 64KB chunks and enforce a total time budget
+    #   instead of relying on an async copy. Same intent: never hang the event runspace.
+    try {
+      $buf = New-Object byte[] 65536
+      $total = 0
+      while ($true) {
+        if ($sw.ElapsedMilliseconds -gt 3000) {
+          global:Log '[SMTC][THUMB] read failed: stream read timeout (3000ms)'
+          return $null
+        }
+        $n = $netStream.Read($buf, 0, $buf.Length)
+        if ($n -le 0) { break }
+        $ms.Write($buf, 0, $n)
+        $total += $n
+        if ($total -gt 5242880) {
+          global:Log '[SMTC][THUMB] read failed: thumbnail larger than 5MB'
+          return $null
+        }
+      }
+    } catch {
+      global:Log ('[SMTC][THUMB] read failed: ' + $_.Exception.Message)
+      return $null
+    }
+    try { if ($null -ne $netStream -and $netStream.CanRead) { $netStream.Dispose() } } catch { }
+    $bytes = $ms.ToArray()
+    if ($bytes.Length -lt 4 -or $bytes.Length -gt 5242880) {
+      global:Log ('[SMTC][THUMB] read failed: implausible size ' + $bytes.Length)
+      return $null
+    }
+    $sw.Stop()
+    $format = global:ThumbBytesToFormat $bytes
+    $dim = global:ThumbImageSize $bytes $format
+    $dimText = ''
+    if ($null -ne $dim) { $dimText = ' ' + $dim[0] + 'x' + $dim[1] }
+    global:Log ('[SMTC][THUMB] stream=' + $streamSize + 'B')
+    global:Log ('[SMTC][THUMB] read=' + $bytes.Length + 'B ' + $sw.ElapsedMilliseconds + 'ms')
+    global:Log ('[SMTC][THUMB] ' + $format + $dimText)
+    $dataUrl = global:ThumbBytesToDataUrl $bytes
+    if ($null -eq $dataUrl) {
+      global:Log '[SMTC][THUMB] read failed: data url build failed'
+      return $null
+    }
+    global:Log ('[SMTC][THUMB] accepted len=' + $dataUrl.Length)
+    return $dataUrl
   } catch {
-    global:Log ('ReadThumbnailDataUrl failed: ' + $_.Exception.Message)
+    global:Log ('[SMTC][THUMB] read failed: ' + $_.Exception.Message)
     return $null
   }
 }
 
 function global:ReadThumbnailWithRetry($props) {
-  for ($attempt = 0; $attempt -lt 3; $attempt++) {
-    if ($attempt -gt 0) { Start-Sleep -Milliseconds 350 }
-    $t = global:ReadThumbnailDataUrl $props
-    if ($null -ne $t) { return $t }
-  }
-  return $null
+  # [THUMB-FIX] the old 3x retry existed only to paper over the projection bug (100% failure,
+  # pure wasted ~10s). After the fix a single attempt succeeds (measured 15ms); a real failure
+  # is a real failure, so try once and leave an explicit reason in the log.
+  $t = global:ReadThumbnailDataUrl $props
+  if ($null -eq $t) { global:Log '[SMTC][THUMB] read failed: giving up after single attempt' }
+  return $t
 }
 
 function global:SubscribeSession($session) {

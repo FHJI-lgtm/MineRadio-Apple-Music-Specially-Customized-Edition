@@ -277,6 +277,28 @@ function parseCombinedIndexModules() {
   console.log(`[OK] Combined classic script parses. Modules: ${modulePaths.length}.`);
 }
 
+// SMTC bridge 脚本编码守卫 (2026-10-06 真实事故):
+//   该脚本含中文注释。PowerShell 5.1 只有在文件带 UTF-8 BOM 时才按 UTF-8 读取;
+//   一旦被改写成"UTF-8 无 BOM"(编辑器重写文件时极易发生), PS 5.1 会按 ANSI 解码,
+//   脚本仍能通过 ParseFile/语法检查, 但 stdin 控制命令泵会静默失效 ——
+//   表现为 App 里 "SMTC 控制失败: CONTROL_TIMEOUT"(状态输出正常、控制无效、watchdog 因心跳仍在而不重启)。
+//   已用干净 A/B 证实: 同内容同 LF, 仅 BOM 有无 → 无 BOM 必然无 control-result。
+function checkBridgeScriptEncoding() {
+  logStep('SMTC bridge script encoding guard');
+  const bridgePath = path.join(appRoot, 'desktop', 'smtc-bridge.ps1');
+  const raw = fs.readFileSync(bridgePath);
+  const hasBom = raw.length >= 3 && raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf;
+  const text = raw.toString('utf8');
+  const lfOnly = (text.match(/(?<!\r)\n/g) || []).length;
+  if (!hasBom) {
+    fail('desktop/smtc-bridge.ps1 must keep its UTF-8 BOM: without it PowerShell 5.1 reads the file as ANSI and the SMTC stdin control pump silently dies (CONTROL_TIMEOUT)');
+  }
+  if (lfOnly > 0) {
+    console.warn('[WARN] desktop/smtc-bridge.ps1 has ' + lfOnly + ' LF-only line endings; this file uses CRLF (keeps diffs clean)');
+  }
+  console.log('[OK] smtc-bridge.ps1 is UTF-8 with BOM' + (lfOnly > 0 ? ' (LF-only lines present)' : ' and CRLF') + '.');
+}
+
 function scanForbiddenMarkers() {
   logStep('Forbidden FSR/DLSS/native FG scan');
   const scanTargets = [
@@ -5451,6 +5473,7 @@ async function main() {
   runHomeDailyRecommendationRegressionCheck();
   runSmartShuffleRegressionCheck();
   parseCombinedIndexModules();
+  checkBridgeScriptEncoding();
   scanForbiddenMarkers();
   checkMainWindowChrome();
   checkBackgroundTransparencyControlsGuard();
