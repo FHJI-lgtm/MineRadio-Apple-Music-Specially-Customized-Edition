@@ -19630,16 +19630,6 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 }
 
 
-/* Smart Shuffle 采集开关: 继承 .icon-btn 的全部视觉, 只加"开启"态与细小字号 */
-#smart-shuffle-btn.ss-btn {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .02em;
-  min-width: 40px;
-}
-#smart-shuffle-btn.ss-btn span { pointer-events: none; }
-#smart-shuffle-btn.ss-on { color: #ffd479; }
-
 
 /* 智能随机：独立 class（不复用 .am-shuffle-btn，避免破坏"全页只有一个原生随机按钮"的既有契约）。
    视觉上沿用同一套浅色玻璃圆钮 —— 复制属性而不是改既有选择器。 */

@@ -108,3 +108,21 @@ test('TEST 5 — 点开时有 toast 反馈, 且不抛异常', () => {
   assert.strictEqual(sb.__toasts.length, 1);
   assert.ok(/影子模式已开启/.test(sb.__toasts[0]), 'toast=' + sb.__toasts[0]);
 });
+
+test('搜索框旁的 SS 按钮已移除, 歌单详情的智能随机按钮保留', () => {
+  const HTML = fs.readFileSync(path.join(appRoot, 'public', 'index.html'), 'utf8');
+  const CSS = fs.readFileSync(path.join(appRoot, 'public', 'css', 'index.css'), 'utf8');
+  assert.ok(HTML.indexOf('id="smart-shuffle-btn"') < 0, '搜索框旁的 SS 按钮应已移除');
+  assert.ok(HTML.indexOf('id="smart-shuffle-label"') < 0, '按钮内的标签也应移除');
+  assert.ok(!/#smart-shuffle-btn/.test(CSS), '对应 CSS 应清理干净');
+  // 歌单详情里的智能随机按钮是另一个东西, 必须保留
+  assert.ok(HTML.indexOf('id="am-playlist-detail-smart-shuffle"') > 0, '歌单详情的智能随机按钮不得误删');
+});
+
+test('按钮移除后: 无按钮时不再起定时器, 但仍会重建事件聚合(Console API 保留)', () => {
+  const MOD = fs.readFileSync(path.join(shellDir, '08-smart-shuffle-toggle.js'), 'utf8');
+  assert.ok(/document\.getElementById\('smart-shuffle-btn'\) && !smartShuffleToggleTimer/.test(MOD),
+    '没有按钮时不应启动 3 秒刷新定时器');
+  assert.ok(/refreshSmartShuffleToggleCount\(\)/.test(MOD), '启动时仍要重建一次事件聚合');
+  assert.ok(/function cycleSmartShuffleMode/.test(MOD), 'console 里仍可切换模式');
+});

@@ -1,8 +1,10 @@
 // ============================================================
 // 10-shell/08-smart-shuffle-toggle.js
-// 搜索框旁边的 Smart Shuffle 开关（开发期用）。
-//
-//   点击 : off <-> shadow 来回切（'on' 尚未接线, 所以不给点）
+// 注: 搜索框旁的 SS 按钮已按需求移除。本模块保留两个仍被依赖的能力:
+//   · 启动时重建一次事件聚合(smartShuffleHomeInsight 要用)
+//   · console 里切换模式: cycleSmartShuffleMode()（开启/关闭影子采集）
+// 原"搜索框旁边的 Smart Shuffle 开关"(开发期用) —— 按钮已移除, 只留 console API:
+//   调用 : off <-> shadow 来回切（'on' 尚未接线, 所以不给点）
 //   标签 : 直接显示**已采集事件条数** —— 一眼看出到底有没有在收
 //   标题 : 悬停显示详细状态
 //
@@ -71,7 +73,10 @@ function cycleSmartShuffleMode(event) {
 
 function startSmartShuffleToggle() {
   renderSmartShuffleToggle();
-  if (!smartShuffleToggleTimer) {
+  // 搜索框旁的那个按钮已经移除; 没有按钮就不必再起 3 秒刷新定时器。
+  // 模块仍然保留: ①启动时重建一次事件聚合(主页卡片要用) ②console 里仍可切换模式:
+  //   开启采集: cycleSmartShuffleMode()  /  关闭: 再调一次
+  if (document.getElementById('smart-shuffle-btn') && !smartShuffleToggleTimer) {
     smartShuffleToggleTimer = setInterval(renderSmartShuffleToggle, 3000);
   }
   // 启动时从 IndexedDB 重建一次总数(跨会话的真实条数)
