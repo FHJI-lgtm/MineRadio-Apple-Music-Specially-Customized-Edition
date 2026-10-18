@@ -1,7 +1,7 @@
 {
   "name": "mineradio-apple-music-edition",
   "productName": "MineRadio Apple Music Edition",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Windows 沉浸式音乐播放器，融合桌面模式、歌词舞台、粒子视觉和 3D 歌单架。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -44,7 +44,6 @@
     ],
     "files": [
       "desktop/**/*",
-      "experiment/apple-music-windows-control/poc/**/*",
       "desktop/native/**/*",
       "public/**/*",
       "build/**/*",
@@ -67,6 +66,14 @@
       "!public/wallpaper.html",
       "!public/index.*.html",
       "!desktop/native/vendor/**",
+      "!desktop/native/*.cpp",
+      "!desktop/native/*.bat",
+      "!desktop/native/AudioProbe.exe",
+      "!desktop/native/RenderProbe.exe",
+      "!desktop/native/SessionProbe.exe",
+      "!desktop/native/PathProbe.exe",
+      "!desktop/native/LoopbackSelfTest.exe",
+      "!desktop/native/SinePlayer.exe",
       "public/index.html"
     ],
     "asar": false,
