@@ -18,10 +18,10 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 | **音乐资料库**：六源切换 + 专辑 / 艺人 / 歌单浏览 | **歌单详情**：播放歌单 + 随机播放 |
 | <img src="docs/assets/readme/album-detail.webp" width="420" alt="专辑详情"> | <img src="docs/assets/readme/artist-detail.webp" width="420" alt="艺人详情"> |
 | **专辑详情**：动态封面（部分专辑）+ 简介 + 曲目列表 | **艺人详情**：头像 / 流派 / 简介（简介来源会在界面上标注） |
-| <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | |
-| **歌词舞台**：双语歌词 + 粒子视觉（叠加在资料库之上） | |
+| <img src="docs/assets/readme/lyrics-stage.webp" width="420" alt="歌词舞台"> | <img src="docs/assets/readme/smart-shuffle-home.webp" width="420" alt="主页与智能随机"> |
+| **歌词舞台**：双语歌词 + 粒子视觉（叠加在资料库之上） | **主页与智能随机**：今日歌曲推荐（资料库内 + 资料库外候选） |
 
-> 截图来自 v2.1.0 实际界面。
+> 截图来自 v2.2.0 实际界面。
 
 ---
 
@@ -53,8 +53,15 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 * **Apple Music 窗口可在受控状态下隐藏**（隐身模式，默认开启）：平时 Apple Music 不显示在桌面上；
   执行播放控制期间窗口状态会被**临时调整**以便完成点击，结束后**恢复隐身**。技术细节见「Apple Music 接入原理」。
 
+### 🎲 智能随机与每日推荐（v2.2.0 新增）
+* 控制条与歌单详情页都有「智能随机」入口：歌单先随机，再插入资料库之外的相似歌（发现层）。
+* 发现层用同艺人搜索（QQ / 酷狗 / 汽水），并发化后冷启约 1.6s；找不到候选时只用资料库内候选，不硬凑。
+* 主页「每日推荐」当天冻结、跨天重生成，组成是「一首资料库 + 一首资料库外」。
+* `fee > 0`（只能试听）的候选会软降权，并在决策行报数。
+
 ### 🎤 实时歌词
 * 多源匹配与回退（QQ / 酷狗 / 网易云 + Apple Music Web 私有歌词），支持双语。
+* 时间轴稳定器 Plus（v2.2.0）：以 QPC 为主时钟、SMTC 只做校准，歌词不再被整秒量化带偏（可疑跳变需连续 3 次一致才修正）。
 
 ### 🌌 沉浸式视觉舞台
 * 原生音频捕获 → FFT 频谱 → 粒子 / beat 视觉；专辑封面补齐。
@@ -65,9 +72,10 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 ## 💾 下载与安装
 
-从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载**当前版本 v2.1.0**：
+从 [Releases](https://github.com/FHJI-lgtm/MineRadio-Apple-Music-Specially-Customized-Edition/releases) 下载**当前版本 v2.2.0**：
 
-* `MineRadio-Apple-Music-Specially-Customized-Edition-2.1.0-Setup.exe` —— 安装版（NSIS）
+* `MineRadio-Apple-Music-Specially-Customized-Edition-2.2.0-Setup.exe` —— 安装版（NSIS）
+* `MineRadio-Apple-Music-Specially-Customized-Edition-2.2.0.exe` —— 便携版
 
 * 环境：Windows 10/11；播放控制需已安装并**登录** Apple Music（Windows 版）。
 * 未签名安装包可能触发 SmartScreen 提示（小众 Electron 软件常见），请从官方 Release 下载并核对文件名。
@@ -95,7 +103,7 @@ MineRadio Apple Music 特别定制版是基于 MineRadio 持续开发的定制�
 
 项目仍在持续开发中。资料库浏览、艺人详情、歌词与视觉舞台等功能会继续迭代；部分功能的兼容性与数据覆盖率可能因歌曲、系统环境及外部服务而异。
 
-**当前版本：v2.1.0**。
+**当前版本：v2.2.0**。
 
 ---
 
