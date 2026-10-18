@@ -174,7 +174,8 @@ test('汽水接入的接线', async (t) => {
     // 端点要如实标注头像不是汽水给的
     const ep = SERVER.slice(SERVER.indexOf("pn === '/api/qishui/library/artists'"), SERVER.indexOf("pn === '/api/qishui/library/artists'") + 4000);
     assert.ok(ep.indexOf("'avatar-from-'") > 0, '要标注头像来源');
-    assert.ok(/imageFrom = got\.from/.test(ep), '要记录来自哪个源');
+    // 断言语义（把来源写进字段）而非具体变量名 —— 缓存改造后变量名会变
+    assert.ok(/imageFrom\s*=\s*(got\.from|gotFrom\d*)/.test(ep), '要记录来自哪个源');
   });
 
   await t.test('汽水封面域名必须在取色代理名单里（douyinpic 不返回 CORS 头）', () => {

@@ -141,6 +141,10 @@ const {
 } = require('./spotify-api');
 const spotifyLibrary = require('./spotify-library-adapter');
 const { createSpotifyLibraryCache, createThrottle } = require('./desktop/spotify-library-cache');
+// 艺人元数据（头像/名称/简介）磁盘缓存：QQ/酷狗列表要为每个艺人单独请求详情补头像，
+// 无缓存时 QQ 7.9s、酷狗 2.2s，且每次打开重来。
+const { createArtistMetaCache } = require('./desktop/artist-meta-cache');
+const artistMetaCache = createArtistMetaCache();
 const {
   clearAppleToken,
   handleAppleSongUrl,
@@ -5027,6 +5031,24 @@ function loginEasterEggGateUnlocked() {
   }
 }
 
+// ============================================================
+// 资料库聚合缓存（模块级）
+//
+// 这四个缓存**曾经声明在下面的请求处理函数体内** —— 该函数每个请求都会重新执行，
+// 于是「5 分钟 TTL」从未生效：每次打开网易云都要重扫 3 个歌单的全部曲目（实测 5.4s），
+// 酷狗 / QQ / 汽水同理。移到模块级后同一进程内跨请求复用，TTL 到期才重取。
+//
+// 注意：这些是**进程内**缓存，重启即失效（落盘持久化尚未实现）。
+// ============================================================
+const NETEASE_LIB_TTL_MS = 5 * 60 * 1000;
+const neteaseLibrarySongsCache = new Map();
+const KUGOU_LIB_TTL_MS = 5 * 60 * 1000;
+const kugouLibraryCache = new Map();
+const QISHUI_LIB_TTL_MS = 5 * 60 * 1000;
+const qishuiLibraryCache = new Map();
+const QQ_LIB_TTL_MS = 5 * 60 * 1000;
+const qqLibraryCache = new Map();
+
 const server = http.createServer(async (req, res) => {
   refreshConfiguredCookieStores(false);
   const url = new URL(req.url, 'http://localhost:' + PORT);
@@ -8105,10 +8127,8 @@ const server = http.createServer(async (req, res) => {
 
   // 从个人库聚出「按专辑Id」的曲目（艺人详情与专辑过滤共用）。
   // 与 Apple 资料库同一语义：**只含确实收藏了的曲目**。
-  // 个人库曲目的缓存：遍历歌单是每个艺人详情/专辑详情的瓶颈（实测约 5.7 秒），
-  // 而个人库在短时间内不会变。短 TTL 缓存，写入后立刻可用。
-  const neteaseLibrarySongsCache = new Map();
-  const NETEASE_LIB_TTL_MS = 5 * 60 * 1000;
+  // 个人库曲目的缓存：声明在**模块级**（见文件上方「资料库聚合缓存」区）。
+  // 曾经声明在这里 —— 请求处理函数体内，每个请求都会重建，TTL 从未生效。
 
   async function collectNeteaseLibrarySongs(uid) {
     const key = String(uid || '');
@@ -8131,7 +8151,8 @@ const server = http.createServer(async (req, res) => {
         songs.push(one);
       }
     }
-    return { songs: songs, ids: seen };
+    // playlists 一并返回：索引端点要用它，之前那边又单独打了一次网易云（实测 0.3–0.6s）。
+    return { songs: songs, ids: seen, playlists: pls };
   }
 
   // 网易云资料库艺人详情（只读）。与 /api/apple/library/artist/detail 同形。
@@ -8144,33 +8165,45 @@ const server = http.createServer(async (req, res) => {
       if (!info5.loggedIn || !info5.userId) { sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN' }, 400); return; }
       const cookie5 = typeof userCookie === 'string' ? userCookie : '';
       // 艺人元数据（头像/简介）
+      // **必须走缓存**：无缓存时每次打开艺人页都要重新请求简介 + 详情，实测 5.7s。
       let name = String(url.searchParams.get('name') || '');
       let image = '';
       let genres = [];
-      // 一次调用同时拿头像与简介 —— 不重复请求同一个 artist_detail。
       let bio = null;
-      try {
-        const bioRes = await fetchNeteaseBioById(aid);
-        if (bioRes && bioRes.ok && bioRes.data) {
-          bio = {
-            extract: bioRes.data.extract,
-            title: bioRes.data.title || '',
-            url: bioRes.data.url || '',
-            description: '',
-            lang: bioRes.data.lang || 'zh',
-            source: bioRes.data.source || '网易云音乐',
-          };
-          if (bioRes.data.title) name = name || bioRes.data.title;
-        }
-      } catch (_) { bio = null; }
-      try {
-        const ad = await artist_detail({ id: aid, cookie: cookie5, timestamp: Date.now() });
-        const ab = (ad && ad.body) || {};
-        const av = ab.artist || (ab.data && ab.data.artist) || {};
-        if (av.name) name = av.name;
-        const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
-        if (raw) image = raw.replace(/^http:/i, 'https:');
-      } catch (_) { /* 取不到就留空，由前端用首字母占位 */ }
+      const cachedMeta5 = artistMetaCache.get('netease-meta', aid);
+      if (cachedMeta5) {
+        if (cachedMeta5.name) name = cachedMeta5.name;
+        image = String(cachedMeta5.image || '');
+        if (cachedMeta5.bio) bio = cachedMeta5.bio;
+        if (Array.isArray(cachedMeta5.genres)) genres = cachedMeta5.genres;
+      } else {
+        // 一次调用同时拿头像与简介 —— 不重复请求同一个 artist_detail。
+        try {
+          const bioRes = await fetchNeteaseBioById(aid);
+          if (bioRes && bioRes.ok && bioRes.data) {
+            bio = {
+              extract: bioRes.data.extract,
+              title: bioRes.data.title || '',
+              url: bioRes.data.url || '',
+              description: '',
+              lang: bioRes.data.lang || 'zh',
+              source: bioRes.data.source || '网易云音乐',
+            };
+            if (bioRes.data.title) name = name || bioRes.data.title;
+          }
+        } catch (_) { bio = null; }
+        try {
+          const ad = await artist_detail({ id: aid, cookie: cookie5, timestamp: Date.now() });
+          const ab = (ad && ad.body) || {};
+          const av = ab.artist || (ab.data && ab.data.artist) || {};
+          if (av.name) name = av.name;
+          const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
+          if (raw) image = raw.replace(/^http:/i, 'https:');
+        } catch (_) { /* 取不到就留空，由前端用首字母占位 */ }
+        // 两个请求都成功（含「确认没有简介/头像」）才写缓存
+        artistMetaCache.set('netease-meta', aid, { name: name, image: image, bio: bio, genres: genres });
+        artistMetaCache.flush();
+      }
       // 个人库里该艺人的曲目
       const lib = await collectNeteaseLibrarySongs(info5.userId);
       const mine = lib.songs.filter(function (sg) {
@@ -8222,8 +8255,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 酷狗个人库曲目聚合（带缓存）。三个端点共用，避免各自重扫一遍歌单。
-  const kugouLibraryCache = new Map();
-  const KUGOU_LIB_TTL_MS = 5 * 60 * 1000;
+  // 缓存声明在模块级（见文件上方「资料库聚合缓存」区）。
 
   async function collectKugouLibrary(kgCookie) {
     const key = String(kgCookie || '').slice(-24);
@@ -8250,8 +8282,7 @@ const server = http.createServer(async (req, res) => {
 
   // 汽水个人库曲目聚合（带缓存）。
   // 个人库 = **自己的**歌单曲目（owned）；「汽水推荐 / 最近播放」是系统 virtual 条目，不算收藏。
-  const qishuiLibraryCache = new Map();
-  const QISHUI_LIB_TTL_MS = 5 * 60 * 1000;
+  // 缓存声明在模块级（见文件上方「资料库聚合缓存」区）。
 
   // 汽水的歌单曲目端点**每页硬上限 50 首**（limit 被 clamp 到 50），必须翻页取全。
   // 实测「李601喜欢的音乐」声明 131 首，只取第一页会丢 81 首。
@@ -8478,6 +8509,16 @@ const server = http.createServer(async (req, res) => {
         sendJSON(res, Object.assign({}, cached, { fromCache: true }));
         return;
       }
+      // 磁盘缓存：跨进程复用。没有它，每次启动都要跨源按名重查 205 位艺人头像，
+      // 实测 18.5s。
+      const diskHit3 = String(url.searchParams.get('refresh') || '') === '1'
+        ? null
+        : artistMetaCache.get('qishui-artists', cacheKey, 30 * 60 * 1000);
+      if (diskHit3 && Array.isArray(diskHit3.artists)) {
+        qishuiArtistsResultCache.set(cacheKey, diskHit3);
+        sendJSON(res, Object.assign({}, diskHit3, { fromCache: true }));
+        return;
+      }
       const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
       const CONC = 12;   // 跨源查询是 IO 等待，适当提高并发；有整体缓存兜底
       let cursor = 0;
@@ -8486,16 +8527,34 @@ const server = http.createServer(async (req, res) => {
           const idx = cursor; cursor += 1;
           const a = artists[idx];
           if (!a || a.hasImage) continue;
+          // 单个头像也落盘：结果缓存过期后重建时，不必再跨源按名重查 205 位艺人。
+          const avKey3 = String(a.artistId || a.name || '');
+          if (!avKey3) continue;
+          const hitAv3 = artistMetaCache.get('qishui-avatar', avKey3);
+          if (hitAv3) {
+            if (hitAv3.image) {
+              a.image = hitAv3.image;
+              a.hasImage = true;
+              a.imageRule = 'avatar-from-' + (hitAv3.from || 'cache');
+              a.imageFrom = hitAv3.from || '';
+            }
+            continue;
+          }
+          let gotImg3 = '';
+          let gotFrom3 = '';
           try {
             const got = await resolveQishuiArtistAvatar(a.name);
             if (got && got.image) {
-              a.image = got.image;
+              gotImg3 = got.image;
+              gotFrom3 = got.from || '';
+              a.image = gotImg3;
               a.hasImage = true;
               // 如实标注头像来源：不是汽水自己给的
-              a.imageRule = 'avatar-from-' + got.from;
-              a.imageFrom = got.from;
+              a.imageRule = 'avatar-from-' + gotFrom3;
+              a.imageFrom = gotFrom3;
             }
-          } catch (_) { /* 取不到就保持无头像 */ }
+          } catch (_) { continue; }   // 失败不写缓存，下次重试
+          artistMetaCache.set('qishui-avatar', avKey3, { image: gotImg3, from: gotFrom3 });
         }
       }
       const wsA = [];
@@ -8511,6 +8570,8 @@ const server = http.createServer(async (req, res) => {
         imageNote: '汽水音乐未提供艺人头像接口；头像按艺人名从其它已接入源补齐（仅用于显示）',
       };
       qishuiArtistsResultCache.set(cacheKey, payload);
+      artistMetaCache.set('qishui-artists', cacheKey, payload);
+      artistMetaCache.flush();
       sendJSON(res, Object.assign({}, payload, { fromCache: false }));
     } catch (err) {
       console.error('[QishuiLibraryArtists]', err);
@@ -8577,8 +8638,7 @@ const server = http.createServer(async (req, res) => {
   // 与另两个源同一语义：个人库 = 全部歌单的曲目（去重）。
   // 注意：实测该账号的「我的喜欢」返回 0 首（无错误、非权限问题），
   // 所以这里不把 liked 当唯一来源 —— 有内容的歌单同样算个人库。
-  const qqLibraryCache = new Map();
-  const QQ_LIB_TTL_MS = 5 * 60 * 1000;
+  // 缓存声明在模块级（见文件上方「资料库聚合缓存」区）。
 
   async function collectQQLibrary() {
     const info = await getQQLoginInfo();
@@ -8711,29 +8771,49 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const artists = qqLibrary.artistsFromSongs(lib2.songs);
-      // 头像：QQ 的歌手详情端点提供 avatar，拿 artistMid 再发一次请求
-      const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      // 头像：QQ 的歌手详情端点提供 avatar，拿 artistMid 再发一次请求。
+      // **必须走缓存**：269 个艺人逐个请求实测 7.9s，而且每次打开都重来。
+      // 缓存键用 qq-avatar，与详情页的 qq-meta（含名称/简介）分开，
+      // 否则列表只存了头像，详情页会误以为元数据已齐而跳过取名/简介。
+      const qqNeed = [];
+      artists.forEach(function (a) {
+        if (!a || !a.artistMid) return;
+        const hit = artistMetaCache.get('qq-avatar', a.artistMid);
+        if (hit) {
+          if (hit.image) {
+            a.image = hit.image;
+            a.hasImage = true;
+            a.imageRule = 'qq-artist-avatar';
+          }
+          return;
+        }
+        qqNeed.push(a);
+      });
+      const ENRICH = Math.min(qqNeed.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(qqNeed.length), 10) || qqNeed.length));
       const CONC = 8;
       let cursor = 0;
       async function enrich() {
         while (cursor < ENRICH) {
-          const idx = cursor; cursor += 1;
-          const a = artists[idx];
+          const a = qqNeed[cursor]; cursor += 1;
           if (!a || !a.artistMid) continue;
+          let image = '';
           try {
             const d = await handleQQArtistDetail(a.artistMid, 10);
-            const av = (d && d.artist && d.artist.avatar) || '';
-            if (av) {
-              a.image = String(av).replace(/^http:/i, 'https:');
+            image = String((d && d.artist && d.artist.avatar) || '').replace(/^http:/i, 'https:');
+            if (image) {
+              a.image = image;
               a.hasImage = true;
               a.imageRule = 'qq-artist-avatar';
             }
-          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+          } catch (_) { continue; }   // 失败不写缓存，下次还会重试
+          // 成功（含确认「没有头像」的空值）才写缓存，TTL 到期会重新取
+          artistMetaCache.set('qq-avatar', a.artistMid, { image: image });
         }
       }
       const ws = [];
       for (let i = 0; i < Math.min(CONC, ENRICH); i += 1) ws.push(enrich());
       await Promise.all(ws);
+      artistMetaCache.flush();
       sendJSON(res, {
         ok: true,
         provider: 'qq',
@@ -8757,22 +8837,32 @@ const server = http.createServer(async (req, res) => {
       let qName = String(url.searchParams.get('name') || '');
       let qImage = '';
       let qBio = null;
-      try {
-        const d = await handleQQArtistDetail(amid, 10);
-        const ar = (d && d.artist) || {};
-        if (ar.name) qName = ar.name;
-        if (ar.avatar) qImage = String(ar.avatar).replace(/^http:/i, 'https:');
-        if (ar.introduction) {
-          qBio = {
-            extract: String(ar.introduction),
-            title: ar.name || qName,
-            url: 'https://y.qq.com/n/ryqq/singer/' + amid,
-            description: '',
-            lang: 'zh',
-            source: 'QQ 音乐',
-          };
-        }
-      } catch (_) { /* 取不到就留空，不编造 */ }
+      // **必须走缓存**：详情请求每次 0.4s 左右，同一艺人反复打开没必要重取。
+      const cachedQQ5 = artistMetaCache.get('qq-meta', amid);
+      if (cachedQQ5) {
+        if (cachedQQ5.name) qName = cachedQQ5.name;
+        qImage = String(cachedQQ5.image || '');
+        if (cachedQQ5.bio) qBio = cachedQQ5.bio;
+      } else {
+        try {
+          const d = await handleQQArtistDetail(amid, 10);
+          const ar = (d && d.artist) || {};
+          if (ar.name) qName = ar.name;
+          if (ar.avatar) qImage = String(ar.avatar).replace(/^http:/i, 'https:');
+          if (ar.introduction) {
+            qBio = {
+              extract: String(ar.introduction),
+              title: ar.name || qName,
+              url: 'https://y.qq.com/n/ryqq/singer/' + amid,
+              description: '',
+              lang: 'zh',
+              source: 'QQ 音乐',
+            };
+          }
+          artistMetaCache.set('qq-meta', amid, { name: qName, image: qImage, bio: qBio });
+          artistMetaCache.flush();
+        } catch (_) { /* 取不到就留空，不编造；失败不写缓存 */ }
+      }
       // 个人库里该艺人的作品
       const lib3 = await collectQQLibrary();
       const mine = (lib3.songs || []).filter(function (sg) {
@@ -8904,27 +8994,45 @@ const server = http.createServer(async (req, res) => {
       const artists = kugouLibrary.artistsFromSongs(all3);
       // 酷狗把「基础信息」与「详细资料」分开：曲目只给 artists[{id,name}]，
       // 头像(imgurl)与简介(intro)必须拿 singerid 再发一次歌手详情请求。
-      const ENRICH = Math.min(artists.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(artists.length), 10) || artists.length));
+      // **必须走缓存**：474 个艺人逐个请求实测 2.2s，且每次打开重来。
+      const kgNeed = [];
+      artists.forEach(function (a) {
+        if (!a || !a.artistId) return;
+        const hit = artistMetaCache.get('kugou-avatar', a.artistId);
+        if (hit) {
+          if (hit.image) {
+            a.image = hit.image;
+            a.hasImage = true;
+            a.imageRule = 'kugou-singer-imgurl';
+          }
+          return;
+        }
+        kgNeed.push(a);
+      });
+      const ENRICH = Math.min(kgNeed.length, Math.max(0, parseInt(url.searchParams.get('enrich') || String(kgNeed.length), 10) || kgNeed.length));
       const CONC = 8;
       let cursor3 = 0;
       async function enrich3() {
         while (cursor3 < ENRICH) {
-          const idx = cursor3; cursor3 += 1;
-          const a = artists[idx];
+          const a = kgNeed[cursor3]; cursor3 += 1;
           if (!a) continue;
+          let image = '';
           try {
             const info = await handleKugouSingerInfo(a.artistId);
-            if (info && info.ok && info.avatar) {
-              a.image = info.avatar;
+            image = (info && info.ok && info.avatar) ? info.avatar : '';
+            if (image) {
+              a.image = image;
               a.hasImage = true;
               a.imageRule = 'kugou-singer-imgurl';
             }
-          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+          } catch (_) { continue; }   // 失败不写缓存，下次重试
+          artistMetaCache.set('kugou-avatar', a.artistId, { image: image });
         }
       }
       const ws3 = [];
       for (let i = 0; i < Math.min(CONC, ENRICH); i += 1) ws3.push(enrich3());
       await Promise.all(ws3);
+      artistMetaCache.flush();
       sendJSON(res, {
         ok: true,
         provider: 'kugou',
@@ -9086,6 +9194,16 @@ const server = http.createServer(async (req, res) => {
         sendJSON(res, Object.assign({}, ck, { fromCache: true }));
         return;
       }
+      // 磁盘缓存：跨进程复用上次的艺人结果（含头像）。
+      // 没有它，每次启动都要重扫个人库 + 重抓 378 位头像，实测 11s。
+      const diskHit4 = String(url.searchParams.get('refresh') || '') === '1'
+        ? null
+        : artistMetaCache.get('netease-artists', info4.userId, 30 * 60 * 1000);
+      if (diskHit4 && Array.isArray(diskHit4.artists)) {
+        neteaseArtistsCache.set(info4.userId, diskHit4);
+        sendJSON(res, Object.assign({}, diskHit4, { fromCache: true }));
+        return;
+      }
       const libAll = await collectNeteaseLibrarySongs(info4.userId);
       const allSongs4 = libAll.songs;
       const artists = neteaseLibrary.artistsFromSongs(allSongs4);
@@ -9100,17 +9218,31 @@ const server = http.createServer(async (req, res) => {
           const idx = cursor; cursor += 1;
           const a = artists[idx];
           if (!a) continue;
+          if (!a.artistId) continue;
+          // 单个头像也落盘：结果缓存过期后重建时，不必再为 378 位艺人重发详情请求。
+          const hitAv4 = artistMetaCache.get('netease-avatar', a.artistId);
+          if (hitAv4) {
+            if (hitAv4.image) {
+              a.image = hitAv4.image;
+              a.hasImage = true;
+              a.imageRule = 'netease-avatar';
+            }
+            continue;
+          }
+          let image4 = '';
           try {
             const rr = await artist_detail({ id: a.artistId, cookie: cookieNow, timestamp: Date.now() });
             const ab = (rr && rr.body) || {};
             const av = ab.artist || (ab.data && ab.data.artist) || {};
             const raw = String(av.avatar || av.picUrl || av.img1v1Url || '').trim();
-            if (raw) {
-              a.image = raw.replace(/^http:/i, 'https:');
+            if (raw) image4 = raw.replace(/^http:/i, 'https:');
+            if (image4) {
+              a.image = image4;
               a.hasImage = true;
               a.imageRule = 'netease-avatar';
             }
-          } catch (_) { /* 取不到就保持无头像，由前端用首字母占位 */ }
+          } catch (_) { continue; }   // 失败不写缓存，下次重试
+          artistMetaCache.set('netease-avatar', a.artistId, { image: image4 });
         }
       }
       const workers = [];
@@ -9125,6 +9257,8 @@ const server = http.createServer(async (req, res) => {
         songTotal: allSongs4.length,
       };
       neteaseArtistsCache.set(info4.userId, payload);
+      artistMetaCache.set('netease-artists', info4.userId, payload);
+      artistMetaCache.flush();
       sendJSON(res, Object.assign({}, payload, { fromCache: false }));
     } catch (err) {
       console.error('[NeteaseLibraryArtists]', err);
@@ -9144,7 +9278,20 @@ const server = http.createServer(async (req, res) => {
         sendJSON(res, { ok: false, error: 'NOT_LOGGED_IN', provider: 'netease', albums: [], playlists: [], songs: 0 });
         return;
       }
-      const raw = await fetchAllNeteaseUserPlaylists(info.userId, 0);
+      // 歌单列表与曲目来自**同一份缓存**：collectNeteaseLibrarySongs 冷启动时本来就已经
+      // 拉过歌单，再单独请求一次只是白等（实测 0.3–0.6s）。只有显式指定 playlistId 时
+      // 才走独立请求 —— 那条路径不需要全量曲目。
+      const explicit = String(url.searchParams.get('playlistId') || '');
+      let libCached = null;
+      let raw = [];
+      if (explicit) {
+        raw = await fetchAllNeteaseUserPlaylists(info.userId, 0);
+      } else {
+        libCached = await collectNeteaseLibrarySongs(info.userId);
+        raw = (libCached && Array.isArray(libCached.playlists))
+          ? libCached.playlists
+          : await fetchAllNeteaseUserPlaylists(info.userId, 0);
+      }
       // 必须先过既有的 mapNeteasePlaylistMeta：它负责 coverImgUrl -> cover、
       // creator.nickname -> creator。直接把原始对象喂给适配层会得到
       // cover 为空、creator 变成 "[object Object]"。
@@ -9155,13 +9302,12 @@ const server = http.createServer(async (req, res) => {
       const liked = playlists.filter(pl => pl.isLiked);
       // 个人库 = **所有**「喜欢」歌单的曲目（去重）。
       // 之前只取第一个，实测该账号有三个喜欢歌单（8/251/286 首），会漏掉大量曲目。
-      const targetId = String(url.searchParams.get('playlistId') || '') || (liked[0] && liked[0].id) || (playlists[0] && playlists[0].id) || '';
+      const targetId = explicit || (liked[0] && liked[0].id) || (playlists[0] && playlists[0].id) || '';
       let songs = [];
       let truncated = false;
       // 个人库 = 用户**全部歌单**的曲目（去重），与 Apple 的"已保存曲目"同一语义。
       // 只取 specialType=5 会严重漏歌 —— 实测该账号三个歌单里只有一个是 5，
       // 但另外两个（251/286 首）同样是他自己的资料库。
-      const explicit = String(url.searchParams.get('playlistId') || '');
       if (explicit) {
         const dEx = await fetchAllNeteasePlaylistTracks(explicit);
         const rawEx = (dEx && dEx.rawTracks) || [];
@@ -9169,8 +9315,7 @@ const server = http.createServer(async (req, res) => {
         truncated = totalEx > 0 && rawEx.length < totalEx;
         songs = neteaseLibrary.toLibrarySongs(rawEx.map(mapSongRecord));
       } else {
-        const libAll2 = await collectNeteaseLibrarySongs(info.userId);
-        songs = libAll2.songs;
+        songs = (libCached || { songs: [] }).songs;
       }
       const seenSongIds = new Set(songs.map(function (x) { return x.sourceSongId; }));
       rememberNeteaseSavedSongs(info.userId, seenSongIds);

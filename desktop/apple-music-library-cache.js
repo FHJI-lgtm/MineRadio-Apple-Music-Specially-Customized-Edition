@@ -418,14 +418,27 @@ function createAppleMusicLibraryCacheService(options) {
       return await fullSync(force ? 'force' : 'initial');
     }
     // 冷却期内连探测都跳过：调用方拿到的是缓存。
-    if (ageMs() >= 0 && ageMs() < ttlMs && !syncOpts.probeAlways) {
-      return { ok: true, fromCache: true, probed: false, ageMs: ageMs(), raw: rawCounts(), sync: state.sync };
+    //
+    // 冷却必须**同时**看「上次全量」和「上次探测」：
+    // ageMs() 只反映 lastFullSyncAt，而探测发现内容没变化时不会更新它 ——
+    // 于是只要 Apple 侧一直没变，ageMs 就永远停在很久以前（实测 11.9 天），
+    // 冷却判据永远不成立，每次打开都重新探测（实测 2.5–3s）。
+    // 以 lastProbeAt 为准，才能真正把探测限制到每 TTL 一次。
+    const sinceFullSync = ageMs();
+    const sinceProbe = state.sync.lastProbeAt ? (Date.now() - state.sync.lastProbeAt) : -1;
+    const freshByFullSync = sinceFullSync >= 0 && sinceFullSync < ttlMs;
+    const freshByProbe = sinceProbe >= 0 && sinceProbe < ttlMs;
+    if ((freshByFullSync || freshByProbe) && !syncOpts.probeAlways) {
+      return { ok: true, fromCache: true, probed: false, ageMs: sinceFullSync, raw: rawCounts(), sync: state.sync };
     }
     const p = await probe();
     state.sync.lastProbeAt = Date.now();
     if (p.reason) {
       // 探测失败：保留缓存，如实报告，不因为一次网络失败就清空索引。
       state.sync.lastError = p.reason;
+      // 探测失败的时间点也要落盘：否则离线时每个请求都会重试探测。
+      state.dirty = true;
+      persist();
       return { ok: true, fromCache: true, probed: true, probeFailed: true, probe: p, ageMs: ageMs(), raw: rawCounts(), sync: state.sync };
     }
     if (fingerprintsMatch(p)) {
