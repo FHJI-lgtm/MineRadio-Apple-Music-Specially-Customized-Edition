@@ -268,6 +268,17 @@ function killChainTree(pid) {
 // 8s ~= 56s, so 90s leaves headroom while still bounding the user's wait.
 const DEFAULT_CHAIN_TIMEOUT_MS = 90000;
 
+// Non-zero exits from `powershell.exe -File <script>` when the chain could not even start.
+// -196608 / 0xFFFD0000 (4294770688): the -File target does not exist - this is what 2.2.0 shipped,
+// so every Apple Music playback entry reported a bare CHAIN_EXIT_4294770688.
+// 1: script raised a terminating error; 2: parameter binding failed.
+function chainExitHint(code) {
+  const c = Number(code);
+  if (c === -196608 || c === 4294770688) return 'chain script missing from the app package (packaging whitelist)';
+  if (c === 1) return 'chain script raised a terminating error';
+  if (c === 2) return 'chain script rejected its parameters';
+  return 'chain exited non-zero and printed no JSON';
+}
 function lastJsonLine(text) {
   const lines = String(text || '').split(/\r?\n/);
   for (let i = lines.length - 1; i >= 0; i--) {
