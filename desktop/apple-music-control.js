@@ -159,11 +159,14 @@ function runChain(result, opts) {
     child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null, url: url }));
     child.on('close', (code) => {
       const parsed = lastJsonLine(out);
+      const noJson = !parsed;
+      const fileIdx = args.indexOf('-File');
+      const scriptName = fileIdx >= 0 && args[fileIdx + 1] ? String(args[fileIdx + 1]).split(/[\\\\/]/).pop() : 'unknown';
       resolve({
         ok: !!(parsed && parsed.ok),
-        stage: parsed ? parsed.stage : 'NO_JSON',
+        stage: parsed ? parsed.stage : (code ? ('CHAIN_EXIT_' + code) : 'NO_JSON'),
         exitCode: code,
-        detail: parsed ? '' : (err.trim() || out.trim().slice(-400)),
+        detail: parsed ? '' : ((code ? ('[' + chainExitHint(code) + '] ') : '') + 'script=' + scriptName + ' | ' + (err.trim() || out.trim().slice(-400))),
         raw: parsed,
         url: url,
       });
@@ -228,9 +231,12 @@ function runChainWithDeadline(cfg) {
       }
       const parsed = lastJsonLine(out);
       if (!parsed) {
+        const fileIdx = cfg.args ? cfg.args.indexOf('-File') : -1;
+        const scriptName = fileIdx >= 0 && cfg.args[fileIdx + 1] ? String(cfg.args[fileIdx + 1]).split(/[\\\\/]/).pop() : 'unknown';
+        const tail = (err.trim() || out.trim().slice(-400) || 'no JSON on stdout');
         finish({
           ok: false, stage: code === 0 ? 'NO_JSON' : ('CHAIN_EXIT_' + code), killed: false, exitCode: code, raw: null,
-          detail: err.trim() || out.trim().slice(-400) || 'no JSON on stdout',
+          detail: (code === 0 ? '' : ('[' + chainExitHint(code) + '] ')) + 'script=' + scriptName + ' | ' + tail,
         });
         return;
       }
@@ -540,8 +546,10 @@ async function playAlbumInLibrary(payload = {}, opts = {}) {
     child.on('error', (e) => resolve({ ok: false, stage: 'SPAWN_FAILED', detail: e.message, raw: null }));
     child.on('close', (code) => {
       const parsed = lastJsonLine(out);
-      resolve({ ok: !!(parsed && parsed.ok), stage: parsed ? parsed.stage : 'NO_JSON', exitCode: code,
-        detail: parsed ? '' : (err.trim() || out.trim().slice(-400)), raw: parsed });
+      const fileIdx2 = args.indexOf('-File');
+      const scriptName2 = fileIdx2 >= 0 && args[fileIdx2 + 1] ? String(args[fileIdx2 + 1]).split(/[\\\\/]/).pop() : 'unknown';
+      resolve({ ok: !!(parsed && parsed.ok), stage: parsed ? parsed.stage : (code ? ('CHAIN_EXIT_' + code) : 'NO_JSON'), exitCode: code,
+        detail: parsed ? '' : ((code ? ('[' + chainExitHint(code) + '] ') : '') + 'script=' + scriptName2 + ' | ' + (err.trim() || out.trim().slice(-400))), raw: parsed });
     });
   });
   const raw = run.raw;
