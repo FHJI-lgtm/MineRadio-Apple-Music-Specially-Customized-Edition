@@ -44,6 +44,11 @@
     ],
     "files": [
       "desktop/**/*",
+      "experiment/apple-music-windows-control/poc/lib/**/*",
+      "experiment/apple-music-windows-control/poc/play-song.ps1",
+      "experiment/apple-music-windows-control/poc/play-playlist.ps1",
+      "experiment/apple-music-windows-control/poc/play-album-library.ps1",
+      "experiment/apple-music-windows-control/poc/shuffle-playlist.ps1",
       "desktop/native/**/*",
       "public/**/*",
       "build/**/*",
