@@ -78,6 +78,11 @@ public/index.*.html
 # 保留在磁盘上供查阅，但绝不入库：GitHub 单文件上限 100MB，且历史一旦写入无法回收。
 experiment/apple-music-packaged-com/
 
+# Lyricify Fusion 只读观测器的本地状态与采集输出（本地运行产物，不入库）
+tools/.state/
+tools/out/
+
+
 # DSH 会话运行时记忆（本地状态，非项目产物）
 .dsh/
 
