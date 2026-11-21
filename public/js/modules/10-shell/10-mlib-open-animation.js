@@ -201,7 +201,7 @@ var MLIB_OA_TAIL = 350;
     var tries = 0;
     (function poll() {
       var wrap = document.getElementById(gridRef && gridRef.id === 'mlib-playlists-grid' ? 'am-playlist-detail-tracks' : 'am-album-detail-tracks');
-      if ((wrap && wrap.querySelectorAll('.am-album-track').length) || tries > 60) { cb(wrap); return; }
+      if ((wrap && wrap.querySelectorAll('.am-album-track').length) || tries > 480) { cb(wrap); return; }
       tries += 1;
       requestAnimationFrame(poll);
     })();
@@ -218,10 +218,19 @@ var MLIB_OA_TAIL = 350;
       if (stage) stage.style.display = 'none';
       var chrome = overlay.querySelector('.mlib-oa-chrome');
       if (chrome) chrome.style.display = 'none';
+      var scrim = document.createElement('div');
+      scrim.className = 'mlib-oa-scrim';
+      overlay.appendChild(scrim);
+      var pr = panelRect();
       var detail = document.createElement('div');
       detail.className = 'mlib-oa-detail';
+      detail.style.left = pr.left + 'px';
+      detail.style.top = pr.top + 'px';
+      detail.style.width = pr.width + 'px';
+      detail.style.height = pr.height + 'px';
       var hero = document.createElement('div');
       hero.className = 'mlib-oa-hero';
+      hero.style.width = pr.heroW + 'px';
       if (coverSrc) { var im = document.createElement('img'); im.src = coverSrc; im.alt = ''; hero.appendChild(im); }
       var side = document.createElement('div');
       side.className = 'mlib-oa-side';
@@ -239,6 +248,20 @@ var MLIB_OA_TAIL = 350;
         for (var i = 0; i < rows.length; i += 1) list.appendChild(rows[i].cloneNode(true));
       }
       side.appendChild(list);
+      // 曲目可能晚到：稍后到达时自动填充
+      (function () {
+        var wrap = trackWrap;
+        if (!wrap || wrap.querySelectorAll('.am-album-track').length) return;
+        if (typeof MutationObserver !== 'function') return;
+        var obs = new MutationObserver(function () {
+          var rows = wrap.querySelectorAll('.am-album-track');
+          if (!rows.length) return;
+          list.innerHTML = '';
+          for (var i = 0; i < rows.length; i += 1) list.appendChild(rows[i].cloneNode(true));
+          obs.disconnect();
+        });
+        obs.observe(wrap, { childList: true });
+      })();
       detail.appendChild(hero);
       detail.appendChild(side);
       var close = document.createElement('button');
@@ -247,7 +270,7 @@ var MLIB_OA_TAIL = 350;
       close.setAttribute('aria-label', '关闭');
       close.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
       close.addEventListener('click', closeDetail);
-      detail.appendChild(close);
+      overlay.appendChild(close);
       list.addEventListener('click', function (event) {
         var row = event.target && event.target.closest ? event.target.closest('[data-am-track-index]') : null;
         if (!row) return;
@@ -305,6 +328,18 @@ var MLIB_OA_TAIL = 350;
     rafId = requestAnimationFrame(step);
   }
 
+  // 详情面板几何：居中面板（与 CSS 保持一致的取法）
+  function panelRect() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var w = Math.min(1100, Math.round(vw * 0.88));
+    var h = Math.min(680, Math.round(vh * 0.82));
+    var left = Math.round((vw - w) / 2);
+    var top = Math.round((vh - h) / 2);
+    var heroW = Math.round(Math.min(w * 0.52, 720));
+    return { left: left, top: top, width: w, height: h, heroW: heroW };
+  }
+
   function waitForCover(cb) {
     var tries = 0;
     (function poll() {
@@ -342,9 +377,10 @@ var MLIB_OA_TAIL = 350;
       neighborBase.push({ base: cards[i].style.transform || '', dist: Math.abs(i - clickedIndex), dir: i < clickedIndex ? -1 : 1 });
     }
     document.body.classList.add('mlib-opening');
-    waitForCover(function (r) {
-      if (!r) { document.body.classList.remove('mlib-opening'); busy = false; return; }
-      endRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    
+    (function () {
+      var pr = panelRect();
+      endRect = { left: pr.left, top: pr.top, width: pr.heroW, height: pr.height };
       buildOverlay(card, startRect);
       sampleDarkColor(coverSrc).then(function (color) { if (bgEl) bgEl.style.background = color; });
       if (freezeAt != null) { applyP(freezeAt); return; }
@@ -356,7 +392,7 @@ var MLIB_OA_TAIL = 350;
         var cur = { left: endRect.left + 50, top: endRect.top, width: endRect.width, height: endRect.height };
         tailSettle(cur);
       })(t0);
-    });
+    })();
   }
   // 点击拦截：黑胶墙里的专辑/歌单卡片
   document.addEventListener('click', function (event) {

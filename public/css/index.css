@@ -20223,8 +20223,13 @@ body.mlib-opening #am-playlist-detail-modal {
 
 /* ---------- 黑胶墙打开后的新详情页：左全封面 + 右数据 ---------- */
 .mlib-oa.is-detail { pointer-events: auto }
-.mlib-oa-detail { position: absolute; inset: 0; display: flex; background: #0b0f12 }
-.mlib-oa-hero { position: relative; flex: 0 0 auto; width: min(52%, 720px); height: 100%; overflow: hidden; background: #101418 }
+.mlib-oa-scrim { position: absolute; inset: 0; background: rgba(4, 8, 10, .52); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px) }
+/* 详情页 = 居中面板（不铺满全屏） */
+.mlib-oa-detail { position: absolute; display: flex; overflow: hidden; background: #0b0f12;
+  border-radius: 24px; box-shadow: 0 40px 120px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.06);
+  animation: mlib-oa-detail-in .32s cubic-bezier(.16,1,.3,1) both }
+@keyframes mlib-oa-detail-in { from { opacity: 0; transform: translateY(10px) scale(.985) } to { opacity: 1; transform: none } }
+.mlib-oa-hero { position: relative; flex: 0 0 auto; height: 100%; overflow: hidden; background: #101418 }
 .mlib-oa-hero img { display: block; width: 100%; height: 100%; object-fit: cover }
 .mlib-oa-hero::after { content: ''; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(to right, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 62%, rgba(11,15,18,.92) 96%, #0b0f12 100%) }
@@ -20243,7 +20248,7 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-tracks .am-album-track-artist { display: none }
 .mlib-oa-tracks .am-album-track-dur { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; font-size: 12px }
 .mlib-oa-tracks .am-album-track-more { display: none }
-.mlib-oa-close { position: absolute; right: clamp(16px, 2.4vw, 34px); top: clamp(16px, 3vh, 30px); z-index: 3;
+.mlib-oa-close { position: absolute; right: clamp(18px, 2.2vw, 30px); top: clamp(16px, 2.6vh, 26px); z-index: 4;
   width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.18);
   background: rgba(18,28,31,.38); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
   color: rgba(255,255,255,.92); display: grid; place-items: center; cursor: pointer }
