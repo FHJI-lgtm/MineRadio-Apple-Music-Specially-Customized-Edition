@@ -479,7 +479,25 @@ var MLIB_OA_TAIL = 350;
         if (!src.isPlaylist) {
           return fetch('/api/apple/library/album/notes?id=' + encodeURIComponent(src.id), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
-            .then(function (n) { src.desc = String((n && (n.notes || n.description || (n.data && n.data.description))) || '').trim(); })
+            .then(function (n) {
+              var an = n && n.albumNotes;
+              var notes = an && an.editorialNotes;
+              var text = '';
+              if (typeof notes === 'string') text = notes;
+              else if (notes && typeof notes === 'object') text = String(notes.standard || notes.short || '');
+              if (!text && an && typeof an.description === 'string') text = an.description;
+              // 去 HTML 标签 + 解基本实体 + 折叠空白（与旧弹窗 stripEditorialHtml 等价的最小实现）
+              text = String(text || '')
+                .replace(/<br\s*\/?>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&nbsp;/gi, ' ')
+                .replace(/&amp;/gi, '&')
+                .replace(/&quot;/gi, '"')
+                .replace(/&#39;/gi, "'")
+                .replace(/\s+/g, ' ')
+                .trim();
+              src.desc = text;
+            })
             .catch(function () {});
         }
       })
@@ -549,7 +567,9 @@ var MLIB_OA_TAIL = 350;
     if (target.closest('.mlib-play-btn')) return;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
-    // 放行真实点击（由原逻辑打开详情）；动画层负责视觉
+    // 黑胶模式由新详情面板接管：阻止应用自己的旧详情处理器
+    event.preventDefault();
+    event.stopPropagation();
     try { begin(grid, card); } catch (e) { cleanup(); }
   }, true);
 
