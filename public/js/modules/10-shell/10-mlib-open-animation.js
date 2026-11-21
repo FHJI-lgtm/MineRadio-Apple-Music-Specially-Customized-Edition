@@ -31,6 +31,7 @@ var MLIB_OA_TAIL = 350;
   var spacing = 96;
   var gridRef = null;
   var modalEl = null;
+  var coverTarget = null;
   var freezeAt = null;
   var rafId = 0;
 
@@ -236,14 +237,24 @@ var MLIB_OA_TAIL = 350;
     rafId = requestAnimationFrame(step);
   }
 
-  function play(grid, card) {
+  function waitForCover(cb) {
+    var tries = 0;
+    (function poll() {
+      var r = coverTarget ? coverTarget.getBoundingClientRect() : null;
+      if ((r && r.width > 40 && r.height > 40) || tries > 70) { cb(r); return; }
+      tries += 1;
+      requestAnimationFrame(poll);
+    })();
+  }
+
+  function begin(grid, card, freezeP) {
     if (busy || !grid || !card) return;
     var ids = modalIdsFor(grid);
     modalEl = document.getElementById(ids.modal);
-    var coverTarget = document.getElementById(ids.cover);
+    coverTarget = document.getElementById(ids.cover);
     if (!modalEl || !coverTarget) return;
     busy = true;
-    gridRef = grid;
+    freezeAt = freezeP == null ? null : freezeP;
     spineColor = card.style.getPropertyValue('--mlib-spine') || '#1b2a2e';
     var img = card.querySelector('.mlib-art img');
     coverSrc = img ? img.src : '';
@@ -254,48 +265,31 @@ var MLIB_OA_TAIL = 350;
     startRect = { left: spineRect.left, top: spineRect.top, width: Math.max(40, spineRect.width), height: spineRect.height };
     side = (cardRect.left + cardRect.width / 2) < window.innerWidth / 2 ? 1 : -1;
     spacing = (typeof mlibSlabMetrics === 'function' ? mlibSlabMetrics(grid).spacing : 96) || 96;
-
-    // 邻居：记录基准 transform，按距离推开
     var cards = cardsOf(grid);
     var clickedIndex = cards.indexOf(card);
     neighborCards = []; neighborBase = [];
     for (var i = 0; i < cards.length; i += 1) {
-      if (i === clickedIndex) continue;
-      if (cards[i].style.display === 'none') continue;
+      if (i === clickedIndex || cards[i].style.display === 'none') continue;
       neighborCards.push(cards[i]);
-      neighborBase.push({
-        base: cards[i].style.transform || '',
-        dist: Math.abs(i - clickedIndex),
-        dir: i < clickedIndex ? -1 : 1
-      });
+      neighborBase.push({ base: cards[i].style.transform || '', dist: Math.abs(i - clickedIndex), dir: i < clickedIndex ? -1 : 1 });
     }
-
-    // 真实弹窗立即打开（数据/结构不动），但先用 mlib-opening 隐藏
     document.body.classList.add('mlib-opening');
-    card.dataset.mlibSkipOpenAnim = '1';
-    card.click();
-    delete card.dataset.mlibSkipOpenAnim;
-
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        var targetRect = coverTarget.getBoundingClientRect();
-        endRect = { left: targetRect.left, top: targetRect.top, width: targetRect.width, height: targetRect.height };
-        buildOverlay(card, startRect);
-        sampleDarkColor(coverSrc).then(function (color) { if (bgEl) bgEl.style.background = color; });
-        var t0 = performance.now();
-        (function step(now) {
-          if (freezeAt != null) { applyP(freezeAt); return; }
-          var p = clamp01((now - t0) / MLIB_OA_DURATION);
-          applyP(p);
-          if (p < 1) { rafId = requestAnimationFrame(step); return; }
-          // C 帧仍差 10°/50px：长尾收尾
-          var cur = { left: endRect.left + 50, top: endRect.top, width: endRect.width, height: endRect.height };
-          tailSettle(cur);
-        })(t0);
-      });
+    waitForCover(function (r) {
+      if (!r) { document.body.classList.remove('mlib-opening'); busy = false; return; }
+      endRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+      buildOverlay(card, startRect);
+      sampleDarkColor(coverSrc).then(function (color) { if (bgEl) bgEl.style.background = color; });
+      if (freezeAt != null) { applyP(freezeAt); return; }
+      var t0 = performance.now();
+      (function step(now) {
+        var p = clamp01((now - t0) / MLIB_OA_DURATION);
+        applyP(p);
+        if (p < 1) { rafId = requestAnimationFrame(step); return; }
+        var cur = { left: endRect.left + 50, top: endRect.top, width: endRect.width, height: endRect.height };
+        tailSettle(cur);
+      })(t0);
     });
   }
-
   // 点击拦截：黑胶墙里的专辑/歌单卡片
   document.addEventListener('click', function (event) {
     // 默认关闭：动画尚未完成端到端验收，先保证点击行为与原来一致；
@@ -307,11 +301,11 @@ var MLIB_OA_TAIL = 350;
     if (target.closest('[data-mlib-skip-open-anim]')) return;
     var card = target.closest('.mlib-album-card');
     if (!card || card.classList.contains('mlib-slab-reflection')) return;
+    if (target.closest('.mlib-play-btn')) return;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
-    event.preventDefault();
-    event.stopPropagation();
-    play(grid, card);
+    // 放行真实点击（由原逻辑打开详情）；动画层负责视觉
+    begin(grid, card);
   }, true);
 
   window.__mlibOpenAnimEnable = function (on) { window.__mlibOpenAnimEnabled = on !== false; return window.__mlibOpenAnimEnabled; };
@@ -329,8 +323,10 @@ var MLIB_OA_TAIL = 350;
       if (cards[i].dataset.mlibSlab === '1' && cards[i].style.display !== 'none') { target = cards[i]; break; }
     }
     if (!target) return false;
-    freezeAt = p;
-    play(grid, target);
+    target.dataset.mlibSkipOpenAnim = '1';
+    target.click();
+    delete target.dataset.mlibSkipOpenAnim;
+    begin(grid, target, p);
     return true;
   };
   window.__mlibOpenAnimPlay = function () {
@@ -339,7 +335,7 @@ var MLIB_OA_TAIL = 350;
     if (!grid) return false;
     var cards = cardsOf(grid);
     for (var i = 0; i < cards.length; i += 1) {
-      if (cards[i].dataset.mlibSlab === '1' && cards[i].style.display !== 'none') { play(grid, cards[i]); return true; }
+      if (cards[i].dataset.mlibSlab === '1' && cards[i].style.display !== 'none') { cards[i].click(); begin(grid, cards[i]); return true; }
     }
     return false;
   };
