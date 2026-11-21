@@ -292,10 +292,14 @@ function Find-AmInCardPlayButton([IntPtr]$Hwnd, $CardRect, [string]$PlayLabel) {
   # the card subtree stays at 4 nodes (ListItem/Group/2 Text) even while the overlay is visible, so
   # containment of the button's BOX inside the card rectangle is the only usable predicate.
   $root = (Get-AmRoot $Hwnd).root
-  $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'PlayButton')
-  $els = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  # 1.1792.x renames this control to PlayButtonElement; query both generations (new first).
+  $els = @()
+  foreach ($aid in @('PlayButtonElement', 'PlayButton')) {
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $aid)
+    try { $els += @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) } catch { }
+  }
   for ($i = 0; $i -lt $els.Count; $i++) {
-    $e = $els.Item($i)
+    $e = $els[$i]
     $z = $null
     try { $z = $e.Current.BoundingRectangle } catch { continue }
     if (-not (Test-AmRectSane $z)) { continue }
@@ -368,9 +372,11 @@ function Find-AmPlaylistPagePlayButton($root, [string]$PlayLabel, [switch]$Allow
   # page reached from a URL had AutomationId=PlayButtonElement (measured; the /cn/ link was ignored, the
   # /us/ link opened Dawn FM). That alternate id is only accepted when the caller opts in, so the verified
   # name route's behaviour is unchanged.
-  $ids = @('PlayButton')
-  if ($AllowAlternateId) { $ids += 'PlayButtonElement' }
-  $out = @()
+  # AutomationId=PlayButtonElement (ControlType.Button, name 播放, InvokePattern); id PlayButton no longer exists there.
+  # Query both generations so the chain works on 1.1540.x and 1.1792.x alike.
+  # MEASURED 2026-11-21 (Apple Music 1.1792.39942.0, redesigned UI): the page header play button is now
+  $ids = @('PlayButtonElement', 'PlayButton')
+  # -AllowAlternateId kept for caller compatibility (both ids are always queried now).
   foreach ($aid in $ids) {
     try {
       $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $aid)
@@ -388,6 +394,24 @@ function Find-AmPlaylistPagePlayButton($root, [string]$PlayLabel, [switch]$Allow
       }
     } catch { }
     if ($out.Count -gt 0) { break }
+  }
+  # Fallback (2026-11-21): Apple renames these controls between client builds (PlayButton -> PlayButtonElement
+  # in 1.1792.x). If neither id matched, accept any Button whose NAME equals the localized play label AND
+  # that exposes InvokePattern - semantic, locale-supplied by the caller, and immune to id renames.
+  if ($out.Count -eq 0 -and $PlayLabel) {
+    $allBtns = @()
+    try { $allBtns = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) } catch { }
+    foreach ($e in $allBtns) {
+      try {
+        if ((([string]$e.Current.ControlType.ProgrammaticName) -notmatch 'Button')) { continue }
+        if (([string]$e.Current.Name).Trim() -ne $PlayLabel.Trim()) { continue }
+        $ip = $null
+        if (-not $e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$ip)) { continue }
+        $r = $e.Current.BoundingRectangle
+        if (-not (Test-AmRectSane $r)) { continue }
+        $out += [pscustomobject]@{ element = $e; name = [string]$e.Current.Name; automationId = 'NAME_FALLBACK' }
+      } catch { }
+    }
   }
   return $out
 }

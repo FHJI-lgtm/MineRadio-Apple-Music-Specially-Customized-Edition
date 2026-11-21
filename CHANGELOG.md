@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.2
+
+- **修复（Apple Music 新版 UI）**：Apple Music for Windows 更新到 `1.1792.39942.0` 后界面改版，歌单/专辑页头的播放按钮与随机播放按钮的 AutomationId 从 `PlayButton` / `ShuffleButton` 改成了 `PlayButtonElement` / `ShuffleButtonElement`，导致 MineRadio 报 `PLAY_BUTTON_NOT_FOUND`、播放/随机按钮失效。
+- 修复方式：链条同时查询**新旧两代 id**，并增加**按本地化名字 + InvokePattern** 的兜底（随机按钮永久排除传输条的 Toggle 版），下次改名也不会立刻失效。
+- 实机验证（AM 1.1792.39942.0）：播放专辑 / 播放歌单 / 播放随机全部 `PLAYBACK_STARTED`，随机开关 `Off→On` 独立确认。
+
 ## v2.2.1
 
 - **修复（严重）**：2.2.0 打包白名单收窄时误删了 `experiment/apple-music-windows-control/poc` 目录，导致安装版里四条 Apple Music 播放链全部缺失，单曲 / 专辑 / 歌单 / 随机播放都报 `CHAIN_EXIT_4294770688`。现已恢复运行时必需的链条文件（`lib/**` + 4 个 play/shuffle 脚本），PoC 与调试探针仍不打包。

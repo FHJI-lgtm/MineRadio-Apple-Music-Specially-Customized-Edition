@@ -34,8 +34,14 @@ function Get-TransportShuffleState($root) {
 function Find-PageShuffleButton($root, $label) {
   $out = @()
   try {
-    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ShuffleButton')
-    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    # MEASURED 2026-11-21 (Apple Music 1.1792.39942.0): the page header shuffle is ShuffleButtonElement
+    # (InvokePattern); the transport bar one is still ShuffleButton (TogglePattern). Query both ids and keep
+    # the InvokePattern-only rule so the transport toggle can never be clicked by mistake.
+    $all = @()
+    foreach ($aid in @('ShuffleButtonElement', 'ShuffleButton')) {
+      $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $aid)
+      try { $all += @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) } catch { }
+    }
     for ($i = 0; $i -lt $all.Count; $i++) {
       $e = $all.Item($i)
       try {
@@ -48,6 +54,24 @@ function Find-PageShuffleButton($root, $label) {
       } catch { }
     }
   } catch { }
+  # Fallback (2026-11-21): id renames (ShuffleButton -> ShuffleButtonElement in 1.1792.x). Accept a Button
+  # whose NAME equals the caller-supplied localized shuffle label and that exposes InvokePattern; the
+  # transport-bar shuffle is TogglePattern, so it can never be picked up here.
+  if (@($out).Count -eq 0 -and $label) {
+    $allBtns = @()
+    try { $allBtns = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) } catch { }
+    foreach ($e in $allBtns) {
+      try {
+        if ((([string]$e.Current.ControlType.ProgrammaticName) -notmatch 'Button')) { continue }
+        if (([string]$e.Current.Name).Trim() -ne $label.Trim()) { continue }
+        $ip2 = $null
+        if (-not $e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$ip2)) { continue }
+        $r = $e.Current.BoundingRectangle
+        if (-not (Test-AmRectSane $r)) { continue }
+        $out += [pscustomobject]@{ element = $e; pattern = $ip2; name = [string]$e.Current.Name; rect = $r }
+      } catch { }
+    }
+  }
   return $out
 }
 $o.steps.shuffleBefore = (Get-TransportShuffleState (Get-AmRoot $app.hwnd).root)
