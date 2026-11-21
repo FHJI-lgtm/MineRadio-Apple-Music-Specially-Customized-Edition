@@ -1,0 +1,346 @@
+'use strict';
+// ============================================================
+// 黑胶墙 → 详情页 打开动画
+//
+// 时间轴（p: 0→1，总长 MLIB_OA_DURATION = 900ms）：
+//   邻居 0–0.3 | 背景 0.15–0.3 | 主封面位移 0.15–1（缓出）
+//   主封面旋转 0.2–1（先慢后快再慢）| 控件 0.2–0.5
+//   主封面在 p=1 时仍差约 10° / 50px，再用 350ms 长尾收尾。
+//
+// 真实详情弹窗在点击瞬间就打开，但被 body.mlib-opening 隐藏；
+// 动画结束后淡出覆盖层、露出真实详情页（数据/结构不动）。
+// ============================================================
+
+var MLIB_OA_DURATION = 900;
+var MLIB_OA_TAIL = 350;
+
+(function () {
+  var busy = false;
+  var overlay = null;
+  var coverEl = null;
+  var chromeEl = null;
+  var bgEl = null;
+  var spineColor = '#1b2a2e';
+  var spineText = '';
+  var coverSrc = '';
+  var startRect = null;
+  var endRect = null;
+  var side = 1;
+  var neighborCards = [];
+  var neighborBase = [];
+  var spacing = 96;
+  var gridRef = null;
+  var modalEl = null;
+  var freezeAt = null;
+  var rafId = 0;
+
+  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function vinylActive() {
+    return typeof isMlibVinylActive === 'function' && isMlibVinylActive();
+  }
+
+  function modalIdsFor(grid) {
+    if (grid && grid.id === 'mlib-playlists-grid') {
+      return { modal: 'am-playlist-detail-modal', cover: 'am-playlist-detail-cover' };
+    }
+    return { modal: 'am-album-detail-modal', cover: 'am-album-detail-cover' };
+  }
+
+  function cardsOf(grid) {
+    var out = [];
+    for (var i = 0; i < grid.children.length; i += 1) {
+      var n = grid.children[i];
+      if (n.classList && n.classList.contains('mlib-album-card') && !n.classList.contains('mlib-slab-reflection')) out.push(n);
+    }
+    return out;
+  }
+
+  // 取封面主色（与书脊同一套逻辑：/api/cover 代理 + canvas 采样）
+  var colorCanvas = document.createElement('canvas');
+  colorCanvas.width = 6; colorCanvas.height = 6;
+  var colorCtx = colorCanvas.getContext('2d', { willReadFrequently: true });
+  function sampleDarkColor(src) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        try {
+          colorCtx.clearRect(0, 0, 6, 6);
+          colorCtx.drawImage(img, 0, 0, 6, 6);
+          var d = colorCtx.getImageData(0, 0, 6, 6).data;
+          var r = 0, g = 0, b = 0, n = 0;
+          for (var i = 0; i < d.length; i += 4) {
+            var lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+            if (lum < 8 || lum > 240) continue;
+            r += d[i]; g += d[i + 1]; b += d[i + 2]; n += 1;
+          }
+          if (!n) { resolve('rgb(10,14,22)'); return; }
+          r = r / n; g = g / n; b = b / n;
+          // 压暗成深色背景（近黑的深蓝/深灰蓝）
+          resolve('rgb(' + Math.round(r * 0.26 + 4) + ',' + Math.round(g * 0.27 + 8) + ',' + Math.round(b * 0.34 + 14) + ')');
+        } catch (e) { resolve('rgb(10,14,22)'); }
+      };
+      img.onerror = function () { resolve('rgb(10,14,22)'); };
+      img.src = '/api/cover?url=' + encodeURIComponent(src);
+    });
+  }
+
+  function buildOverlay(card, rect) {
+    overlay = document.createElement('div');
+    overlay.className = 'mlib-oa';
+    bgEl = document.createElement('div');
+    bgEl.className = 'mlib-oa-bg';
+    overlay.appendChild(bgEl);
+
+    var stage = document.createElement('div');
+    stage.className = 'mlib-oa-stage';
+    coverEl = document.createElement('div');
+    coverEl.className = 'mlib-oa-cover';
+    var box = document.createElement('div');
+    box.className = 'mlib-oa-box';
+
+    var front = document.createElement('div');
+    front.className = 'mlib-oa-face mlib-oa-front';
+    if (coverSrc) {
+      var img = document.createElement('img');
+      img.src = coverSrc;
+      img.alt = '';
+      front.appendChild(img);
+    }
+    var back = document.createElement('div');
+    back.className = 'mlib-oa-face mlib-oa-back';
+    back.style.transform = 'rotateY(180deg) translateZ(1px)';
+
+    function spineFace(cls) {
+      var s = document.createElement('div');
+      s.className = 'mlib-oa-face mlib-oa-spine ' + cls;
+      var t = document.createElement('span');
+      t.className = 'mlib-oa-spine-text';
+      t.textContent = spineText;
+      s.appendChild(t);
+      return s;
+    }
+
+    box.appendChild(front);
+    box.appendChild(back);
+    box.appendChild(spineFace('left'));
+    box.appendChild(spineFace('right'));
+    coverEl.appendChild(box);
+    stage.appendChild(coverEl);
+
+    chromeEl = document.createElement('div');
+    chromeEl.className = 'mlib-oa-chrome';
+    chromeEl.innerHTML =
+      '<div class="mlib-oa-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></div>'
+      + '<div class="mlib-oa-title"></div>'
+      + '<div class="mlib-oa-share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 15V4M8.5 7.5 12 4l3.5 3.5"/><path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11A1.5 1.5 0 0 0 19 18.5V13"/></svg></div>';
+    overlay.appendChild(stage);
+    overlay.appendChild(chromeEl);
+    overlay.style.opacity = '1';
+    document.body.appendChild(overlay);
+    coverEl.style.setProperty('--mlib-oa-spine-color', spineColor);
+  }
+
+  function setRect(el, r) {
+    el.style.left = r.left + 'px';
+    el.style.top = r.top + 'px';
+    el.style.width = r.width + 'px';
+    el.style.height = r.height + 'px';
+  }
+
+  function applyP(p) {
+    var pp = Math.max(0, Math.min(1.25, p));
+    // 邻居：以被点专辑为中心推开，距离成正比；越远越淡越模糊
+    var nk = easeOutCubic(clamp01(pp / 0.3));
+    for (var i = 0; i < neighborCards.length; i += 1) {
+      var card = neighborCards[i];
+      var info = neighborBase[i];
+      var push = info.dir * info.dist * 3 * spacing * nk;
+      card.style.transform = 'translate3d(' + push.toFixed(1) + 'px, 0px, 0px) ' + info.base;
+      card.style.setProperty('--mlib-light', String(Math.max(0.2, 1 - nk * 0.8)));
+      card.style.setProperty('--mlib-blur', (nk * 3).toFixed(1) + 'px');
+    }
+    // 背景：0.15–0.3 变成详情页颜色（取自封面并压暗）
+    if (bgEl) bgEl.style.opacity = String(clamp01((pp - 0.15) / 0.15));
+    // 主封面位移：0.15–1 缓出；C 帧仍差 50px
+    var tp = easeOutCubic(clamp01((pp - 0.15) / 0.85));
+    if (coverEl && startRect && endRect) {
+      var target = tp;
+      var r = {
+        left: lerp(startRect.left, endRect.left + 50, target),
+        top: lerp(startRect.top, endRect.top, target),
+        width: lerp(startRect.width, endRect.width, target),
+        height: lerp(startRect.height, endRect.height, target)
+      };
+      setRect(coverEl, r);
+      var t = Math.max(10, r.width * 0.08);
+      coverEl.style.setProperty('--mlib-oa-t', t.toFixed(1) + 'px');
+      coverEl.style.setProperty('--mlib-oa-w', r.width.toFixed(1) + 'px');
+      // 旋转：0.2–0.5 从 90° 缓到 75°；0.5–1 快速转到约 10°
+      var deg;
+      if (pp < 0.5) {
+        var k1 = clamp01((pp - 0.2) / 0.3);
+        deg = 90 - 15 * easeOutCubic(k1);
+      } else {
+        var k2 = clamp01((pp - 0.5) / 0.5);
+        deg = 75 - 65 * easeOutCubic(k2);
+      }
+      var rot = side * deg;
+      coverEl.style.transform = 'perspective(1200px) rotateY(' + rot.toFixed(2) + 'deg)';
+    }
+    // 控件：0.2–0.5 交叉淡入
+    if (chromeEl) chromeEl.style.opacity = String(clamp01((pp - 0.2) / 0.3));
+    // 主封面过中线后露出真实详情页；覆盖层随之淡出
+    var reveal = clamp01((pp - 0.8) / 0.2);
+    if (reveal > 0 && document.body.classList.contains('mlib-opening')) {
+      document.body.classList.remove('mlib-opening');
+    }
+    if (overlay) overlay.style.opacity = String(1 - reveal) === 'NaN' ? '' : String(1 - reveal);
+  }
+
+  function cleanup() {
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    overlay = null; coverEl = null; chromeEl = null; bgEl = null;
+    document.body.classList.remove('mlib-opening');
+    for (var i = 0; i < neighborCards.length; i += 1) {
+      var card = neighborCards[i];
+      if (neighborBase[i]) card.style.transform = neighborBase[i].base;
+      card.style.removeProperty('--mlib-light');
+      card.style.removeProperty('--mlib-blur');
+    }
+    neighborCards = []; neighborBase = [];
+    busy = false;
+  }
+
+  function tailSettle(fromRect) {
+    var t0 = performance.now();
+    function step(now) {
+      var k = clamp01((now - t0) / MLIB_OA_TAIL);
+      var e = easeOutCubic(k);
+      if (coverEl) {
+        var r = {
+          left: lerp(fromRect.left, endRect.left, e),
+          top: lerp(startRect.top, endRect.top, 1),
+          width: lerp(fromRect.width, endRect.width, e),
+          height: lerp(fromRect.height, endRect.height, e)
+        };
+        setRect(coverEl, r);
+        coverEl.style.transform = 'perspective(1200px) rotateY(' + (side * 10 * (1 - e)).toFixed(2) + 'deg)';
+      }
+      if (overlay) overlay.style.opacity = String(1 - k);
+      if (k < 1) { rafId = requestAnimationFrame(step); } else { cleanup(); }
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function play(grid, card) {
+    if (busy || !grid || !card) return;
+    var ids = modalIdsFor(grid);
+    modalEl = document.getElementById(ids.modal);
+    var coverTarget = document.getElementById(ids.cover);
+    if (!modalEl || !coverTarget) return;
+    busy = true;
+    gridRef = grid;
+    spineColor = card.style.getPropertyValue('--mlib-spine') || '#1b2a2e';
+    var img = card.querySelector('.mlib-art img');
+    coverSrc = img ? img.src : '';
+    spineText = (card.querySelector('.mlib-slab-spine-text') || {}).textContent || '';
+    var cardRect = card.getBoundingClientRect();
+    var spineEl = card.querySelector('.mlib-slab-spine');
+    var spineRect = spineEl ? spineEl.getBoundingClientRect() : cardRect;
+    startRect = { left: spineRect.left, top: spineRect.top, width: Math.max(40, spineRect.width), height: spineRect.height };
+    side = (cardRect.left + cardRect.width / 2) < window.innerWidth / 2 ? 1 : -1;
+    spacing = (typeof mlibSlabMetrics === 'function' ? mlibSlabMetrics(grid).spacing : 96) || 96;
+
+    // 邻居：记录基准 transform，按距离推开
+    var cards = cardsOf(grid);
+    var clickedIndex = cards.indexOf(card);
+    neighborCards = []; neighborBase = [];
+    for (var i = 0; i < cards.length; i += 1) {
+      if (i === clickedIndex) continue;
+      if (cards[i].style.display === 'none') continue;
+      neighborCards.push(cards[i]);
+      neighborBase.push({
+        base: cards[i].style.transform || '',
+        dist: Math.abs(i - clickedIndex),
+        dir: i < clickedIndex ? -1 : 1
+      });
+    }
+
+    // 真实弹窗立即打开（数据/结构不动），但先用 mlib-opening 隐藏
+    document.body.classList.add('mlib-opening');
+    card.dataset.mlibSkipOpenAnim = '1';
+    card.click();
+    delete card.dataset.mlibSkipOpenAnim;
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var targetRect = coverTarget.getBoundingClientRect();
+        endRect = { left: targetRect.left, top: targetRect.top, width: targetRect.width, height: targetRect.height };
+        buildOverlay(card, startRect);
+        sampleDarkColor(coverSrc).then(function (color) { if (bgEl) bgEl.style.background = color; });
+        var t0 = performance.now();
+        (function step(now) {
+          if (freezeAt != null) { applyP(freezeAt); return; }
+          var p = clamp01((now - t0) / MLIB_OA_DURATION);
+          applyP(p);
+          if (p < 1) { rafId = requestAnimationFrame(step); return; }
+          // C 帧仍差 10°/50px：长尾收尾
+          var cur = { left: endRect.left + 50, top: endRect.top, width: endRect.width, height: endRect.height };
+          tailSettle(cur);
+        })(t0);
+      });
+    });
+  }
+
+  // 点击拦截：黑胶墙里的专辑/歌单卡片
+  document.addEventListener('click', function (event) {
+    // 默认关闭：动画尚未完成端到端验收，先保证点击行为与原来一致；
+    // 验收时执行 window.__mlibOpenAnimEnable(true) 打开。
+    if (!window.__mlibOpenAnimEnabled) return;
+    if (!vinylActive() || busy) return;
+    var target = event.target;
+    if (!target || !target.closest) return;
+    if (target.closest('[data-mlib-skip-open-anim]')) return;
+    var card = target.closest('.mlib-album-card');
+    if (!card || card.classList.contains('mlib-slab-reflection')) return;
+    var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
+    if (!grid) return;
+    event.preventDefault();
+    event.stopPropagation();
+    play(grid, card);
+  }, true);
+
+  window.__mlibOpenAnimEnable = function (on) { window.__mlibOpenAnimEnabled = on !== false; return window.__mlibOpenAnimEnabled; };
+
+  // 测试/验收钩子：冻结在指定 p 便于截图
+  window.__mlibOpenAnimPreview = function (p) {
+    if (busy) { applyP(p); return true; }
+    var grid = document.getElementById('mlib-albums-grid');
+    if (!grid || grid.hidden) grid = document.getElementById('mlib-playlists-grid');
+    if (!grid) return false;
+    if (!vinylActive()) return false;
+    var cards = cardsOf(grid);
+    var target = null;
+    for (var i = 0; i < cards.length; i += 1) {
+      if (cards[i].dataset.mlibSlab === '1' && cards[i].style.display !== 'none') { target = cards[i]; break; }
+    }
+    if (!target) return false;
+    freezeAt = p;
+    play(grid, target);
+    return true;
+  };
+  window.__mlibOpenAnimPlay = function () {
+    freezeAt = null;
+    var grid = document.getElementById('mlib-albums-grid');
+    if (!grid) return false;
+    var cards = cardsOf(grid);
+    for (var i = 0; i < cards.length; i += 1) {
+      if (cards[i].dataset.mlibSlab === '1' && cards[i].style.display !== 'none') { play(grid, cards[i]); return true; }
+    }
+    return false;
+  };
+})();

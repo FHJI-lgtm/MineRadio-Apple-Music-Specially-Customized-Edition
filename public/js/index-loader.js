@@ -112,6 +112,7 @@
     'js/modules/10-shell/07-album-detail.js',
     'js/modules/10-shell/08-smart-shuffle-toggle.js',
     'js/modules/10-shell/09-mlib-vinyl-view.js',
+    'js/modules/10-shell/10-mlib-open-animation.js',
     'js/modules/12-smtc/00-smtc-store.js',
     'js/modules/12-smtc/01-smtc-lyric-loader.js',
     'js/modules/12-smtc/02-smtc-player.js',
