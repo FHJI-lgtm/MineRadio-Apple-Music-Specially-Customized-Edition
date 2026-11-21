@@ -342,6 +342,35 @@ var MLIB_OA_TAIL = 350;
       f.textContent = facts.join('  ·  ');
       side.appendChild(f);
     }
+    // 播放 / 随机播放：Apple 走原有播放逻辑（window.playSongsInApp）
+    if (src.tracks.length && typeof window.playSongsInApp === 'function') {
+      var actions = document.createElement('div');
+      actions.className = 'mlib-oa-actions';
+      var playBtn = document.createElement('button');
+      playBtn.type = 'button';
+      playBtn.className = 'mlib-oa-btn mlib-oa-btn-primary';
+      playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5.5v13l10.5-6.5z"/></svg><span>' + (src.isPlaylist ? '播放歌单' : '播放专辑') + '</span>';
+      playBtn.addEventListener('click', function () {
+        window.playSongsInApp(src.tracks, 0, 'apple', src.title);
+      });
+      actions.appendChild(playBtn);
+      if (src.isPlaylist) {
+        var shuffleBtn = document.createElement('button');
+        shuffleBtn.type = 'button';
+        shuffleBtn.className = 'mlib-oa-btn mlib-oa-btn-ghost';
+        shuffleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h4l8 10h4M4 17h4l8-10h4"/><path d="M17 4l3 3-3 3M17 14l3 3-3 3"/></svg><span>随机播放</span>';
+        shuffleBtn.addEventListener('click', function () {
+          var arr = src.tracks.slice();
+          for (var i = arr.length - 1; i > 0; i -= 1) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+          }
+          window.playSongsInApp(arr, 0, 'apple', src.title + ' · 随机');
+        });
+        actions.appendChild(shuffleBtn);
+      }
+      side.appendChild(actions);
+    }
     if (src.desc) {
       var desc = document.createElement('p');
       desc.className = 'mlib-oa-desc';
@@ -381,6 +410,16 @@ var MLIB_OA_TAIL = 350;
       empty.className = 'am-album-status';
       empty.textContent = src.ready ? '没有可显示的曲目' : '曲目加载中…';
       list.appendChild(empty);
+    }
+    if (src.tracks.length && typeof window.playSongsInApp === 'function') {
+      list.addEventListener('click', function (event) {
+        var row = event.target && event.target.closest ? event.target.closest('[data-am-track-index]') : null;
+        if (!row) return;
+        var idx = Number(row.getAttribute('data-am-track-index'));
+        if (isFinite(idx) && idx >= 0 && idx < src.tracks.length) {
+          window.playSongsInApp(src.tracks, idx, 'apple', src.title);
+        }
+      });
     }
     side.appendChild(list);
     detail.appendChild(hero);

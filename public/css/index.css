@@ -20295,3 +20295,14 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-hero img, .mlib-oa-hero video { display: block; width: 100%; height: 100%; object-fit: cover }
 .mlib-oa-hero video { position: absolute; inset: 0; z-index: 1; background: #0d1214 }
 .mlib-oa-hero img { position: relative; z-index: 0 }
+/* 详情面板操作按钮 */
+.mlib-oa-actions { display: flex; gap: 10px; margin: 6px 0 2px }
+.mlib-oa-btn { appearance: none; border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 650 }
+.mlib-oa-btn svg { width: 16px; height: 16px }
+.mlib-oa-btn-primary { background: rgba(255,255,255,.94); color: #10201f }
+.mlib-oa-btn-primary:hover { background: #fff }
+.mlib-oa-btn-ghost { background: rgba(var(--mlib-oa-accent, 90 130 140), .26); color: rgba(255,255,255,.92);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.16) }
+.mlib-oa-btn-ghost:hover { background: rgba(var(--mlib-oa-accent, 90 130 140), .40) }
+.mlib-oa-tracks .am-album-track { cursor: pointer }
