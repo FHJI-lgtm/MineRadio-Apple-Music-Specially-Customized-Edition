@@ -241,10 +241,18 @@ var MLIB_OA_TAIL = 350;
     // 旧弹窗保持隐藏：动画结束后覆盖层原地变成新详情页
   }
 
+  function openedIsPlaylist() {
+    var pl = document.getElementById('am-playlist-detail-modal');
+    if (pl && pl.classList.contains('show')) return true;
+    var al = document.getElementById('am-album-detail-modal');
+    if (al && al.classList.contains('show')) return false;
+    return !!(gridRef && gridRef.id === 'mlib-playlists-grid');
+  }
+
   function waitForTracks(cb) {
     var tries = 0;
     (function poll() {
-      var wrap = document.getElementById(gridRef && gridRef.id === 'mlib-playlists-grid' ? 'am-playlist-detail-tracks' : 'am-album-detail-tracks');
+      var wrap = document.getElementById(openedIsPlaylist() ? 'am-playlist-detail-tracks' : 'am-album-detail-tracks');
       if ((wrap && wrap.querySelectorAll('.am-album-track').length) || tries > 480) { cb(wrap); return; }
       tries += 1;
       requestAnimationFrame(poll);
@@ -253,7 +261,7 @@ var MLIB_OA_TAIL = 350;
 
   function showDetail() {
     if (!overlay) { cleanup(); return; }
-    var isPlaylist = gridRef && gridRef.id === 'mlib-playlists-grid';
+    var isPlaylist = openedIsPlaylist();
     var suffix = isPlaylist ? 'am-playlist-detail' : 'am-album-detail';
     waitForTracks(function (trackWrap) {
       if (!overlay) return;
@@ -284,6 +292,15 @@ var MLIB_OA_TAIL = 350;
       var facts = grab(suffix + '-facts');
       if (heading) { var h = heading.cloneNode(true); h.id = 'mlib-oa-heading'; side.appendChild(h); }
       if (artist) { var a = artist.cloneNode(true); a.id = 'mlib-oa-artist'; side.appendChild(a); }
+      else if (isPlaylist) {
+        var kicker = grab('am-playlist-detail-kicker');
+        if (kicker && kicker.textContent.trim()) {
+          var k = document.createElement('div');
+          k.className = 'am-album-artist';
+          k.textContent = kicker.textContent.trim();
+          side.appendChild(k);
+        }
+      }
       if (facts && facts.textContent.trim()) { var f = facts.cloneNode(true); f.id = 'mlib-oa-facts'; side.appendChild(f); }
       // 简介（旧弹窗有则复用；默认 3 行，可展开）
       var descSrc = grab(suffix + '-desc');
