@@ -20220,3 +20220,30 @@ body.mlib-opening #am-playlist-detail-modal {
   overflow: hidden;
   text-overflow: ellipsis
 }
+
+/* ---------- 黑胶墙打开后的新详情页：左全封面 + 右数据 ---------- */
+.mlib-oa.is-detail { pointer-events: auto }
+.mlib-oa-detail { position: absolute; inset: 0; display: flex; background: #0b0f12 }
+.mlib-oa-hero { position: relative; flex: 0 0 auto; width: min(52%, 720px); height: 100%; overflow: hidden; background: #101418 }
+.mlib-oa-hero img { display: block; width: 100%; height: 100%; object-fit: cover }
+.mlib-oa-hero::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to right, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 62%, rgba(11,15,18,.92) 96%, #0b0f12 100%) }
+.mlib-oa-side { flex: 1; min-width: 0; padding: clamp(26px, 5vh, 58px) clamp(22px, 3.4vw, 54px) 28px;
+  overflow: auto; display: flex; flex-direction: column; gap: 16px }
+.mlib-oa-side .am-album-title { margin: 0; font-size: clamp(22px, 2.6vw, 36px); line-height: 1.14 }
+.mlib-oa-side .am-album-artist { color: rgba(255,255,255,.72); font-size: 15px }
+.mlib-oa-side .am-album-facts { color: rgba(255,255,255,.55) }
+.mlib-oa-tracks { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; min-height: 120px }
+.mlib-oa-tracks .am-album-track { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center;
+  gap: 12px; padding: 10px 8px; border-radius: 10px; cursor: pointer }
+.mlib-oa-tracks .am-album-track:hover { background: rgba(255,255,255,.06) }
+.mlib-oa-tracks .am-album-track[data-playing="true"] { background: rgba(255,255,255,.10) }
+.mlib-oa-tracks .am-album-track-no { color: rgba(255,255,255,.42); font-variant-numeric: tabular-nums; text-align: right; font-size: 12px }
+.mlib-oa-tracks .am-album-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px }
+.mlib-oa-tracks .am-album-track-artist { display: none }
+.mlib-oa-tracks .am-album-track-dur { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; font-size: 12px }
+.mlib-oa-tracks .am-album-track-more { display: none }
+.mlib-oa-close { position: absolute; right: clamp(16px, 2.4vw, 34px); top: clamp(16px, 3vh, 30px); z-index: 3;
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.18);
+  background: rgba(18,28,31,.38); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  color: rgba(255,255,255,.92); display: grid; place-items: center; cursor: pointer }

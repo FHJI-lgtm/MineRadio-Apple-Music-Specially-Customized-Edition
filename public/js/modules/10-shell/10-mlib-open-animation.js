@@ -194,12 +194,80 @@ var MLIB_OA_TAIL = 350;
     }
     // 控件：0.2–0.5 交叉淡入
     if (chromeEl) chromeEl.style.opacity = String(clamp01((pp - 0.2) / 0.3));
-    // 主封面过中线后露出真实详情页；覆盖层随之淡出
-    var reveal = clamp01((pp - 0.8) / 0.2);
-    if (reveal > 0 && document.body.classList.contains('mlib-opening')) {
+    // 旧弹窗保持隐藏：动画结束后覆盖层原地变成新详情页
+  }
+
+  function waitForTracks(cb) {
+    var tries = 0;
+    (function poll() {
+      var wrap = document.getElementById(gridRef && gridRef.id === 'mlib-playlists-grid' ? 'am-playlist-detail-tracks' : 'am-album-detail-tracks');
+      if ((wrap && wrap.querySelectorAll('.am-album-track').length) || tries > 60) { cb(wrap); return; }
+      tries += 1;
+      requestAnimationFrame(poll);
+    })();
+  }
+
+  function showDetail() {
+    if (!overlay) { cleanup(); return; }
+    var isPlaylist = gridRef && gridRef.id === 'mlib-playlists-grid';
+    var suffix = isPlaylist ? 'am-playlist-detail' : 'am-album-detail';
+    waitForTracks(function (trackWrap) {
+      if (!overlay) return;
+      // 隐藏动画用的封面盒与顶部控件，换成新详情布局
+      var stage = overlay.querySelector('.mlib-oa-stage');
+      if (stage) stage.style.display = 'none';
+      var chrome = overlay.querySelector('.mlib-oa-chrome');
+      if (chrome) chrome.style.display = 'none';
+      var detail = document.createElement('div');
+      detail.className = 'mlib-oa-detail';
+      var hero = document.createElement('div');
+      hero.className = 'mlib-oa-hero';
+      if (coverSrc) { var im = document.createElement('img'); im.src = coverSrc; im.alt = ''; hero.appendChild(im); }
+      var side = document.createElement('div');
+      side.className = 'mlib-oa-side';
+      function grab(id) { return document.getElementById(id); }
+      var heading = grab(suffix + '-heading');
+      var artist = grab(suffix + '-artist');
+      var facts = grab(suffix + '-facts');
+      if (heading) { var h = heading.cloneNode(true); h.id = 'mlib-oa-heading'; side.appendChild(h); }
+      if (artist) { var a = artist.cloneNode(true); a.id = 'mlib-oa-artist'; side.appendChild(a); }
+      if (facts && facts.textContent.trim()) { var f = facts.cloneNode(true); f.id = 'mlib-oa-facts'; side.appendChild(f); }
+      var list = document.createElement('div');
+      list.className = 'mlib-oa-tracks';
+      if (trackWrap) {
+        var rows = trackWrap.querySelectorAll('.am-album-track');
+        for (var i = 0; i < rows.length; i += 1) list.appendChild(rows[i].cloneNode(true));
+      }
+      side.appendChild(list);
+      detail.appendChild(hero);
+      detail.appendChild(side);
+      var close = document.createElement('button');
+      close.className = 'mlib-oa-close';
+      close.type = 'button';
+      close.setAttribute('aria-label', '关闭');
+      close.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+      close.addEventListener('click', closeDetail);
+      detail.appendChild(close);
+      list.addEventListener('click', function (event) {
+        var row = event.target && event.target.closest ? event.target.closest('[data-am-track-index]') : null;
+        if (!row) return;
+        var idx = Number(row.getAttribute('data-am-track-index'));
+        if (typeof playSongAt === 'function') playSongAt(idx);
+      });
+      overlay.appendChild(detail);
+      overlay.classList.add('is-detail');
+      overlay.style.opacity = '1';
       document.body.classList.remove('mlib-opening');
-    }
-    if (overlay) overlay.style.opacity = String(1 - reveal) === 'NaN' ? '' : String(1 - reveal);
+      busy = false;
+    });
+  }
+
+  function closeDetail() {
+    try {
+      if (gridRef && gridRef.id === 'mlib-playlists-grid') { if (typeof window.closeAmPlaylistDetail === 'function') window.closeAmPlaylistDetail(); }
+      else if (typeof window.closeAmAlbumDetail === 'function') window.closeAmAlbumDetail();
+    } catch (e) {}
+    cleanup();
   }
 
   function cleanup() {
@@ -232,7 +300,7 @@ var MLIB_OA_TAIL = 350;
         coverEl.style.transform = 'perspective(1200px) rotateY(' + (side * 10 * (1 - e)).toFixed(2) + 'deg)';
       }
       if (overlay) overlay.style.opacity = String(1 - k);
-      if (k < 1) { rafId = requestAnimationFrame(step); } else { cleanup(); }
+      if (k < 1) { rafId = requestAnimationFrame(step); } else { showDetail(); }
     }
     rafId = requestAnimationFrame(step);
   }
