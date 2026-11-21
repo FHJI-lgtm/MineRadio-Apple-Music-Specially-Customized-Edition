@@ -20252,3 +20252,23 @@ body.mlib-opening #am-playlist-detail-modal {
   width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.18);
   background: rgba(18,28,31,.38); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
   color: rgba(255,255,255,.92); display: grid; place-items: center; cursor: pointer }
+/* ---------- 详情面板：自动取色 + 简介 ---------- */
+.mlib-oa-detail { --mlib-oa-accent: 90 130 140 }
+.mlib-oa-side {
+  background:
+    radial-gradient(120% 90% at 18% -10%, rgba(var(--mlib-oa-accent), .20), transparent 58%),
+    linear-gradient(180deg, rgba(var(--mlib-oa-accent), .10), rgba(11,15,18,0) 46%)
+}
+.mlib-oa-side .am-album-title { text-shadow: 0 2px 18px rgba(var(--mlib-oa-accent), .35) }
+.mlib-oa-desc { margin: 2px 0 4px; color: rgba(255,255,255,.62); font-size: 13.5px; line-height: 1.62;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden }
+.mlib-oa-desc.is-open { display: block; -webkit-line-clamp: unset; max-height: 240px; overflow: auto }
+.mlib-oa-desc-toggle { appearance: none; align-self: flex-start; border: 0; background: none; cursor: pointer;
+  color: rgba(var(--mlib-oa-accent), .95); font: inherit; font-size: 12.5px; padding: 2px 0 }
+.mlib-oa-tracks .am-album-track:hover { background: rgba(var(--mlib-oa-accent), .16) }
+.mlib-oa-tracks .am-album-track[data-playing="true"] { background: rgba(var(--mlib-oa-accent), .22) }
+.mlib-oa-tracks .am-album-track-no { color: rgba(var(--mlib-oa-accent), .72) }
+.mlib-oa-hero::after {
+  background: linear-gradient(to right, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 62%, rgba(11,15,18,.92) 96%, #0b0f12 100%),
+    linear-gradient(200deg, rgba(var(--mlib-oa-accent), .16), transparent 46%)
+}

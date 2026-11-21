@@ -89,6 +89,37 @@ var MLIB_OA_TAIL = 350;
     });
   }
 
+  // 强调色：取封面主色并提亮，写成 "R G B" 供 rgba(var(--x), a) 使用
+  function sampleAccent(cover) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        try {
+          colorCtx.clearRect(0, 0, 6, 6);
+          colorCtx.drawImage(img, 0, 0, 6, 6);
+          var d = colorCtx.getImageData(0, 0, 6, 6).data;
+          var r = 0, g = 0, b = 0, n = 0;
+          for (var i = 0; i < d.length; i += 4) {
+            var lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+            if (lum < 16 || lum > 235) continue;
+            r += d[i]; g += d[i + 1]; b += d[i + 2]; n += 1;
+          }
+          if (!n) { resolve('120 150 160'); return; }
+          r = r / n; g = g / n; b = b / n;
+          // 提亮 + 轻微饱和，保证在深底上可读
+          var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+          var sat = mx === 0 ? 1 : (mx - mn) / mx;
+          var boost = sat < 0.18 ? 1.18 : 1.0;
+          function ch(v, b2) { return Math.max(40, Math.min(235, Math.round((v * 0.72 + 44) * b2))); }
+          resolve(ch(r, boost) + ' ' + ch(g, boost) + ' ' + ch(b, boost));
+        } catch (e) { resolve('120 150 160'); }
+      };
+      img.onerror = function () { resolve('120 150 160'); };
+      img.src = '/api/cover?url=' + encodeURIComponent(cover);
+    });
+  }
+
   function buildOverlay(card, rect) {
     overlay = document.createElement('div');
     overlay.className = 'mlib-oa';
@@ -241,6 +272,23 @@ var MLIB_OA_TAIL = 350;
       if (heading) { var h = heading.cloneNode(true); h.id = 'mlib-oa-heading'; side.appendChild(h); }
       if (artist) { var a = artist.cloneNode(true); a.id = 'mlib-oa-artist'; side.appendChild(a); }
       if (facts && facts.textContent.trim()) { var f = facts.cloneNode(true); f.id = 'mlib-oa-facts'; side.appendChild(f); }
+      // 简介（旧弹窗有则复用；默认 3 行，可展开）
+      var descSrc = grab(suffix + '-desc');
+      if (descSrc && descSrc.textContent.trim()) {
+        var desc = document.createElement('p');
+        desc.className = 'mlib-oa-desc';
+        desc.textContent = descSrc.textContent.trim();
+        side.appendChild(desc);
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'mlib-oa-desc-toggle';
+        toggle.textContent = '展开简介';
+        toggle.addEventListener('click', function () {
+          var open = desc.classList.toggle('is-open');
+          toggle.textContent = open ? '收起' : '展开简介';
+        });
+        side.appendChild(toggle);
+      }
       var list = document.createElement('div');
       list.className = 'mlib-oa-tracks';
       if (trackWrap) {
@@ -264,6 +312,7 @@ var MLIB_OA_TAIL = 350;
       })();
       detail.appendChild(hero);
       detail.appendChild(side);
+      sampleAccent(coverSrc).then(function (rgb) { detail.style.setProperty('--mlib-oa-accent', rgb); });
       var close = document.createElement('button');
       close.className = 'mlib-oa-close';
       close.type = 'button';
