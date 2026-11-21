@@ -265,6 +265,35 @@ var MLIB_OA_TAIL = 350;
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
 
+  // 动态封面（Motion Artwork）：与旧详情页同一套逻辑 —— 只有单 mp4 才播，失败静默退回静态图
+  function applyMotionArtwork(hero, src) {
+    if (!src || !src.title || src.isPlaylist) return;
+    var url = '/api/apple/library/album/motion?name=' + encodeURIComponent(src.title)
+      + '&artist=' + encodeURIComponent(String(src.artist || ''));
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var m = data && data.motion;
+        if (!m || !m.isDirectFile || !m.videoUrl) return;
+        if (!hero.isConnected) return;
+        var v = document.createElement('video');
+        v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+        v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+        v.preload = 'auto';
+        if (src.cover) v.poster = src.cover;
+        v.setAttribute('aria-hidden', 'true');
+        v.addEventListener('error', function () { try { v.remove(); } catch (_) {} });
+        v.addEventListener('loadeddata', function () {
+          var img = hero.querySelector('img');
+          if (img) img.style.display = 'none';
+        });
+        v.src = '/api/audio?url=' + encodeURIComponent(m.videoUrl);
+        hero.appendChild(v);
+        try { v.play().catch(function () {}); } catch (_) {}
+      })
+      .catch(function () {});
+  }
+
   function buildDetailPanel() {
     if (!overlay || !panelSource) return;
     var src = panelSource;
@@ -286,6 +315,7 @@ var MLIB_OA_TAIL = 350;
     hero.className = 'mlib-oa-hero';
     hero.style.width = pr.heroW + 'px';
     if (src.cover) { var im = document.createElement('img'); im.src = src.cover; im.alt = ''; hero.appendChild(im); }
+    applyMotionArtwork(hero, src);
 
     var side = document.createElement('div');
     side.className = 'mlib-oa-side';
@@ -429,11 +459,12 @@ var MLIB_OA_TAIL = 350;
   function panelRect() {
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var w = Math.min(1100, Math.round(vw * 0.88));
-    var h = Math.min(680, Math.round(vh * 0.82));
+    var w = Math.min(1240, Math.round(vw * 0.92));
+    var h = Math.min(720, Math.round(vh * 0.84));
     var left = Math.round((vw - w) / 2);
     var top = Math.round((vh - h) / 2);
-    var heroW = Math.round(Math.min(w * 0.52, 720));
+    // 封面区取正方形（边长 = 面板高），保证封面不被左右裁切
+    var heroW = Math.round(Math.min(h, Math.max(320, w - 360)));
     return { left: left, top: top, width: w, height: h, heroW: heroW };
   }
 
@@ -459,6 +490,7 @@ var MLIB_OA_TAIL = 350;
       id: isPlaylist ? String(card.getAttribute('data-mlib-playlist-id') || '') : String(card.getAttribute('data-album-id') || ''),
       title: title,
       sub: sub,
+      artist: sub,
       cover: mlibSlabCoverOf ? mlibSlabCoverOf(card) : (card.querySelector('.mlib-art img') || {}).src || '',
       tracks: [],
       total: 0,
