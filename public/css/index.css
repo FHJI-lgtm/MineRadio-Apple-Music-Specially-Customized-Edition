@@ -20288,3 +20288,6 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-side::-webkit-scrollbar { width: 0; height: 0; display: none }
 .mlib-oa-tracks { scrollbar-width: none }
 .mlib-oa-tracks::-webkit-scrollbar { width: 0; display: none }
+/* 展开后的简介：隐藏滚动条（保留滚动） */
+.mlib-oa-desc.is-open { scrollbar-width: none; -ms-overflow-style: none }
+.mlib-oa-desc.is-open::-webkit-scrollbar { width: 0; height: 0; display: none }
