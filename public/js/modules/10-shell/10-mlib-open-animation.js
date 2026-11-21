@@ -122,6 +122,17 @@ var MLIB_OA_TAIL = 350;
     });
   }
 
+  function accentFromRgbString(str) {
+    var m = String(str || '').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (!m) return null;
+    var r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    var sat = mx === 0 ? 1 : (mx - mn) / mx;
+    var boost = sat < 0.18 ? 1.18 : 1.0;
+    function ch(v) { return Math.max(40, Math.min(235, Math.round((v * 0.72 + 44) * boost))); }
+    return ch(r) + ' ' + ch(g) + ' ' + ch(b);
+  }
+
   function buildOverlay(card, rect) {
     overlay = document.createElement('div');
     overlay.className = 'mlib-oa';
@@ -314,6 +325,10 @@ var MLIB_OA_TAIL = 350;
       })();
       detail.appendChild(hero);
       detail.appendChild(side);
+      // 立即用书架阶段已采好的书脊主色（同步、100% 可用）
+      var quickAccent = accentFromRgbString(spineColor);
+      if (quickAccent) detail.style.setProperty('--mlib-oa-accent', quickAccent);
+      // 再用封面采样精修
       sampleAccent(coverSrc).then(function (rgb) { detail.style.setProperty('--mlib-oa-accent', rgb); });
       var close = document.createElement('button');
       close.className = 'mlib-oa-close';

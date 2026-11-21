@@ -20225,8 +20225,10 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa.is-detail { pointer-events: auto }
 .mlib-oa-scrim { position: absolute; inset: 0; background: rgba(4, 8, 10, .52); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px) }
 /* 详情页 = 居中面板（不铺满全屏） */
-.mlib-oa-detail { position: absolute; display: flex; overflow: hidden; background: #0b0f12;
-  border-radius: 24px; box-shadow: 0 40px 120px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.06);
+.mlib-oa-detail { position: absolute; display: flex; overflow: hidden;
+  background: linear-gradient(160deg, rgba(var(--mlib-oa-accent, 90 130 140), .22) 0%, #0b0f12 52%, #090d10 100%);
+  border-radius: 24px;
+  box-shadow: 0 40px 120px rgba(0,0,0,.62), 0 0 90px rgba(var(--mlib-oa-accent, 90 130 140), .16), 0 0 0 1px rgba(255,255,255,.06);
   animation: mlib-oa-detail-in .32s cubic-bezier(.16,1,.3,1) both }
 @keyframes mlib-oa-detail-in { from { opacity: 0; transform: translateY(10px) scale(.985) } to { opacity: 1; transform: none } }
 .mlib-oa-hero { position: relative; flex: 0 0 auto; height: 100%; overflow: hidden; background: #101418 }
@@ -20256,8 +20258,17 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-detail { --mlib-oa-accent: 90 130 140 }
 .mlib-oa-side {
   background:
-    radial-gradient(120% 90% at 18% -10%, rgba(var(--mlib-oa-accent), .20), transparent 58%),
-    linear-gradient(180deg, rgba(var(--mlib-oa-accent), .10), rgba(11,15,18,0) 46%)
+    radial-gradient(120% 90% at 18% -10%, rgba(var(--mlib-oa-accent), .34), transparent 60%),
+    linear-gradient(180deg, rgba(var(--mlib-oa-accent), .16), rgba(11,15,18,0) 46%)
+}
+.mlib-oa-side::before {
+  content: '';
+  display: block;
+  align-self: stretch;
+  height: 2px;
+  margin: -6px 0 10px;
+  border-radius: 2px;
+  background: linear-gradient(to right, rgba(var(--mlib-oa-accent), .9), rgba(var(--mlib-oa-accent), 0));
 }
 .mlib-oa-side .am-album-title { text-shadow: 0 2px 18px rgba(var(--mlib-oa-accent), .35) }
 .mlib-oa-desc { margin: 2px 0 4px; color: rgba(255,255,255,.62); font-size: 13.5px; line-height: 1.62;
@@ -20270,5 +20281,5 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-tracks .am-album-track-no { color: rgba(var(--mlib-oa-accent), .72) }
 .mlib-oa-hero::after {
   background: linear-gradient(to right, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 62%, rgba(11,15,18,.92) 96%, #0b0f12 100%),
-    linear-gradient(200deg, rgba(var(--mlib-oa-accent), .16), transparent 46%)
+    linear-gradient(200deg, rgba(var(--mlib-oa-accent), .26), transparent 50%)
 }
