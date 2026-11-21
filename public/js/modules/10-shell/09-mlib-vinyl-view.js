@@ -314,7 +314,8 @@ function bindMlibSlabInput(grid) {
     down = true; moved = false; lastX = e.clientX; lastT = performance.now();
     state.dragging = true; state.velocity = 0;
     stage.classList.add('is-dragging');
-    try { if (stage.setPointerCapture && e.pointerId != null) stage.setPointerCapture(e.pointerId); } catch (_) {}
+    // 不调用 setPointerCapture：它会把后续 click 的目标重定向到舞台，
+    // 导致卡片上的委托点击（播放/打开详情）收不到事件。
   });
   stage.addEventListener('pointermove', function (e) {
     if (!down) return;
