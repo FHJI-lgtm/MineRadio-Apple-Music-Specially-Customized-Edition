@@ -15,6 +15,8 @@ var MLIB_OA_DURATION = 900;
 var MLIB_OA_TAIL = 350;
 
 (function () {
+  // 默认开启；需要临时关闭时调用 window.__mlibOpenAnimEnable(false)
+  if (window.__mlibOpenAnimEnabled == null) window.__mlibOpenAnimEnabled = true;
   var busy = false;
   var overlay = null;
   var coverEl = null;
@@ -426,6 +428,9 @@ var MLIB_OA_TAIL = 350;
       neighborBase.push({ base: cards[i].style.transform || '', dist: Math.abs(i - clickedIndex), dir: i < clickedIndex ? -1 : 1 });
     }
     document.body.classList.add('mlib-opening');
+    setTimeout(function () {
+      if (!overlay && busy) { cleanup(); }
+    }, 1600);
     
     (function () {
       var pr = panelRect();
@@ -458,7 +463,7 @@ var MLIB_OA_TAIL = 350;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
     // 放行真实点击（由原逻辑打开详情）；动画层负责视觉
-    begin(grid, card);
+    try { begin(grid, card); } catch (e) { cleanup(); }
   }, true);
 
   window.__mlibOpenAnimEnable = function (on) { window.__mlibOpenAnimEnabled = on !== false; return window.__mlibOpenAnimEnabled; };
