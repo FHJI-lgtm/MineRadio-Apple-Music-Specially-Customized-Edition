@@ -19889,6 +19889,9 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 #music-library.mlib-vinyl-style #mlib-view-albums,
 #music-library.mlib-vinyl-style #mlib-view-playlists {
   position: relative;
+  --mlib-slab-w: 1000px;
+  --mlib-slab-h: 430px;
+  --mlib-slab-t: 34px;
   height: clamp(440px, 62vh, 620px);
   overflow: hidden;
   perspective: 900px;
@@ -19899,7 +19902,11 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 #music-library.mlib-vinyl-style #mlib-albums-grid,
 #music-library.mlib-vinyl-style #mlib-playlists-grid {
   position: absolute;
-  inset: 0;
+  /* 原点放在舞台中心：薄板的 x/y 都是相对中心的偏移 */
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
   display: block;
   margin: 0;
   padding: 0;
@@ -19909,9 +19916,6 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 /* ---------- 薄板卡片 ---------- */
 #music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card,
 #music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card {
-  --mlib-slab-w: 1000px;
-  --mlib-slab-h: 430px;
-  --mlib-slab-t: 34px;
   --mlib-spine: #1b2a2e;
   position: absolute;
   left: calc(var(--mlib-slab-w) / -2);
@@ -20050,9 +20054,6 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 
 /* ---------- 地板倒影（轻量镜像盒） ---------- */
 #music-library.mlib-vinyl-style .mlib-slab-reflection {
-  --mlib-slab-w: 1000px;
-  --mlib-slab-h: 430px;
-  --mlib-slab-t: 34px;
   --mlib-spine: #1b2a2e;
   position: absolute;
   left: calc(var(--mlib-slab-w) / -2);

@@ -49,6 +49,27 @@ function mlibSlabStageOf(grid) {
 
 function clampNum(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
+// 按舞台尺寸自适应取景：薄板尺寸/间距/地板线全部跟随舞台高度，
+// 保证整排薄板永远完整落在舞台内（不再出现顶部被裁切）。
+function mlibSlabMetrics(grid) {
+  var stage = mlibSlabStageOf(grid);
+  var stageH = stage ? stage.clientHeight : 0;
+  if (!stageH) stageH = 480;
+  var h = Math.max(260, Math.min(430, stageH * 0.66));
+  var ratio = h / 430;
+  var w = 1000 * ratio;
+  var t = 34 * ratio;
+  var spacing = 96 * ratio;
+  var floor = 180 * ratio;
+  var centerY = floor - h / 2;
+  if (grid) {
+    grid.style.setProperty('--mlib-slab-w', w.toFixed(1) + 'px');
+    grid.style.setProperty('--mlib-slab-h', h.toFixed(1) + 'px');
+    grid.style.setProperty('--mlib-slab-t', t.toFixed(1) + 'px');
+  }
+  return { h: h, w: w, t: t, spacing: spacing, floor: floor, centerY: centerY, centerZ: -w / 2 };
+}
+
 function mlibSlabState(grid) {
   if (!grid.__mlibSlab) {
     grid.__mlibSlab = { pos: 0, velocity: 0, raf: 0, cards: [], reflections: [], dragging: false, bound: false, internalUntil: 0, rendering: false };
@@ -134,10 +155,11 @@ function ensureMlibSlabReflection(grid, state, index) {
   return refl;
 }
 
-function mlibSlabShade(x) {
-  var d = Math.abs(x);
-  var light = 1 - Math.min(1, d / 900) * 0.52;
-  var blur = Math.min(4.2, Math.max(0, (d - 200) / 230));
+function mlibSlabShade(x, spacing) {
+  var span = Math.max(1, spacing || 96);
+  var d = Math.abs(x) / span;
+  var light = 1 - Math.min(1, d / 14) * 0.42;
+  var blur = Math.min(1.8, Math.max(0, (d - 5) / 7) * 1.8);
   return { light: light.toFixed(3), blur: blur.toFixed(2) + 'px' };
 }
 
@@ -150,7 +172,8 @@ function mlibSlabRender(grid) {
   state.rendering = true;
   state.internalUntil = performance.now() + 400;
   var stage = mlibSlabStageOf(grid);
-  var half = Math.ceil(((stage ? stage.clientWidth : 1280) / 2 + MLIB_SLAB_W) / MLIB_SLAB_SPACING) + 2;
+  var M = mlibSlabMetrics(grid);
+  var half = Math.ceil(((stage ? stage.clientWidth : 1280) / 2 + M.w) / M.spacing) + 2;
   for (var i = 0; i < state.cards.length; i += 1) {
     var rel = i - state.pos;
     var card = state.cards[i];
@@ -163,17 +186,17 @@ function mlibSlabRender(grid) {
     if (card.style.display === 'none') card.style.display = '';
     ensureMlibSlabFaces(card);
     var refl = ensureMlibSlabReflection(grid, state, i);
-    var x = rel * MLIB_SLAB_SPACING;
-    var shade = mlibSlabShade(x);
+    var x = rel * M.spacing;
+    var shade = mlibSlabShade(x, M.spacing);
     card.style.transform =
-      'translate3d(' + x.toFixed(2) + 'px, ' + MLIB_SLAB_CENTER_Y + 'px, ' + MLIB_SLAB_CENTER_Z + 'px)' +
+      'translate3d(' + x.toFixed(2) + 'px, ' + M.centerY.toFixed(1) + 'px, ' + M.centerZ.toFixed(1) + 'px)' +
       ' rotateY(90deg)';
     card.style.setProperty('--mlib-light', shade.light);
     card.style.setProperty('--mlib-blur', shade.blur);
     if (refl) {
       refl.style.display = '';
       refl.style.transform =
-        'translate3d(' + x.toFixed(2) + 'px, ' + (2 * MLIB_SLAB_FLOOR_Y - MLIB_SLAB_CENTER_Y) + 'px, ' + MLIB_SLAB_CENTER_Z + 'px)' +
+        'translate3d(' + x.toFixed(2) + 'px, ' + (2 * M.floor - M.centerY).toFixed(1) + 'px, ' + M.centerZ.toFixed(1) + 'px)' +
         ' rotateY(90deg) scaleY(-1)';
       refl.style.setProperty('--mlib-light', shade.light);
       if (card.style.getPropertyValue('--mlib-spine')) refl.style.setProperty('--mlib-spine', card.style.getPropertyValue('--mlib-spine'));
@@ -301,7 +324,7 @@ function bindMlibSlabInput(grid) {
     var now = performance.now();
     var dtm = Math.max(8, Math.min(120, now - lastT));
     lastT = now; lastX = e.clientX;
-    var delta = -dx / MLIB_SLAB_SPACING;
+    var delta = -dx / mlibSlabMetrics(grid).spacing;
     state.pos = clampNum(state.pos + delta, 0, state.cards.length - 1);
     state.velocity = delta / dtm;
     mlibSlabRender(grid);
@@ -318,7 +341,7 @@ function bindMlibSlabInput(grid) {
     if (!isMlibVinylActive() || grid.hidden) return;
     e.preventDefault();
     state.cards = mlibSlabCards(grid);
-    state.pos = clampNum(state.pos + ((e.deltaY || 0) + (e.deltaX || 0)) / 260, 0, state.cards.length - 1);
+    state.pos = clampNum(state.pos + ((e.deltaY || 0) + (e.deltaX || 0)) / (mlibSlabMetrics(grid).spacing * 2.7), 0, state.cards.length - 1);
     mlibSlabRender(grid);
     mlibSlabKick(grid);
   }, { passive: false });
