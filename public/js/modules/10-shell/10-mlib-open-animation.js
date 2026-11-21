@@ -35,6 +35,7 @@ var MLIB_OA_TAIL = 350;
   var modalEl = null;
   var coverTarget = null;
   var freezeAt = null;
+  var panelSource = null;
   var rafId = 0;
 
   function clamp01(v) { return Math.max(0, Math.min(1, v)); }
@@ -259,120 +260,133 @@ var MLIB_OA_TAIL = 350;
     })();
   }
 
-  function showDetail() {
-    if (!overlay) { cleanup(); return; }
-    var isPlaylist = openedIsPlaylist();
-    var suffix = isPlaylist ? 'am-playlist-detail' : 'am-album-detail';
-    waitForTracks(function (trackWrap) {
-      if (!overlay) return;
-      // 隐藏动画用的封面盒与顶部控件，换成新详情布局
-      var stage = overlay.querySelector('.mlib-oa-stage');
-      if (stage) stage.style.display = 'none';
-      var chrome = overlay.querySelector('.mlib-oa-chrome');
-      if (chrome) chrome.style.display = 'none';
-      var scrim = document.createElement('div');
-      scrim.className = 'mlib-oa-scrim';
-      overlay.appendChild(scrim);
-      var pr = panelRect();
-      var detail = document.createElement('div');
-      detail.className = 'mlib-oa-detail';
-      detail.style.left = pr.left + 'px';
-      detail.style.top = pr.top + 'px';
-      detail.style.width = pr.width + 'px';
-      detail.style.height = pr.height + 'px';
-      var hero = document.createElement('div');
-      hero.className = 'mlib-oa-hero';
-      hero.style.width = pr.heroW + 'px';
-      if (coverSrc) { var im = document.createElement('img'); im.src = coverSrc; im.alt = ''; hero.appendChild(im); }
-      var side = document.createElement('div');
-      side.className = 'mlib-oa-side';
-      function grab(id) { return document.getElementById(id); }
-      var heading = grab(suffix + '-heading');
-      var artist = grab(suffix + '-artist');
-      var facts = grab(suffix + '-facts');
-      if (heading) { var h = heading.cloneNode(true); h.id = 'mlib-oa-heading'; side.appendChild(h); }
-      if (artist) { var a = artist.cloneNode(true); a.id = 'mlib-oa-artist'; side.appendChild(a); }
-      else if (isPlaylist) {
-        var kicker = grab('am-playlist-detail-kicker');
-        if (kicker && kicker.textContent.trim()) {
-          var k = document.createElement('div');
-          k.className = 'am-album-artist';
-          k.textContent = kicker.textContent.trim();
-          side.appendChild(k);
-        }
-      }
-      if (facts && facts.textContent.trim()) { var f = facts.cloneNode(true); f.id = 'mlib-oa-facts'; side.appendChild(f); }
-      // 简介（旧弹窗有则复用；默认 3 行，可展开）
-      var descSrc = grab(suffix + '-desc');
-      if (descSrc && descSrc.textContent.trim()) {
-        var desc = document.createElement('p');
-        desc.className = 'mlib-oa-desc';
-        desc.textContent = descSrc.textContent.trim();
-        side.appendChild(desc);
-        var toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'mlib-oa-desc-toggle';
-        toggle.textContent = '展开简介';
-        toggle.addEventListener('click', function () {
-          var open = desc.classList.toggle('is-open');
-          toggle.textContent = open ? '收起' : '展开简介';
-        });
-        side.appendChild(toggle);
-      }
-      var list = document.createElement('div');
-      list.className = 'mlib-oa-tracks';
-      if (trackWrap) {
-        var rows = trackWrap.querySelectorAll('.am-album-track');
-        for (var i = 0; i < rows.length; i += 1) list.appendChild(rows[i].cloneNode(true));
-      }
-      side.appendChild(list);
-      // 曲目可能晚到：稍后到达时自动填充
-      (function () {
-        var wrap = trackWrap;
-        if (!wrap || wrap.querySelectorAll('.am-album-track').length) return;
-        if (typeof MutationObserver !== 'function') return;
-        var obs = new MutationObserver(function () {
-          var rows = wrap.querySelectorAll('.am-album-track');
-          if (!rows.length) return;
-          list.innerHTML = '';
-          for (var i = 0; i < rows.length; i += 1) list.appendChild(rows[i].cloneNode(true));
-          obs.disconnect();
-        });
-        obs.observe(wrap, { childList: true });
-      })();
-      detail.appendChild(hero);
-      detail.appendChild(side);
-      // 立即用书架阶段已采好的书脊主色（同步、100% 可用）
-      var quickAccent = accentFromRgbString(spineColor);
-      if (quickAccent) detail.style.setProperty('--mlib-oa-accent', quickAccent);
-      // 再用封面采样精修
-      sampleAccent(coverSrc).then(function (rgb) { detail.style.setProperty('--mlib-oa-accent', rgb); });
-      var close = document.createElement('button');
-      close.className = 'mlib-oa-close';
-      close.type = 'button';
-      close.setAttribute('aria-label', '关闭');
-      close.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-      close.addEventListener('click', closeDetail);
-      overlay.appendChild(close);
-      list.addEventListener('click', function (event) {
-        var row = event.target && event.target.closest ? event.target.closest('[data-am-track-index]') : null;
-        if (!row) return;
-        var idx = Number(row.getAttribute('data-am-track-index'));
-        if (typeof playSongAt === 'function') playSongAt(idx);
-      });
-      overlay.appendChild(detail);
-      overlay.classList.add('is-detail');
-      overlay.style.opacity = '1';
-      document.body.classList.remove('mlib-opening');
-      busy = false;
-    });
+  function fmtDur(sec) {
+    var s = Math.max(0, Math.round(Number(sec) || 0));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
 
+  function buildDetailPanel() {
+    if (!overlay || !panelSource) return;
+    var src = panelSource;
+    var stage = overlay.querySelector('.mlib-oa-stage');
+    if (stage) stage.style.display = 'none';
+    var chrome = overlay.querySelector('.mlib-oa-chrome');
+    if (chrome) chrome.style.display = 'none';
+    var scrim = document.createElement('div');
+    scrim.className = 'mlib-oa-scrim';
+    overlay.appendChild(scrim);
+    var pr = panelRect();
+    var detail = document.createElement('div');
+    detail.className = 'mlib-oa-detail';
+    detail.style.left = pr.left + 'px';
+    detail.style.top = pr.top + 'px';
+    detail.style.width = pr.width + 'px';
+    detail.style.height = pr.height + 'px';
+    var hero = document.createElement('div');
+    hero.className = 'mlib-oa-hero';
+    hero.style.width = pr.heroW + 'px';
+    if (src.cover) { var im = document.createElement('img'); im.src = src.cover; im.alt = ''; hero.appendChild(im); }
+
+    var side = document.createElement('div');
+    side.className = 'mlib-oa-side';
+    var h = document.createElement('h2');
+    h.className = 'am-album-title';
+    h.textContent = src.title || '未命名';
+    side.appendChild(h);
+    if (src.sub) {
+      var a = document.createElement('div');
+      a.className = 'am-album-artist';
+      a.textContent = src.sub;
+      side.appendChild(a);
+    }
+    var facts = [];
+    if (src.total) facts.push(src.total + ' 首');
+    if (src.tracks.length) {
+      var totalSec = 0;
+      src.tracks.forEach(function (t) { totalSec += Number(t.duration || 0); });
+      if (totalSec > 0) facts.push(fmtDur(totalSec).replace(':', ' 分 ') + ' 秒');
+    }
+    if (facts.length) {
+      var f = document.createElement('div');
+      f.className = 'am-album-facts';
+      f.textContent = facts.join('  ·  ');
+      side.appendChild(f);
+    }
+    if (src.desc) {
+      var desc = document.createElement('p');
+      desc.className = 'mlib-oa-desc';
+      desc.textContent = src.desc;
+      side.appendChild(desc);
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'mlib-oa-desc-toggle';
+      toggle.textContent = '展开简介';
+      toggle.addEventListener('click', function () {
+        var open = desc.classList.toggle('is-open');
+        toggle.textContent = open ? '收起' : '展开简介';
+      });
+      side.appendChild(toggle);
+    }
+
+    var list = document.createElement('div');
+    list.className = 'mlib-oa-tracks';
+    src.tracks.forEach(function (t, i) {
+      var row = document.createElement('div');
+      row.className = 'am-album-track';
+      row.setAttribute('data-am-track-index', String(i));
+      var no = document.createElement('div');
+      no.className = 'am-album-track-no';
+      no.textContent = String(Number(t.trackNumber) > 0 ? t.trackNumber : i + 1);
+      var nm = document.createElement('div');
+      nm.className = 'am-album-track-name';
+      nm.textContent = String(t.name || t.title || '未命名曲目');
+      var du = document.createElement('div');
+      du.className = 'am-album-track-dur';
+      du.textContent = fmtDur(t.duration);
+      row.appendChild(no); row.appendChild(nm); row.appendChild(du);
+      list.appendChild(row);
+    });
+    if (!src.tracks.length) {
+      var empty = document.createElement('div');
+      empty.className = 'am-album-status';
+      empty.textContent = src.ready ? '没有可显示的曲目' : '曲目加载中…';
+      list.appendChild(empty);
+    }
+    side.appendChild(list);
+    detail.appendChild(hero);
+    detail.appendChild(side);
+
+    var quickAccent = accentFromRgbString(spineColor);
+    if (quickAccent) detail.style.setProperty('--mlib-oa-accent', quickAccent);
+    sampleAccent(src.cover).then(function (rgb) { detail.style.setProperty('--mlib-oa-accent', rgb); });
+
+    var close = document.createElement('button');
+    close.className = 'mlib-oa-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭');
+    close.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    close.addEventListener('click', closeDetail);
+
+    overlay.appendChild(detail);
+    overlay.appendChild(close);
+    overlay.classList.add('is-detail');
+    overlay.style.opacity = '1';
+    busy = false;
+  }
+
+  function showDetail() {
+    if (!overlay) { cleanup(); return; }
+    if (panelSource && panelSource.ready) { buildDetailPanel(); return; }
+    // 数据还没到：等一小会儿（最多 ~4s），到齐或超时都构建
+    var waited = 0;
+    (function poll() {
+      if (!overlay) return;
+      if ((panelSource && panelSource.ready) || waited > 80) { buildDetailPanel(); return; }
+      waited += 1;
+      setTimeout(poll, 50);
+    })();
+  }
   function closeDetail() {
-    try {
-      if (gridRef && gridRef.id === 'mlib-playlists-grid') { if (typeof window.closeAmPlaylistDetail === 'function') window.closeAmPlaylistDetail(); }
-      else if (typeof window.closeAmAlbumDetail === 'function') window.closeAmAlbumDetail();
-    } catch (e) {}
     cleanup();
   }
 
@@ -433,6 +447,46 @@ var MLIB_OA_TAIL = 350;
     })();
   }
 
+  // 黑胶模式不再打开旧详情弹窗：自己拉数据
+  function panelSourceOf(grid, card) {
+    var isPlaylist = grid && grid.id === 'mlib-playlists-grid';
+    var nameEl = card.querySelector('.mlib-album-name');
+    var subEl = card.querySelector('.mlib-album-sub');
+    var title = nameEl ? String(nameEl.textContent || '').trim() : '';
+    var sub = subEl ? String(subEl.textContent || '').trim() : '';
+    return {
+      isPlaylist: isPlaylist,
+      id: isPlaylist ? String(card.getAttribute('data-mlib-playlist-id') || '') : String(card.getAttribute('data-album-id') || ''),
+      title: title,
+      sub: sub,
+      cover: mlibSlabCoverOf ? mlibSlabCoverOf(card) : (card.querySelector('.mlib-art img') || {}).src || '',
+      tracks: [],
+      total: 0,
+      desc: '',
+      ready: false
+    };
+  }
+
+  function loadPanelData(src) {
+    var tracksUrl = src.isPlaylist
+      ? '/api/apple/playlist/tracks?id=' + encodeURIComponent(src.id) + '&limit=100'
+      : '/api/apple/library/album/tracks?id=' + encodeURIComponent(src.id) + '&limit=100';
+    return fetch(tracksUrl, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        src.tracks = (j && (j.songs || j.tracks)) || [];
+        src.total = Number(j && (j.total || src.tracks.length)) || src.tracks.length;
+        if (!src.isPlaylist) {
+          return fetch('/api/apple/library/album/notes?id=' + encodeURIComponent(src.id), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (n) { src.desc = String((n && (n.notes || n.description || (n.data && n.data.description))) || '').trim(); })
+            .catch(function () {});
+        }
+      })
+      .catch(function () {})
+      .then(function () { src.ready = true; return src; });
+  }
+
   function begin(grid, card, freezeP) {
     if (busy || !grid || !card) return;
     var ids = modalIdsFor(grid);
@@ -459,7 +513,8 @@ var MLIB_OA_TAIL = 350;
       neighborCards.push(cards[i]);
       neighborBase.push({ base: cards[i].style.transform || '', dist: Math.abs(i - clickedIndex), dir: i < clickedIndex ? -1 : 1 });
     }
-    document.body.classList.add('mlib-opening');
+    panelSource = panelSourceOf(grid, card);
+    loadPanelData(panelSource);
     setTimeout(function () {
       if (!overlay && busy) { cleanup(); }
     }, 1600);

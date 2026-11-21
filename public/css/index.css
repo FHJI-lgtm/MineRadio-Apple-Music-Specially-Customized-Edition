@@ -20283,3 +20283,8 @@ body.mlib-opening #am-playlist-detail-modal {
   background: linear-gradient(to right, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 62%, rgba(11,15,18,.92) 96%, #0b0f12 100%),
     linear-gradient(200deg, rgba(var(--mlib-oa-accent), .40), transparent 52%)
 }
+/* 详情面板右侧滚动区：隐藏原生滚动条（保留滚动能力） */
+.mlib-oa-side { scrollbar-width: none; -ms-overflow-style: none }
+.mlib-oa-side::-webkit-scrollbar { width: 0; height: 0; display: none }
+.mlib-oa-tracks { scrollbar-width: none }
+.mlib-oa-tracks::-webkit-scrollbar { width: 0; display: none }
