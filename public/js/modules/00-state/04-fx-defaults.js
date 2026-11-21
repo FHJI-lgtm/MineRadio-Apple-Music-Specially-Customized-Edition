@@ -59,6 +59,10 @@ var fxDefaults = {
   backgroundColorMode: 'cover',
   backgroundColor: '#000000',
   backgroundOpacity: 1,
+  // 资料库封面卡片圆角（px）。18 = 原样式；0 = 方形。
+  albumCardRadius: 18,
+  // 资料库视图风格：'grid' = 原有网格；'vinyl' = 3D 黑胶墙（仅专辑与歌单）。
+  mlibViewStyle: 'grid',
   windowBackgroundOpacity: 1,
   backgroundGlassOpacity: 0,
   controlGlassChromaticOffset: 50,

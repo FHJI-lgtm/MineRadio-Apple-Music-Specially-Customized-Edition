@@ -18,6 +18,7 @@ function bindFxPanel() {
     ['fx-sonicwegain', 'sonicWorkshopInputGain'], ['fx-sonicweaudio', 'sonicWorkshopAudioIntensity'], ['fx-sonicwerange', 'sonicWorkshopResponseRange'], ['fx-sonicwepeak', 'sonicWorkshopPeakIntensity'],
     ['fx-sonicsubbass', 'sonicGroundSubBass'], ['fx-sonicbass', 'sonicGroundBass'], ['fx-soniclowmid', 'sonicGroundLowMid'], ['fx-sonicmid', 'sonicGroundMid'], ['fx-sonichighmid', 'sonicGroundHighMid'], ['fx-sonicpresence', 'sonicGroundPresence'], ['fx-sonicbrilliance', 'sonicGroundBrilliance'], ['fx-sonicair', 'sonicGroundAir'],
     ['fx-sonicglow', 'sonicGroundGlow'], ['fx-sonicfloatcount', 'sonicGroundFloatingCount'], ['fx-sonicfloatintensity', 'sonicGroundFloatingIntensity'], ['fx-sonicfloatmin', 'sonicGroundFloatingMinSize'], ['fx-sonicfloatmax', 'sonicGroundFloatingMaxSize'], ['fx-sonicfloatspeed', 'sonicGroundFloatingSpeed'],
+    ['fx-mlibradius', 'albumCardRadius'],
     ['fx-bgopacity', 'backgroundOpacity'], ['fx-bgcropx', 'backgroundMediaCropX'], ['fx-bgcropy', 'backgroundMediaCropY'], ['fx-bgzoom', 'backgroundMediaZoom'], ['fx-windowbgopacity', 'windowBackgroundOpacity'], ['fx-bgglassopacity', 'backgroundGlassOpacity'], ['fx-glassaberration', 'controlGlassChromaticOffset'],
     ['fx-playlistblur', 'playlistPanelGlassBlur'], ['fx-playlistdensity', 'playlistPanelGlassDensity'], ['fx-playlistopen', 'playlistPanelOpenDuration'], ['fx-playlistclose', 'playlistPanelCloseDuration'],
     ['fx-desktoplyricssize', 'desktopLyricsSize'], ['fx-desktoplyricsopacity', 'desktopLyricsOpacity'], ['fx-desktoplyricsy', 'desktopLyricsY'], ['fx-wallpaperopacity', 'wallpaperOpacity'],
@@ -141,9 +142,13 @@ function bindFxPanel() {
       if (pair[1] === 'lyricTranslationScale') fx.lyricTranslationScale = clampRange(fx.lyricTranslationScale, 0.46, 1.12);
       if (pair[1] === 'lyricTranslationOpacity') fx.lyricTranslationOpacity = clampRange(fx.lyricTranslationOpacity, 0.20, 1);
       if (pair[1] === 'lyricGlitchJitter') fx.lyricGlitchJitter = clampRange(fx.lyricGlitchJitter, 0, 1.8);
+      if (pair[1] === 'albumCardRadius') {
+        fx.albumCardRadius = applyMlibCardRadius(fx.albumCardRadius);
+        el.value = fx.albumCardRadius;
+      }
       if (out) out.textContent = pair[1] === 'coverResolution'
         ? coverParticleCountLabel(fx.coverResolution)
-        : (pair[1] === 'lyricWeight' || /^sonicGround/.test(pair[1]) || /^sonicAudio/.test(pair[1]) || pair[1] === 'sonicWorkshopInputGain' || pair[1] === 'controlGlassChromaticOffset' || pair[1] === 'playlistPanelGlassBlur' || pair[1] === 'backgroundMediaCropX' || pair[1] === 'backgroundMediaCropY' || pair[1] === 'lyricTiltX' || pair[1] === 'lyricTiltY' || pair[1] === 'shelfAngleY' || pair[1] === 'shelfDetailAngleX' || pair[1] === 'shelfDetailAngleY' ? String(Math.round(fx[pair[1]])) : Number(el.value).toFixed(pair[1] === 'lyricLetterSpacing' ? 3 : 2));
+        : (pair[1] === 'lyricWeight' || /^sonicGround/.test(pair[1]) || /^sonicAudio/.test(pair[1]) || pair[1] === 'sonicWorkshopInputGain' || pair[1] === 'controlGlassChromaticOffset' || pair[1] === 'playlistPanelGlassBlur' || pair[1] === 'backgroundMediaCropX' || pair[1] === 'backgroundMediaCropY' || pair[1] === 'lyricTiltX' || pair[1] === 'lyricTiltY' || pair[1] === 'shelfAngleY' || pair[1] === 'shelfDetailAngleX' || pair[1] === 'shelfDetailAngleY' || pair[1] === 'albumCardRadius' ? String(Math.round(fx[pair[1]])) : Number(el.value).toFixed(pair[1] === 'lyricLetterSpacing' ? 3 : 2));
       if (typeof refreshSonicAudioMonitorUi === 'function' && /^sonicAudio/.test(pair[1])) refreshSonicAudioMonitorUi();
       if (/^sonicWorkshop/.test(pair[1]) && window.MineradioSonicWorkshop && typeof MineradioSonicWorkshop.pushProperties === 'function') MineradioSonicWorkshop.pushProperties(true);
       syncFxUniforms();

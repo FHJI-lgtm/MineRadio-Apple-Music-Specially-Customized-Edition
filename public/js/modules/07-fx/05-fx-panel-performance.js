@@ -260,6 +260,7 @@ function updateFxInputs() {
   setRange('fx-sonicfloatmax', fx.sonicGroundFloatingMaxSize);
   setRange('fx-sonicfloatspeed', fx.sonicGroundFloatingSpeed);
   setRange('fx-bgopacity', fx.backgroundOpacity == null ? 1 : fx.backgroundOpacity);
+  setRange('fx-mlibradius', fx.albumCardRadius == null ? fxDefaults.albumCardRadius : fx.albumCardRadius);
   setRange('fx-bgcropx', fx.backgroundMediaCropX == null ? fxDefaults.backgroundMediaCropX : fx.backgroundMediaCropX);
   setRange('fx-bgcropy', fx.backgroundMediaCropY == null ? fxDefaults.backgroundMediaCropY : fx.backgroundMediaCropY);
   setRange('fx-bgzoom', fx.backgroundMediaZoom == null ? fxDefaults.backgroundMediaZoom : fx.backgroundMediaZoom);
@@ -410,6 +411,7 @@ function updateFxInputs() {
   if (typeof updateSonicWorkshopColorControls === 'function') updateSonicWorkshopColorControls();
   updateSonicSeriesControlVisibility();
   applyControlGlassChromaticOffset();
+  applyMlibCardRadius(fx.albumCardRadius);
   syncFxUniforms();
 }
 function animateFxResetButton(btn) {
@@ -481,6 +483,7 @@ function resetFxSliderValue(id, key, btn) {
   if (key === 'coverResolution') applyCoverParticleResolution(fx[key], { reload: true });
   if (key === 'backgroundOpacity' || key === 'windowBackgroundOpacity' || key === 'backgroundGlassOpacity' || key === 'backgroundMediaCropX' || key === 'backgroundMediaCropY' || key === 'backgroundMediaZoom') updateCustomBackgroundControls();
   if (key === 'controlGlassChromaticOffset') applyControlGlassChromaticOffset();
+  if (key === 'albumCardRadius') applyMlibCardRadius(fx[key]);
   if (/^playlistPanel/.test(key)) applyPlaylistPanelFxSettings();
   syncFxUniforms();
   if (/^shelf/.test(key) && shelfManager && shelfManager.refreshTheme) shelfManager.refreshTheme();

@@ -337,9 +337,33 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') closeUploadPanel();
 });
 var dropOv = document.getElementById('drop-overlay'), dragCount = 0;
-document.addEventListener('dragenter', function (e) { e.preventDefault(); dragCount++; dropOv.classList.add('show'); });
-document.addEventListener('dragleave', function (e) { e.preventDefault(); dragCount--; if (dragCount <= 0) { dragCount = 0; dropOv.classList.remove('show'); } });
-document.addEventListener('dragover', function (e) { e.preventDefault(); });
+// 只有**真实文件**拖进窗口时才显示「拖放音乐或封面」。
+// 页面内的图片/卡片也是可拖元素（浏览器默认行为），以前会把它们误判成文件拖放，
+// 于是拖动卡片会弹出这个覆盖层、又什么都没发生。
+function isFileDragEvent(e) {
+  var t = e && e.dataTransfer && e.dataTransfer.types;
+  if (!t) return false;
+  for (var i = 0; i < t.length; i += 1) {
+    if (t[i] === 'Files') return true;
+  }
+  return false;
+}
+document.addEventListener('dragenter', function (e) {
+  if (!isFileDragEvent(e)) return;
+  e.preventDefault();
+  dragCount += 1;
+  dropOv.classList.add('show');
+});
+document.addEventListener('dragleave', function (e) {
+  if (!isFileDragEvent(e)) return;
+  e.preventDefault();
+  dragCount -= 1;
+  if (dragCount <= 0) { dragCount = 0; dropOv.classList.remove('show'); }
+});
+document.addEventListener('dragover', function (e) {
+  if (!isFileDragEvent(e)) return;
+  e.preventDefault();
+});
 document.addEventListener('drop', function (e) {
   e.preventDefault(); dragCount = 0; dropOv.classList.remove('show');
   if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);

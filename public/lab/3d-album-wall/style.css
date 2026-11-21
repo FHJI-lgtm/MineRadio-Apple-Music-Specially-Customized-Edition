@@ -1,0 +1,155 @@
+/* ============================================================
+   3D 专辑墙 · 独立原型
+   空间模型（按验收说明）：
+     · 每张专辑是一块有厚度的薄板，绕 Y 轴转 90° 垂直站立；
+     · 薄板沿 X 轴排成一排，镜头正对，一点透视，消失点在屏幕中央；
+     · 于是中间的薄板只露书脊，越往两侧越能看到封面正面；
+     · 下方地板倒影（镜像 + 渐隐 + 模糊），离中心越远越模糊越暗；
+     · 顶部 Liquid Glass 胶囊分段控件。
+   ============================================================ */
+
+:root {
+  --ink: #f4f7f6;
+  --glass: rgba(18, 28, 31, .38);
+  --glass-line: rgba(255, 255, 255, .18);
+}
+
+* { box-sizing: border-box }
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1a1e; color: var(--ink);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; user-select: none }
+
+/* ---------- 蓝绿色环境背景 ---------- */
+.env { position: fixed; inset: 0; z-index: 0; overflow: hidden;
+  background: linear-gradient(180deg, #a9c8c5 0%, #7fa5a5 24%, #4e7478 50%, #2a454c 74%, #101f25 100%) }
+.env-blob { position: absolute; border-radius: 50%; filter: blur(100px); opacity: .7 }
+.env-blob-a { left: -10%; top: -20%; width: 58%; height: 64%; background: radial-gradient(circle at 42% 42%, #dcebe6, #9dc0bc 55%, transparent 74%) }
+.env-blob-b { right: -14%; top: -8%; width: 54%; height: 60%; background: radial-gradient(circle at 58% 40%, #93b8b8, #5b8286 58%, transparent 78%) }
+.env-blob-c { left: 12%; bottom: -32%; width: 76%; height: 68%; background: radial-gradient(circle at 50% 50%, #33545c, #16303a 62%, transparent 82%) }
+.env-blob-d { right: 2%; bottom: -20%; width: 44%; height: 48%; background: radial-gradient(circle at 50% 50%, #3b6169, #172f36 64%, transparent 84%) }
+
+/* ---------- 3D 舞台：一点透视 ---------- */
+.stage { position: fixed; inset: 0; z-index: 1 }
+.scene { position: absolute; inset: 0; z-index: 2; perspective: 900px; perspective-origin: 50% 50%;
+  overflow: hidden; outline: none; cursor: grab }
+.scene.is-dragging { cursor: grabbing }
+
+.wall { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d }
+
+/* ---------- 薄板专辑：w（纵深）× h（高）× t（厚度） ---------- */
+.album {
+  --w: 1000px;  /* 薄板纵深：封面从这个近边一路退向消失点 */
+  --h: 430px;
+  --t: 34px;    /* 板厚：中间看到的书脊宽度 */
+  --spine: #1b2a2e;
+  position: absolute;
+  /* 用负偏移把元素的中心放到 .wall 原点：避免 translate(-50%) 在旋转后被折算到 Z 轴 */
+  left: calc(var(--w) / -2); top: calc(var(--h) / -2);
+  width: var(--w); height: var(--h);
+  transform-style: preserve-3d; transform-origin: 50% 50%
+}
+
+.face { position: absolute; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  filter: brightness(calc(var(--light, 1) * var(--shade, 1))) blur(var(--blur, 0px)); overflow: hidden }
+
+/* 正面：封面（薄板朝 +X 的大面） */
+.face.front { left: 0; top: 0; width: var(--w); height: var(--h);
+  transform: translateZ(calc(var(--t) / 2)); background: #101a1d; --shade: 1 }
+.face.front img { display: block; width: 100%; height: 100%; object-fit: cover }
+.face.front::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(122deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.03) 26%, transparent 46%, rgba(0,0,0,.18) 100%) }
+
+/* 背面：另一侧的封面（镜像，保证两侧都能看到封面正面） */
+.face.back { left: 0; top: 0; width: var(--w); height: var(--h);
+  transform: rotateY(180deg) translateZ(calc(var(--t) / 2)); background: #0f181b; --shade: .82 }
+.face.back img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1) }
+
+/* 书脊：朝向镜头的那个薄边（板厚 t），竖排粗体白字，底色取封面主色 */
+.face.side-l {
+  left: calc((var(--w) - var(--t)) / 2); top: 0;
+  width: var(--t); height: var(--h);
+  transform: rotateY(-90deg) translateZ(calc(var(--w) / 2));
+  background:
+    linear-gradient(to right, rgba(0,0,0,.55), rgba(0,0,0,.12) 22%, rgba(255,255,255,.10) 50%, rgba(0,0,0,.14) 78%, rgba(0,0,0,.62)),
+    var(--spine);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10);
+  --shade: .92
+}
+.spine-text {
+  writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+  font-size: 13px; font-weight: 800; letter-spacing: .14em; line-height: 1;
+  color: rgba(255, 255, 255, .95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  max-height: 88%; overflow: hidden; white-space: nowrap; padding: 3px 0
+}
+
+/* 远端薄边：纸边 */
+.face.side-r { left: calc((var(--w) - var(--t)) / 2); top: 0; width: var(--t); height: var(--h);
+  transform: rotateY(90deg) translateZ(calc(var(--w) / 2));
+  background: linear-gradient(to right, #1b262a 0%, #38474a 16%, #d9d8cf 34%, #f1efe4 52%, #b7b6ac 72%, #1c2529 100%);
+  --shade: .9 }
+
+/* 上下薄边 */
+.face.edge-t { left: 0; top: calc((var(--h) - var(--t)) / 2); width: var(--w); height: var(--t);
+  transform: rotateX(90deg) translateZ(calc(var(--h) / 2));
+  background: linear-gradient(to bottom, #2d3d42 0%, #4e6469 50%, #172126 100%); --shade: .82 }
+.face.edge-b { left: 0; top: calc((var(--h) - var(--t)) / 2); width: var(--w); height: var(--t);
+  transform: rotateX(-90deg) translateZ(calc(var(--h) / 2));
+  background: linear-gradient(to bottom, #0e171a 0%, #24333a 56%, #08100f 100%); --shade: .46 }
+
+/* ---------- 地板倒影 ---------- */
+.album.is-reflection { pointer-events: none }
+.album.is-reflection .face {
+  opacity: .50;
+  filter: brightness(calc(var(--light, 1) * var(--shade, 1) * .85)) blur(1.6px);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 80%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 74%)
+}
+.album.is-reflection .face.side-l { opacity: .26 }
+
+/* 地面 + 色阶 */
+.floor { position: absolute; left: 0; right: 0; bottom: 0; height: 62%; pointer-events: none; z-index: 1;
+  background: linear-gradient(to top, rgba(6, 15, 18, .82) 0%, rgba(16, 32, 37, .46) 30%,
+  rgba(118, 164, 168, .10) 52%, rgba(38, 62, 68, .05) 68%, transparent 100%) }
+.grade { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(84% 66% at 50% 26%, rgba(200, 226, 222, .14), transparent 62%),
+    linear-gradient(to bottom, rgba(14, 30, 34, .14) 0%, transparent 26%, rgba(5, 12, 16, .48) 100%) }
+
+/* ---------- Liquid Glass 控件 ---------- */
+.ui { position: fixed; z-index: 5 }
+.segmented {
+  top: clamp(18px, 3.2vh, 34px); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 5px; border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .18)
+}
+.segmented button {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  color: rgba(255, 255, 255, .70); font: inherit; font-weight: 700; font-size: 14px;
+  padding: 9px 30px; border-radius: 999px;
+  transition: background .18s, color .18s
+}
+.segmented button.is-active { background: rgba(255, 255, 255, .95); color: #0f1f22;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .10) }
+.segmented button:not(.is-active):hover { color: #fff }
+
+.ui-circle { position: fixed; z-index: 5; width: 46px; height: 46px; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--glass-line); background: var(--glass);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  color: rgba(255, 255, 255, .92); cursor: pointer;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .16);
+  transition: background .18s, transform .18s }
+.ui-circle:hover { background: rgba(30, 48, 52, .52); transform: translateY(-1px) }
+.ui-circle svg { width: 20px; height: 20px }
+.ui-circle.left { left: clamp(18px, 3vw, 40px); top: clamp(18px, 3.2vh, 34px) }
+.ui-circle.right { right: clamp(18px, 3vw, 40px); top: clamp(18px, 3.2vh, 34px) }
+
+@media (max-width: 720px) {
+  .segmented button { padding: 8px 20px; font-size: 13px }
+  .ui-circle { width: 40px; height: 40px }
+}

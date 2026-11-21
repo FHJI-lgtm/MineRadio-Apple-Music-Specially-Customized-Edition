@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D 专辑墙</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="env" aria-hidden="true">
+    <div class="env-blob env-blob-a"></div>
+    <div class="env-blob env-blob-b"></div>
+    <div class="env-blob env-blob-c"></div>
+    <div class="env-blob env-blob-d"></div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="scene" id="scene" tabindex="0" aria-label="3D 专辑墙（左右滑动切换）">
+      <div class="wall" id="wall"></div>
+    </div>
+    <div class="floor" aria-hidden="true"></div>
+    <div class="grade" aria-hidden="true"></div>
+  </div>
+
+  <!-- Liquid Glass：顶部胶囊分段控件 -->
+  <div class="ui segmented" id="segmented" role="tablist" aria-label="收藏类型">
+    <button type="button" class="is-active" role="tab" aria-selected="true">专辑</button>
+    <button type="button" role="tab" aria-selected="false">歌单</button>
+  </div>
+
+  <button class="ui-circle left" type="button" aria-label="播放列表">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <path d="M4 7h9M4 12h9M4 17h9"/><path d="M17 8.5v7.2a2.3 2.3 0 1 0 1.2 2"/>
+    </svg>
+  </button>
+  <button class="ui-circle right" type="button" aria-label="搜索">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20 20"/>
+    </svg>
+  </button>
+
+  <script src="./prototype.js"></script>
+</body>
+</html>

@@ -206,6 +206,8 @@ function readSavedLyricLayout() {
     }
     var savedBgColor = normalizeHexColor(raw.backgroundColor || '#000000', '#000000');
     var savedBgOpacity = clampRange(raw.backgroundOpacity == null ? fxDefaults.backgroundOpacity : Number(raw.backgroundOpacity), 0, 1);
+    var savedAlbumCardRadius = layoutInteger(raw.albumCardRadius, fxDefaults.albumCardRadius, 0, 32);
+    var savedMlibViewStyle = raw.mlibViewStyle === 'vinyl' ? 'vinyl' : 'grid';
     var savedWindowBgOpacity = clampRange(raw.windowBackgroundOpacity == null ? fxDefaults.windowBackgroundOpacity : Number(raw.windowBackgroundOpacity), 0, 1);
     var savedBgGlassOpacity = clampRange(raw.backgroundGlassOpacity == null ? fxDefaults.backgroundGlassOpacity : Number(raw.backgroundGlassOpacity), 0, 1);
     var savedBgCropX = layoutNumber(raw.backgroundMediaCropX, fxDefaults.backgroundMediaCropX, 0, 100);
@@ -306,6 +308,8 @@ function readSavedLyricLayout() {
       backgroundColorMode: savedBgCustom ? 'custom' : 'cover',
       backgroundColor: savedBgColor,
       backgroundOpacity: savedBgOpacity,
+      albumCardRadius: savedAlbumCardRadius,
+      mlibViewStyle: savedMlibViewStyle,
       windowBackgroundOpacity: savedWindowBgOpacity,
       backgroundGlassOpacity: savedBgGlassOpacity,
       controlGlassChromaticOffset: savedGlassOffset,
@@ -792,6 +796,8 @@ function saveLyricLayout(opts) {
       backgroundColorMode: fx.backgroundColorMode === 'custom' || fx.backgroundColorCustom ? 'custom' : 'cover',
       backgroundColor: normalizeHexColor(fx.backgroundColor || '#000000', '#000000'),
       backgroundOpacity: clampRange(fx.backgroundOpacity == null ? fxDefaults.backgroundOpacity : Number(fx.backgroundOpacity), 0, 1),
+      albumCardRadius: layoutInteger(fx.albumCardRadius, fxDefaults.albumCardRadius, 0, 32),
+      mlibViewStyle: fx.mlibViewStyle === 'vinyl' ? 'vinyl' : 'grid',
       windowBackgroundOpacity: clampRange(fx.windowBackgroundOpacity == null ? fxDefaults.windowBackgroundOpacity : Number(fx.windowBackgroundOpacity), 0, 1),
       backgroundGlassOpacity: clampRange(fx.backgroundGlassOpacity == null ? fxDefaults.backgroundGlassOpacity : Number(fx.backgroundGlassOpacity), 0, 1),
       controlGlassChromaticOffset: layoutNumber(fx.controlGlassChromaticOffset, fxDefaults.controlGlassChromaticOffset, 30, 140),

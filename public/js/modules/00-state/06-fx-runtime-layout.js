@@ -21,8 +21,23 @@ function readSavedPlaybackVisualPreset() {
 }
 var playbackVisualPreset = readSavedPlaybackVisualPreset();
 var startupVisualPreviewActive = false;
+// 资料库封面卡片圆角：写成一个 CSS 变量，由样式表消费。
+// 默认值与原样式一致（18px），所以不设置时外观完全不变。
+var MLIB_CARD_RADIUS_MIN = 0;
+var MLIB_CARD_RADIUS_MAX = 32;
+function normalizeMlibCardRadius(value) {
+  var n = value == null ? fxDefaults.albumCardRadius : Number(value);
+  if (!isFinite(n)) n = fxDefaults.albumCardRadius;
+  return Math.round(clampRange(n, MLIB_CARD_RADIUS_MIN, MLIB_CARD_RADIUS_MAX));
+}
+function applyMlibCardRadius(value) {
+  var radius = normalizeMlibCardRadius(value);
+  document.documentElement.style.setProperty('--mlib-card-radius', radius + 'px');
+  return radius;
+}
 var fx = Object.assign({}, fxDefaults, readSavedLyricLayout());
 normalizeDevelopmentLockedFxState();
+applyMlibCardRadius(fx.albumCardRadius);
 function clampPlaylistPanelFxSettings() {
   if (!fx) return;
   fx.playlistPanelGlassBlur = Math.round(clampRange(fx.playlistPanelGlassBlur == null ? fxDefaults.playlistPanelGlassBlur : Number(fx.playlistPanelGlassBlur), 14, 60));

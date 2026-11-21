@@ -60,6 +60,10 @@ var FX_CONSOLE_LAYOUT = [
         fxConsoleItem('fx-playlistdensity', '左栏遮挡', '歌单栏 密度 透明'),
         fxConsoleItem('fx-playlistopen', '左栏唤出', '打开速度 秒数'),
         fxConsoleItem('fx-playlistclose', '左栏收起', '关闭速度 秒数')
+      ] },
+      { key: 'library', title: '音乐资料库', hint: '资料库外观与视图风格', items: [
+        fxConsoleItem('fx-mlibradius', '专辑卡片圆角', '资料库 专辑 封面 圆角 方形'),
+        fxConsoleItem('mlib-view-style-seg', '视图风格', '网格 黑胶墙 3D 唱片 资料库')
       ] }
     ]
   },

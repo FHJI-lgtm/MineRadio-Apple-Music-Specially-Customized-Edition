@@ -1900,7 +1900,9 @@ body.music-library-leaving #music-library {
   position: relative;
   display: block;
   aspect-ratio: 1 / 1;
-  border-radius: 18px;
+  /* 圆角由视觉控制台「音乐资料库 → 专辑卡片圆角」写入的 CSS 变量决定。 */
+  /* 未设置时回落到 18px，与旧样式完全一致。 */
+  border-radius: var(--mlib-card-radius, 18px);
   background: rgba(255, 255, 255, .045);
   overflow: hidden;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .10);
@@ -2192,7 +2194,8 @@ html:not(.mlib-has-hover) .mlib-play-btn {
 .am-album-cover {
   position: relative;
   aspect-ratio: 1 / 1;
-  border-radius: 18px;
+  /* 与资料库卡片共用同一个圆角设置（视觉控制台 → 音乐资料库 → 专辑卡片圆角）。 */
+  border-radius: var(--mlib-card-radius, 18px);
   overflow: hidden;
   background: rgba(255, 255, 255, .05);
   box-shadow: 0 22px 60px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .10)
@@ -2213,7 +2216,8 @@ html:not(.mlib-has-hover) .mlib-play-btn {
   inset: 0;
   width: 100%;
   height: 100%;
-  border-radius: 18px;
+  /* 动态封面临时覆盖层必须与静态封面同圆角，否则切换时露边。 */
+  border-radius: var(--mlib-card-radius, 18px);
   object-fit: cover;
   display: block
 }
@@ -19857,3 +19861,270 @@ body.desktop-shell.desktop-wallpaper-mode.diy-mode #bottom-bar.stage-mode {
 }
 #empty-home .home-ss-name { display: flex; align-items: center; min-width: 0 }
 #empty-home .home-ss-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+/* ============================================================
+   资料库视图风格（黑胶墙）：薄板 · 一点透视 · 消失点在中央
+   ------------------------------------------------------------
+   与验收原型 public/lab/3d-album-wall 同一空间模型：
+     · 每张专辑是 w(纵深) × h(高) × t(厚) 的薄板，绕 Y 轴转 90° 站立；
+     · 沿 X 轴排成一排，舞台 perspective 正对，消失点在屏幕中央；
+     · 中间只剩书脊可见，越往两侧越能看到封面（投影几何，不是 carousel）；
+     · 下方地板倒影；离心越远越模糊越暗。
+   只在黑胶模式下作用于专辑/歌单两套网格；网格模式与艺人视图完全不受影响。
+   ============================================================ */
+/* 黑胶模式隐藏左侧原「专辑 / 艺人 / 歌单」入口，由顶部胶囊接管；音乐源保留 */
+#music-library.mlib-vinyl-style #mlib-nav-menu { display: none }
+
+/* ---------- 舞台：一点透视 ---------- */
+#music-library.mlib-vinyl-style #mlib-view-albums::after,
+#music-library.mlib-vinyl-style #mlib-view-playlists::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 34%;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(to top, rgba(6, 12, 15, .78), transparent)
+}
+#music-library.mlib-vinyl-style #mlib-view-albums,
+#music-library.mlib-vinyl-style #mlib-view-playlists {
+  position: relative;
+  height: clamp(440px, 62vh, 620px);
+  overflow: hidden;
+  perspective: 900px;
+  perspective-origin: 50% 50%
+}
+
+/* 网格在黑胶模式下退化成 3D 容器 */
+#music-library.mlib-vinyl-style #mlib-albums-grid,
+#music-library.mlib-vinyl-style #mlib-playlists-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+  padding: 0;
+  transform-style: preserve-3d
+}
+
+/* ---------- 薄板卡片 ---------- */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card {
+  --mlib-slab-w: 1000px;
+  --mlib-slab-h: 430px;
+  --mlib-slab-t: 34px;
+  --mlib-spine: #1b2a2e;
+  position: absolute;
+  left: calc(var(--mlib-slab-w) / -2);
+  top: calc(var(--mlib-slab-h) / -2);
+  width: var(--mlib-slab-w);
+  height: var(--mlib-slab-h);
+  transform-origin: 50% 50%;
+  transform-style: preserve-3d;
+  transition: none;
+  scroll-snap-align: none
+}
+
+/* 所有面共享：背面隐藏 + 统一光照变量 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-art,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-art,
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-back,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-back,
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-spine,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-spine,
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-far,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-far,
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-top,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-top,
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-bottom,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-bottom {
+  position: absolute;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  filter: brightness(calc(var(--mlib-light, 1) * var(--shade, 1))) blur(var(--mlib-blur, 0px));
+  overflow: hidden
+}
+
+/* 正面：复用原来的封面节点 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-art,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-art {
+  left: 0;
+  top: 0;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+  transform: translateZ(calc(var(--mlib-slab-t) / 2));
+  background: #101a1d;
+  --shade: 1
+}
+
+/* 背面：另一侧封面（水平镜像，保证两侧都看到封面正面） */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-back,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-back {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotateY(180deg) translateZ(calc(var(--mlib-slab-t) / 2));
+  background: #0f181b center/cover no-repeat;
+  --shade: .82
+}
+#music-library.mlib-vinyl-style .mlib-slab-back-inner {
+  position: absolute;
+  inset: 0;
+  background: center/cover no-repeat;
+  transform: scaleX(-1)
+}
+
+/* 书脊：朝向镜头的薄边，竖排粗体白字，底色取封面主色 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-spine,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-spine {
+  left: calc((var(--mlib-slab-w) - var(--mlib-slab-t)) / 2);
+  top: 0;
+  width: var(--mlib-slab-t);
+  height: 100%;
+  transform: rotateY(-90deg) translateZ(calc(var(--mlib-slab-w) / 2));
+  background:
+    linear-gradient(to right, rgba(0,0,0,.55), rgba(0,0,0,.12) 22%, rgba(255,255,255,.10) 50%, rgba(0,0,0,.14) 78%, rgba(0,0,0,.62)),
+    var(--mlib-spine);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10);
+  --shade: .92
+}
+#music-library.mlib-vinyl-style .mlib-slab-spine-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  line-height: 1;
+  color: rgba(255, 255, 255, .95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  max-height: 88%;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 3px 0
+}
+
+/* 远端薄边：纸边 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-far,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-far {
+  left: calc((var(--mlib-slab-w) - var(--mlib-slab-t)) / 2);
+  top: 0;
+  width: var(--mlib-slab-t);
+  height: 100%;
+  transform: rotateY(90deg) translateZ(calc(var(--mlib-slab-w) / 2));
+  background: linear-gradient(to right, #1b262a 0%, #38474a 16%, #d9d8cf 34%, #f1efe4 52%, #b7b6ac 72%, #1c2529 100%);
+  --shade: .9
+}
+
+/* 上下薄边 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-top,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-top {
+  left: 0;
+  top: calc((var(--mlib-slab-h) - var(--mlib-slab-t)) / 2);
+  width: 100%;
+  height: var(--mlib-slab-t);
+  transform: rotateX(90deg) translateZ(calc(var(--mlib-slab-h) / 2));
+  background: linear-gradient(to bottom, #2d3d42 0%, #4e6469 50%, #172126 100%);
+  --shade: .82
+}
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card .mlib-slab-bottom,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card .mlib-slab-bottom {
+  left: 0;
+  top: calc((var(--mlib-slab-h) - var(--mlib-slab-t)) / 2);
+  width: 100%;
+  height: var(--mlib-slab-t);
+  transform: rotateX(-90deg) translateZ(calc(var(--mlib-slab-h) / 2));
+  background: linear-gradient(to bottom, #0e171a 0%, #24333a 56%, #08100f 100%);
+  --shade: .46
+}
+
+/* 黑胶模式下标题由书脊承担，隐藏原卡片文字 */
+#music-library.mlib-vinyl-style #mlib-albums-grid > .mlib-album-card > .mlib-album-meta,
+#music-library.mlib-vinyl-style #mlib-playlists-grid > .mlib-album-card > .mlib-album-meta { display: none }
+
+/* ---------- 地板倒影（轻量镜像盒） ---------- */
+#music-library.mlib-vinyl-style .mlib-slab-reflection {
+  --mlib-slab-w: 1000px;
+  --mlib-slab-h: 430px;
+  --mlib-slab-t: 34px;
+  --mlib-spine: #1b2a2e;
+  position: absolute;
+  left: calc(var(--mlib-slab-w) / -2);
+  top: calc(var(--mlib-slab-h) / -2);
+  width: var(--mlib-slab-w);
+  height: var(--mlib-slab-h);
+  transform-origin: 50% 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  display: none
+}
+#music-library.mlib-vinyl-style .mlib-slab-reflection .mlib-slab-refl-front,
+#music-library.mlib-vinyl-style .mlib-slab-reflection .mlib-slab-refl-spine {
+  position: absolute;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: .30;
+  filter: brightness(calc(var(--mlib-light, 1) * .55)) blur(1.6px);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 74%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 74%)
+}
+#music-library.mlib-vinyl-style .mlib-slab-refl-front {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform: translateZ(calc(var(--mlib-slab-t) / 2));
+  background: center/cover no-repeat
+}
+#music-library.mlib-vinyl-style .mlib-slab-refl-spine {
+  left: calc((var(--mlib-slab-w) - var(--mlib-slab-t)) / 2);
+  top: 0;
+  width: var(--mlib-slab-t);
+  height: 100%;
+  transform: rotateY(-90deg) translateZ(calc(var(--mlib-slab-w) / 2));
+  background: var(--mlib-spine);
+  opacity: .22
+}
+
+/* ---------- 专辑 / 歌单 胶囊（沿用原 Liquid Glass 风格） ---------- */
+.mlib-vinyl-view-switch {
+  position: sticky;
+  top: 10px;
+  z-index: 8;
+  display: flex;
+  gap: 4px;
+  width: fit-content;
+  margin: 16px auto 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(18, 28, 31, .38);
+  border: 1px solid rgba(255, 255, 255, .18);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .18)
+}
+.mlib-vinyl-view-switch[hidden] { display: none }
+.mlib-vinyl-view-switch button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, .70);
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 9px 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .18s, color .18s
+}
+.mlib-vinyl-view-switch button.active {
+  background: rgba(255, 255, 255, .95);
+  color: #0f1f22
+}
+.mlib-vinyl-view-switch button:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px }
