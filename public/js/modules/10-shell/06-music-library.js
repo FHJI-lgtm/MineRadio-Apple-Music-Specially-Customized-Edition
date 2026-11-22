@@ -614,6 +614,13 @@
     MLIB_VIEWS.forEach(function (v) { sourceCounts(mlibActiveSource)[v] = ''; });
     // 状态文案也清掉：可能是上一个源留下的"共 N 位…"这类信息
     MLIB_VIEWS.forEach(function (v) { try { setViewState(v, ''); } catch (_) {} });
+    // 兜底：4s 后仍未解除 loading 的网格（已不再 busy）强制解除，避免 pointer-events:none 卡死点击
+    setTimeout(function () {
+      grids.forEach(function (id) {
+        var g = document.getElementById(id);
+        if (g && g.getAttribute('aria-busy') === 'false') g.classList.remove('mlib-view-loading');
+      });
+    }, 4000);
     // 各视图的"已加载"状态作废，强制重取
     artistsState.loaded = false; artistsState.source = '';
     playlistsState.loaded = false; playlistsState.source = '';
@@ -816,7 +823,13 @@
         });
         grid.innerHTML = parts.join('');
         Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
+        grid.classList.remove('mlib-view-loading');
         grid.setAttribute('aria-busy', 'false');
+        try {
+          if (typeof resetMlibSlabGrid === 'function' && typeof isMlibVinylActive === 'function' && isMlibVinylActive()) {
+            resetMlibSlabGrid(grid);
+          }
+        } catch (e) {}
       }
       setNavItemCount('artists', list.length ? String(list.length) : '');
       artistsState.loaded = true;
@@ -836,7 +849,7 @@
       clearTimeout(watchdog);
       if (seq !== artistsState.seq) return;
       artistsState.loading = false;
-      if (grid) grid.setAttribute('aria-busy', 'false');
+      if (grid) { grid.classList.remove('mlib-view-loading'); grid.setAttribute('aria-busy', 'false'); }
       setViewState('artists', '读取艺人失败：' + ((err && err.message) || '未知错误'), 'warn');
     });
   }
@@ -1166,7 +1179,13 @@
       if (grid) {
         grid.innerHTML = list.map(playlistCardHtml).join('');
         Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
+        grid.classList.remove('mlib-view-loading');
         grid.setAttribute('aria-busy', 'false');
+        try {
+          if (typeof resetMlibSlabGrid === 'function' && typeof isMlibVinylActive === 'function' && isMlibVinylActive()) {
+            resetMlibSlabGrid(grid);
+          }
+        } catch (e) {}
       }
       setNavItemCount('playlists', list.length ? String(list.length) : '');
       playlistsState.loaded = true;
@@ -1178,7 +1197,7 @@
     }).catch(function (err) {
       if (seq !== playlistsState.seq) return;
       playlistsState.loading = false;
-      if (grid) grid.setAttribute('aria-busy', 'false');
+      if (grid) { grid.classList.remove('mlib-view-loading'); grid.setAttribute('aria-busy', 'false'); }
       setViewState('playlists', '读取歌单失败：' + ((err && err.message) || '未知错误'), 'warn');
     });
   }
