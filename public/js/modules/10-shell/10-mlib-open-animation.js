@@ -647,7 +647,6 @@ var MLIB_OA_TAIL = 350;
         }
         return j;
       })
-      .then(function (r) { return r.json(); })
       .then(function (j) {
         src.error = String((j && (j.error || j.reason)) || '');
         src.tracks = ((j && (j.songs || j.tracks)) || []).map(normalizeSong);
