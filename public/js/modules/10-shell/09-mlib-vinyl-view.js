@@ -396,7 +396,12 @@ function resetMlibSlabGrid(grid) {
   state.cards = mlibSlabCards(grid);
   state.reflections.forEach(function (r) { if (r && r.parentNode) r.parentNode.removeChild(r); });
   state.reflections = [];
-  state.pos = Math.floor(state.cards.length / 2);
+  // 从第一张专辑开始：把第 0 张放到画面左侧（而不是居中），整排向右侧延伸
+  var stage0 = mlibSlabStageOf(grid);
+  var viewW = stage0 ? stage0.clientWidth : window.innerWidth;
+  var sp0 = mlibSlabMetrics(grid).spacing || 96;
+  var startPos = Math.max(0, Math.round((viewW * 0.42) / sp0));
+  state.pos = Math.min(startPos, Math.max(0, state.cards.length - 1));
   state.velocity = 0;
   if (state.cards.length) mlibSlabRender(grid);
 }
