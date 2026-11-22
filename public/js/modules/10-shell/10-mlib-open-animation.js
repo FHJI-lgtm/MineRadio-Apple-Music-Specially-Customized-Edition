@@ -807,10 +807,28 @@ var MLIB_OA_TAIL = 350;
     try { begin(grid, card); } catch (e) { cleanup(); }
   }, true);
 
-  // 切源 / 切视图时立刻收掉动画与面板，避免停留在半途（封面悬空、书架推空）
+  // 切源 / 切视图：收掉动画与面板，并把薄板的 3D 面与反光全部拆掉重建。
+  // 只收动画不够 —— 卡片重渲染后旧面片/反光失去 inline transform，会按默认尺寸铺成巨幅封面。
+  function teardownWalls() {
+    if (typeof teardownMlibSlabGrid !== 'function') return;
+    ['mlib-albums-grid', 'mlib-playlists-grid'].forEach(function (id) {
+      var g = document.getElementById(id);
+      if (!g) return;
+      try { teardownMlibSlabGrid(g); } catch (e) {}
+    });
+  }
   function abortAll() {
     if (busy || overlay) { closeDetail(); }
+    teardownWalls();
   }
+  // 源变化兜底（有些切换不经过导航点击）
+  var lastSourceSeen = null;
+  setInterval(function () {
+    var cur = null;
+    try { cur = currentProvider(); } catch (e) { return; }
+    if (lastSourceSeen === null) { lastSourceSeen = cur; return; }
+    if (cur !== lastSourceSeen) { lastSourceSeen = cur; abortAll(); }
+  }, 800);
   document.addEventListener('click', function (event) {
     var t = event.target;
     if (!t || !t.closest) return;
