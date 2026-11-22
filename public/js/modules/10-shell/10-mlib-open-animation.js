@@ -747,11 +747,6 @@ var MLIB_OA_TAIL = 350;
     if (target.closest('.mlib-play-btn')) return;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
-    // 非 Apple 源暂缓：直接用应用原有的旧详情页（各源取数已验证），
-    // 新面板先在 Apple 上稳定，再逐个源接入。
-    var cardId = String(card.getAttribute('data-album-id') || card.getAttribute('data-mlib-playlist-id') || '');
-    var prov = providerOfId(cardId) || currentProvider();
-    if (prov !== 'apple') return;
     // 黑胶模式由新详情面板接管：阻止应用自己的旧详情处理器
     event.preventDefault();
     event.stopPropagation();
