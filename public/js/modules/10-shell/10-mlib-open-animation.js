@@ -658,6 +658,7 @@ var MLIB_OA_TAIL = 350;
   }
 
   function loadPanelData(src) {
+    var enc = encodeURIComponent;
     var tracksUrl = src.isPlaylist
       ? playlistTracksUrl(src.provider, src.id)
       : albumTracksUrl(src.provider, src.id);
@@ -666,46 +667,74 @@ var MLIB_OA_TAIL = 350;
         .then(function (r) { return r.json(); })
         .catch(function () { return { error: 'NETWORK' }; });
     }
-    return fetchJson(tracksUrl)
-      .then(function (j) {
-        if (j && j.error && !((j.tracks || j.songs || []).length)) {
-          return new Promise(function (res) { setTimeout(res, 600); }).then(function () { return fetchJson(tracksUrl); });
-        }
-        return j;
-      })
-      .then(function (j) {
-        src.error = String((j && (j.error || j.reason)) || '');
-        src.tracks = ((j && (j.songs || j.tracks)) || []).map(normalizeSong);
-        src.total = Number(j && (j.total || src.tracks.length)) || src.tracks.length;
-        if (!src.isPlaylist && src.provider === 'apple') {
-          return fetch('/api/apple/library/album/notes?id=' + encodeURIComponent(src.id), { credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (n) {
-              var an = n && n.albumNotes;
-              var notes = an && an.editorialNotes;
-              var text = '';
-              if (typeof notes === 'string') text = notes;
-              else if (notes && typeof notes === 'object') text = String(notes.standard || notes.short || '');
-              if (!text && an && typeof an.description === 'string') text = an.description;
-              // 去 HTML 标签 + 解基本实体 + 折叠空白（与旧弹窗 stripEditorialHtml 等价的最小实现）
-              text = String(text || '')
-                .replace(/<br\s*\/?>/gi, ' ')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/&nbsp;/gi, ' ')
-                .replace(/&amp;/gi, '&')
-                .replace(/&quot;/gi, '"')
-                .replace(/&#39;/gi, "'")
-                .replace(/\s+/g, ' ')
-                .trim();
-              src.desc = text;
-            })
-            .catch(function () {});
-        }
-      })
-      .catch(function () {})
-      .then(function () { src.ready = true; return src; });
+    function artistOf() {
+      return String(src.sub || '').split('·')[0].trim();
+    }
+    function cleanText(raw) {
+      return String(raw || '')
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    function applyNotes(an) {
+      if (!an) return;
+      var notes = an.editorialNotes;
+      var text = '';
+      if (typeof notes === 'string') text = notes;
+      else if (notes && typeof notes === 'object') text = String(notes.standard || notes.short || '');
+      if (!text && typeof an.description === 'string') text = an.description;
+      if (!src.desc) src.desc = cleanText(text);
+    }
+    function loadNotes() {
+      if (src.provider !== 'apple' || src.isPlaylist) return Promise.resolve();
+      return fetchJson('/api/apple/library/album/notes?id=' + enc(src.id))
+        .then(function (n) { applyNotes(n && n.albumNotes); })
+        .catch(function () {});
+    }
+    function parseTracks(j) {
+      src.error = String((j && (j.error || j.reason)) || '');
+      src.tracks = ((j && (j.songs || j.tracks || j.verified)) || []).map(normalizeSong);
+      src.total = Number(j && (j.total || src.tracks.length)) || src.tracks.length;
+    }
+    function loadTracksEndpoint() {
+      return fetchJson(tracksUrl)
+        .then(function (j) {
+          if (j && j.error && !((j.tracks || j.songs || []).length)) {
+            return new Promise(function (res) { setTimeout(res, 600); }).then(function () { return fetchJson(tracksUrl); });
+          }
+          return j;
+        })
+        .then(parseTracks)
+        .catch(function () {});
+    }
+    // Apple 专辑：优先走旧详情页同款「重建」接口（本地归组 + catalog 归属校验），
+    // 它能把资料库里没保存的曲目一并补全（例如 6 首里只存了 2 首）；失败才退回 /tracks。
+    var rebuild = (src.provider === 'apple' && !src.isPlaylist && src.id)
+      ? fetchJson('/api/apple/library/album/rebuilt?id=' + enc(src.id)
+          + '&name=' + enc(src.title || '') + '&artist=' + enc(artistOf()))
+      : Promise.resolve(null);
+    return rebuild.then(function (rb) {
+      var ok = rb && rb.ok && Array.isArray(rb.verified) && rb.verified.length;
+      if (ok) {
+        src.tracks = rb.verified.map(normalizeSong);
+        src.total = src.tracks.length;
+        src.rebuilt = true;
+        if (rb.albumNotes) applyNotes(rb.albumNotes);
+        return loadNotes();
+      }
+      return loadTracksEndpoint().then(loadNotes);
+    }).catch(function () {
+      return loadTracksEndpoint().then(loadNotes);
+    }).then(function () {
+      src.ready = true;
+      return src;
+    });
   }
-
   function begin(grid, card, freezeP) {
     if (busy || !grid || !card) return;
     var ids = modalIdsFor(grid);
