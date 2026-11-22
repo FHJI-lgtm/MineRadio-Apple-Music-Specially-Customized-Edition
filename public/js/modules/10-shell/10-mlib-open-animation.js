@@ -18,6 +18,18 @@ var MLIB_OA_TAIL = 350;
   // 默认开启；需要临时关闭时调用 window.__mlibOpenAnimEnable(false)
   if (window.__mlibOpenAnimEnabled == null) window.__mlibOpenAnimEnabled = true;
   var busy = false;
+  var oaPhase = 'closed';
+  function srcTitleSafe() { try { return panelSource ? panelSource.title : ''; } catch (e) { return ''; } }
+  function oaLog(tag, extra) {
+    try {
+      var rec = Object.assign({ t: Date.now(), tag: tag, phase: oaPhase }, extra || {});
+      window.__mlibOaLog = window.__mlibOaLog || [];
+      window.__mlibOaLog.push(rec);
+      if (window.__mlibOaLog.length > 400) window.__mlibOaLog.shift();
+      console.info('[oa] ' + tag + ' ' + JSON.stringify(rec));
+    } catch (e) {}
+  }
+  window.__mlibOaOpening = function () { return !!busy && oaPhase === 'opening'; };
   var overlay = null;
   var coverEl = null;
   var chromeEl = null;
@@ -36,6 +48,7 @@ var MLIB_OA_TAIL = 350;
   var coverTarget = null;
   var freezeAt = null;
   var panelSource = null;
+  var heroCard = null;
   var rafId = 0;
 
   function clamp01(v) { return Math.max(0, Math.min(1, v)); }
@@ -227,6 +240,7 @@ var MLIB_OA_TAIL = 350;
   }
 
   function buildOverlay(card, rect) {
+    _oaBuilt = true;
     overlay = document.createElement('div');
     overlay.className = 'mlib-oa';
     bgEl = document.createElement('div');
@@ -289,7 +303,10 @@ var MLIB_OA_TAIL = 350;
     el.style.height = r.height + 'px';
   }
 
+  var __oaMilestone = -1;
   function applyP(p) {
+    var ms = Math.floor(p * 4);
+    if (ms !== __oaMilestone) { __oaMilestone = ms; oaLog('progress', { p: Math.round(p * 100) / 100 }); }
     var pp = Math.max(0, Math.min(1.25, p));
     // 邻居：以被点专辑为中心推开，距离成正比；越远越淡越模糊
     var nk = easeOutCubic(clamp01(pp / 0.3));
@@ -610,17 +627,23 @@ var MLIB_OA_TAIL = 350;
     close.type = 'button';
     close.setAttribute('aria-label', '关闭');
     close.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-    close.addEventListener('click', closeDetail);
+    close.addEventListener('click', function () { startClosing('user'); });
 
     overlay.appendChild(detail);
     overlay.appendChild(close);
     overlay.classList.add('is-detail');
     overlay.style.opacity = '1';
+    oaPhase = 'opened';
+    oaLog('panel-built', { tracks: src.tracks.length });
     busy = false;
   }
 
   function showDetail() {
-    if (!overlay) { cleanup(); return; }
+    if (!overlay) { return; }
+    if (panelSource && panelSource.ready) { buildDetailPanel(); return; }
+    buildDetailPanel();   // 乐观展开：先用骨架占位，数据到了再填充
+    return;
+    /* 旧逻辑（等待数据）已移除 */
     if (panelSource && panelSource.ready) { buildDetailPanel(); return; }
     // 数据还没到：等一小会儿（最多 ~4s），到齐或超时都构建
     var waited = 0;
@@ -635,9 +658,37 @@ var MLIB_OA_TAIL = 350;
     cleanup();
   }
 
+  var _oaBuilt = false;
+  var _pendingReset = null;
+  window.__mlibOaSuspendResets = function () { return oaPhase === 'opening' || oaPhase === 'opened' || oaPhase === 'closing'; };
+  window.__mlibOaPendingReset = function (fn) { _pendingReset = fn; };
+  function startClosing(reason) {
+    if (oaPhase !== 'opening' && oaPhase !== 'opened') return;
+    oaPhase = 'closing';
+    oaLog('closing', { reason: reason || '' });
+    cleanup();
+  }
+  window.__mlibOaClose = function () { startClosing('user'); };
+  window.__mlibOaShowError = function (msg) { var l = overlay && overlay.querySelector('.mlib-oa-tracks'); if (l) { l.innerHTML = '<div class="am-album-status" data-tone="warn">' + msg + '</div>'; } };
+  window.__mlibOaRefresh = function () {
+    try {
+      ['mlib-oa-detail', 'mlib-oa-close', 'mlib-oa-scrim'].forEach(function (cls) {
+        var n = overlay && overlay.querySelectorAll('.' + cls);
+        if (n) for (var i = 0; i < n.length; i += 1) n[i].parentNode.removeChild(n[i]);
+      });
+    } catch (e) {}
+    buildDetailPanel(true);
+  };
   function cleanup() {
+    if (oaPhase !== 'closing' && oaPhase !== 'closed' && oaPhase !== 'timeout-cleanup') { console.error('[oa] cleanup() called outside closing', oaPhase); }
+    if (gridRef && gridRef.__mlibOaWatchdog) { clearTimeout(gridRef.__mlibOaWatchdog); gridRef.__mlibOaWatchdog = 0; }
+    window.__mlibOaActiveId = 0;
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    overlay = null; coverEl = null; chromeEl = null; bgEl = null;
+    overlay = null;
+    _oaBuilt = false;
+    try { if (heroCard) { heroCard.style.visibility = ''; } } catch (e) {}
+    heroCard = null;
+    if (_pendingReset) { var fn0 = _pendingReset; _pendingReset = null; try { fn0(); } catch (e) {} } coverEl = null; chromeEl = null; bgEl = null;
     document.body.classList.remove('mlib-opening');
     for (var i = 0; i < neighborCards.length; i += 1) {
       var card = neighborCards[i];
@@ -834,13 +885,21 @@ var MLIB_OA_TAIL = 350;
       return src;
     });
   }
+  var openSeq = 0;
   function begin(grid, card, freezeP) {
-    if (busy || !grid || !card) return;
+    if (!grid || !card) return;
+    // phase 守卫：opening/opened 期间不允许再次 begin（④ 只改这一处行为）
+    if (oaPhase === 'opening' || oaPhase === 'opened') return;
+    if (busy) return;
+    var openId = ++openSeq;
+    window.__mlibOaActiveId = openId;
     var ids = modalIdsFor(grid);
     modalEl = document.getElementById(ids.modal);
     coverTarget = document.getElementById(ids.cover);
     if (!modalEl || !coverTarget) return;
     busy = true;
+    oaPhase = 'opening';
+    oaLog('begin', { src: srcTitleSafe() });
     freezeAt = freezeP == null ? null : freezeP;
     spineColor = card.style.getPropertyValue('--mlib-spine') || '#1b2a2e';
     var img = card.querySelector('.mlib-art img');
@@ -850,6 +909,8 @@ var MLIB_OA_TAIL = 350;
     var spineEl = card.querySelector('.mlib-slab-spine');
     var spineRect = spineEl ? spineEl.getBoundingClientRect() : cardRect;
     startRect = { left: spineRect.left, top: spineRect.top, width: Math.max(40, spineRect.width), height: spineRect.height };
+    heroCard = card;
+    if (!freezeP) { try { card.style.visibility = 'hidden'; } catch (e) {} }
     side = (cardRect.left + cardRect.width / 2) < window.innerWidth / 2 ? 1 : -1;
     spacing = (typeof mlibSlabMetrics === 'function' ? mlibSlabMetrics(grid).spacing : 96) || 96;
     var cards = cardsOf(grid);
@@ -862,13 +923,23 @@ var MLIB_OA_TAIL = 350;
     }
     panelSource = panelSourceOf(grid, card);
     loadPanelData(panelSource);
-    setTimeout(function () {
-      if (!overlay && busy) { cleanup(); }
-    }, 1600);
+    (function () {
+      var wd = setTimeout(function () {
+        if (openId !== window.__mlibOaActiveId) return;
+        if (overlay && _oaBuilt) return;          // 覆盖层已建起：动画正常，不干预
+        oaLog('watchdog-fire');
+        startClosing('动画未能启动');
+      }, 1600);
+      grid.__mlibOaWatchdog = wd;
+    })();
     // 硬兜底：无论数据/面板是否成功，最多 6s 后必须结束（清理并恢复书架）
+    // 数据超时：右侧置错误占位，保持展开，绝不 cleanup
     setTimeout(function () {
-      if (busy) { cleanup(); }
-    }, 6000);
+      if (openId !== window.__mlibOaActiveId) return;
+      if (oaPhase !== 'opening' && oaPhase !== 'opened') return;
+      oaLog('data-timeout');
+      try { if (window.__mlibOaShowError) window.__mlibOaShowError('曲目加载超时'); } catch (e) {}
+    }, 8000);
     
     (function () {
       var pr = panelRect();

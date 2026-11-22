@@ -419,6 +419,14 @@ function teardownMlibSlabGrid(grid) {
 
 function resetMlibSlabGrid(grid) {
   if (!grid) return;
+  // 展开期间挂起书架重建（置 pendingReset，收起后补跑一次）
+  try {
+    if (window.__mlibOaSuspendResets && window.__mlibOaSuspendResets()) {
+      if (window.__mlibOaPendingReset) window.__mlibOaPendingReset(function () { resetMlibSlabGrid(grid); });
+      return;
+    }
+  } catch (e) {}
+  try { if (window.__mlibOaOpening && window.__mlibOaOpening()) console.trace('[oa] resetMlibSlabGrid during opening'); } catch (e) {}
   var state = mlibSlabState(grid);
   sweepMlibSlabParts();
   state.cards = mlibSlabCards(grid);
