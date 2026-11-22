@@ -712,6 +712,10 @@ var MLIB_OA_TAIL = 350;
     setTimeout(function () {
       if (!overlay && busy) { cleanup(); }
     }, 1600);
+    // 硬兜底：无论数据/面板是否成功，最多 6s 后必须结束（清理并恢复书架）
+    setTimeout(function () {
+      if (busy) { cleanup(); }
+    }, 6000);
     
     (function () {
       var pr = panelRect();
@@ -743,6 +747,10 @@ var MLIB_OA_TAIL = 350;
     if (target.closest('.mlib-play-btn')) return;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
+    // 仅 Apple 使用新详情面板；其他源沿用旧详情页（旧页对非 Apple 源已适配）
+    var cardId = String(card.getAttribute('data-album-id') || card.getAttribute('data-mlib-playlist-id') || '');
+    var prov = providerOfId(cardId) || currentProvider();
+    if (prov !== 'apple') return;
     // 黑胶模式由新详情面板接管：阻止应用自己的旧详情处理器
     event.preventDefault();
     event.stopPropagation();
