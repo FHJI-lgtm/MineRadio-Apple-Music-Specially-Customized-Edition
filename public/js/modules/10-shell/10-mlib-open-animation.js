@@ -456,7 +456,7 @@ var MLIB_OA_TAIL = 350;
     if (!src.tracks.length) {
       var empty = document.createElement('div');
       empty.className = 'am-album-status';
-      empty.textContent = src.ready ? '没有可显示的曲目' : '曲目加载中…';
+      empty.textContent = !src.ready ? '曲目加载中…' : (src.error ? ('曲目加载失败：' + src.error) : '没有可显示的曲目');
       list.appendChild(empty);
     }
     if (src.tracks.length && typeof window.playSongsInApp === 'function') {
@@ -575,23 +575,29 @@ var MLIB_OA_TAIL = 350;
     catch (e) { return 'apple'; }
   }
   function stripSourcePrefix(id) { return String(id || '').replace(/^(ne|kg|qq|qs|sp|am):/i, ''); }
+  function providerOfId(id) {
+    var m = /^(ne|kg|qq|qs|sp):/i.exec(String(id || ''));
+    if (!m) return null;
+    return ({ ne: 'netease', kg: 'kugou', qq: 'qq', qs: 'qishui', sp: 'spotify' })[m[1].toLowerCase()] || null;
+  }
+  // 旧详情页直接把**带前缀的 id**交给接口（服务端各自剥前缀）；这里保持一致
   function albumTracksUrl(provider, id) {
-    var k = stripSourcePrefix(id);
-    if (provider === 'apple') return '/api/apple/library/album/tracks?id=' + encodeURIComponent(id) + '&limit=100';
-    if (provider === 'kugou') return '/api/kugou/library/album/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'qq') return '/api/qq/library/album/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'qishui') return '/api/qishui/library/album/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'spotify') return '/api/spotify/library/album/tracks?id=' + encodeURIComponent(k);
-    return '/api/netease/library/album/tracks?id=' + encodeURIComponent(k);
+    var enc = encodeURIComponent(id);
+    if (provider === 'apple') return '/api/apple/library/album/tracks?id=' + enc + '&limit=100';
+    if (provider === 'kugou') return '/api/kugou/library/album/tracks?id=' + enc;
+    if (provider === 'qq') return '/api/qq/library/album/tracks?id=' + enc;
+    if (provider === 'qishui') return '/api/qishui/library/album/tracks?id=' + enc;
+    if (provider === 'spotify') return '/api/spotify/library/album/tracks?id=' + enc;
+    return '/api/netease/library/album/tracks?id=' + enc;
   }
   function playlistTracksUrl(provider, id) {
-    var k = stripSourcePrefix(id);
-    if (provider === 'apple') return '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
-    if (provider === 'kugou') return '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'qq') return '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'qishui') return '/api/qishui/library/playlist/tracks?id=' + encodeURIComponent(k);
-    if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + encodeURIComponent(k);
-    return '/api/playlist/tracks?id=' + encodeURIComponent(k);
+    var enc = encodeURIComponent(id);
+    if (provider === 'apple') return '/api/apple/playlist/tracks?id=' + enc + '&all=1';
+    if (provider === 'kugou') return '/api/kugou/library/playlist/tracks?id=' + enc;
+    if (provider === 'qq') return '/api/qq/library/playlist/tracks?id=' + enc;
+    if (provider === 'qishui') return '/api/qishui/library/playlist/tracks?id=' + enc;
+    if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + enc;
+    return '/api/playlist/tracks?id=' + encodeURIComponent(stripSourcePrefix(id));
   }
   function normalizeSong(t, i) {
     var dur = Number(t && (t.duration || t.durationMs || t.dt || 0)) || 0;
@@ -612,7 +618,7 @@ var MLIB_OA_TAIL = 350;
     var sub = subEl ? String(subEl.textContent || '').trim() : '';
     return {
       isPlaylist: isPlaylist,
-      provider: currentProvider(),
+      provider: providerOfId(isPlaylist ? String(card.getAttribute('data-mlib-playlist-id') || '') : String(card.getAttribute('data-album-id') || '')) || currentProvider(),
       id: isPlaylist ? String(card.getAttribute('data-mlib-playlist-id') || '') : String(card.getAttribute('data-album-id') || ''),
       title: title,
       sub: sub,
@@ -632,6 +638,7 @@ var MLIB_OA_TAIL = 350;
     return fetch(tracksUrl, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
+        src.error = String((j && (j.error || j.reason)) || '');
         src.tracks = ((j && (j.songs || j.tracks)) || []).map(normalizeSong);
         src.total = Number(j && (j.total || src.tracks.length)) || src.tracks.length;
         if (!src.isPlaylist && src.provider === 'apple') {
