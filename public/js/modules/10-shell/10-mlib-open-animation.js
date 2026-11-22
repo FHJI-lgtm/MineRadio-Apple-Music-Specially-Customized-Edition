@@ -304,8 +304,14 @@ var MLIB_OA_TAIL = 350;
   }
   function toast(msg) { if (typeof showToast === 'function') showToast(msg); }
   function playAlbumStart(src) {
+    // 非 Apple：一律交给 Mineradio 自己的播放器，绝不碰 AMC/UIA
+    if (src.provider !== 'apple') {
+      if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, 0, src.provider, src.title);
+      else toast('播放器尚未就绪');
+      return;
+    }
     var amc = amcBridge();
-    if (src.provider === 'apple' && amc && typeof amc.playAlbum === 'function') {
+    if (amc && typeof amc.playAlbum === 'function') {
       toast('正在让 Apple Music 播放：' + src.title);
       Promise.resolve(amc.playAlbum({ name: src.title, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
@@ -315,9 +321,15 @@ var MLIB_OA_TAIL = 350;
     if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, 0, src.provider, src.title);
   }
   function playAlbumTrack(src, index) {
+    // 非 Apple：交给 Mineradio 播放器，并指定起始曲目
+    if (src.provider !== 'apple') {
+      if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, index, src.provider, src.title);
+      else toast('播放器尚未就绪');
+      return;
+    }
     var trackName = String((src.tracks[index] && (src.tracks[index].name || src.tracks[index].title)) || '');
     var amc = amcBridge();
-    if (src.provider === 'apple' && amc && typeof amc.playAlbum === 'function') {
+    if (amc && typeof amc.playAlbum === 'function') {
       toast('正在让 Apple Music 播放：' + trackName);
       Promise.resolve(amc.playAlbum({ name: src.title, track: trackName, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放：' + trackName : 'Apple Music 未确认播放：' + trackName); })
@@ -327,9 +339,23 @@ var MLIB_OA_TAIL = 350;
     if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, index, src.provider, src.title);
   }
   function playPlaylistStart(src, shuffled) {
+    // 非 Apple：歌单（含随机）全部交给 Mineradio 播放器
+    if (src.provider !== 'apple') {
+      if (typeof window.playSongsInApp === 'function') {
+        var arr0 = src.tracks.slice();
+        if (shuffled) {
+          for (var s0 = arr0.length - 1; s0 > 0; s0 -= 1) {
+            var r0 = Math.floor(Math.random() * (s0 + 1));
+            var tmp0 = arr0[s0]; arr0[s0] = arr0[r0]; arr0[r0] = tmp0;
+          }
+        }
+        window.playSongsInApp(arr0, 0, src.provider, src.title + (shuffled ? ' · 随机' : ''));
+      } else toast('播放器尚未就绪');
+      return;
+    }
     var amc = amcBridge();
     var fn = shuffled ? (amc && amc.playPlaylistShuffled) : (amc && amc.playPlaylist);
-    if (src.provider === 'apple' && typeof fn === 'function') {
+    if (typeof fn === 'function') {
       toast('正在让 Apple Music 播放：' + src.title + (shuffled ? '（随机）' : ''));
       Promise.resolve(fn.call(amc, { name: src.title, scopeLabel: '你的资料库' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
