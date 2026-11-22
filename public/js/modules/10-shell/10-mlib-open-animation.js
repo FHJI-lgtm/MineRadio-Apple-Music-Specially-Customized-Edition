@@ -818,8 +818,8 @@ var MLIB_OA_TAIL = 350;
     });
   }
   function abortAll() {
+    // 只收动画/面板；不再拆墙 —— 拆掉 transform 而不重建会让旧卡片失去 3D 摆放（失败源时尤其明显）
     if (busy || overlay) { closeDetail(); }
-    teardownWalls();
   }
   // 源变化兜底（有些切换不经过导航点击）
   var lastSourceSeen = null;
