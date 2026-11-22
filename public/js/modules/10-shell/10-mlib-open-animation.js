@@ -747,15 +747,22 @@ var MLIB_OA_TAIL = 350;
     if (target.closest('.mlib-play-btn')) return;
     var grid = card.closest('#mlib-albums-grid, #mlib-playlists-grid');
     if (!grid) return;
-    // 仅 Apple 使用新详情面板；其他源沿用旧详情页（旧页对非 Apple 源已适配）
-    var cardId = String(card.getAttribute('data-album-id') || card.getAttribute('data-mlib-playlist-id') || '');
-    var prov = providerOfId(cardId) || currentProvider();
-    if (prov !== 'apple') return;
     // 黑胶模式由新详情面板接管：阻止应用自己的旧详情处理器
     event.preventDefault();
     event.stopPropagation();
     try { begin(grid, card); } catch (e) { cleanup(); }
   }, true);
+
+  // 切源 / 切视图时立刻收掉动画与面板，避免停留在半途（封面悬空、书架推空）
+  function abortAll() {
+    if (busy || overlay) { closeDetail(); }
+  }
+  document.addEventListener('click', function (event) {
+    var t = event.target;
+    if (!t || !t.closest) return;
+    if (t.closest('#mlib-nav-children-source .mlib-nav-item') || t.closest('#mlib-nav-children-views .mlib-nav-item')) abortAll();
+  }, true);
+  window.addEventListener('mlib:source-changed', abortAll);
 
   window.__mlibOpenAnimEnable = function (on) { window.__mlibOpenAnimEnabled = on !== false; return window.__mlibOpenAnimEnabled; };
 
