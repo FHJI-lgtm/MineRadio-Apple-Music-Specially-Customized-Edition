@@ -138,6 +138,7 @@
       var list = Array.isArray(albums) ? albums : [];
       grid.innerHTML = list.map(albumCardHtml).join('');
       Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
+      grid.classList.remove('mlib-view-loading');
       grid.setAttribute('aria-busy', 'false');
       // 黑胶墙：渲染完成即显式重建薄板（观察器只作外部重建兜底）
       try {
@@ -147,6 +148,7 @@
       } catch (e) {}
       try {
         var sc2 = document.getElementById('music-library-scroll');
+        try { var scv = document.getElementById('music-library-scroll'); if (scv) scv.scrollTop = Math.max(0, Math.min(scv.scrollTop, scv.scrollHeight - scv.clientHeight)); } catch (e) {}
         swLog('section:render-after', { rows: list.length,
           gridCards: grid.querySelectorAll('.mlib-album-card').length,
           gridH: Math.round(grid.getBoundingClientRect().height),
@@ -169,6 +171,13 @@
       if (!picked.total) {
         setState((data && (data.error || data.message)) || '资料库里还没有可显示的专辑。',
           (data && data.error) ? 'warn' : '');
+        if (grid) {
+          grid.classList.remove('mlib-view-loading');
+          grid.innerHTML = '<div class="mlib-empty">' + ((data && (data.error || data.message)) || '资料库里还没有可显示的专辑。') + '</div>';
+          if (typeof resetMlibSlabGrid === 'function' && typeof isMlibVinylActive === 'function' && isMlibVinylActive()) {
+            try { resetMlibSlabGrid(grid); } catch (e) {}
+          }
+        }
         state.loaded = true;
         return;
       }
@@ -193,7 +202,13 @@
       state.loading = false;
       setState('读取资料库索引失败：' + (err && err.message ? err.message : '未知错误'), 'warn');
       var grid = gridEl();
-      if (grid) grid.setAttribute('aria-busy', 'false');
+      if (grid) {
+        grid.classList.remove('mlib-view-loading');
+        grid.setAttribute('aria-busy', 'false');
+        if (!grid.querySelectorAll('.mlib-album-card, .mlib-artist-card, .mlib-playlist-card').length) {
+          grid.innerHTML = '<div class="mlib-empty">读取资料库索引失败，可重试切换源。</div>';
+        }
+      }
     }
 
     return { apply: apply, begin: begin, fail: fail, render: render, setState: setState, state: state };
@@ -303,6 +318,7 @@
       gridH: __grid ? Math.round(__grid.getBoundingClientRect().height) : -1,
       scrollTop: __scroll ? Math.round(__scroll.scrollTop) : -1 });
     return fetchLibraryIndex(requestedSource).then(function (data) {
+      if (__rid !== __albumsReqSeq) { swLog('load:stale-drop', { rid: __rid, latest: __albumsReqSeq }); return data; }
       swLog('load:data', { rid: __rid, src: requestedSource, current: mlibActiveSource,
         albums: (data && Array.isArray(data.albums)) ? data.albums.length : -1,
         changed: data ? data.changed : null, dropped: requestedSource !== mlibActiveSource });
@@ -582,9 +598,15 @@
     grids.forEach(function (id) {
       var g = document.getElementById(id);
       if (g) {
-        // 骨架屏：与项目既有的加载观感一致（专辑详情用的是 .am-album-skeleton）
-        g.innerHTML = '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>' +
-          '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>';
+        var hadCards = g.querySelectorAll('.mlib-album-card, .mlib-artist-card, .mlib-playlist-card').length > 0;
+        if (hadCards) {
+          // 保留旧书架：半透明 + 禁点，等新数据到达再整体替换（避免 loading 期间空白）
+          g.classList.add('mlib-view-loading');
+        } else {
+          // 首次进入 / 本来就是空的：用骨架占位
+          g.innerHTML = '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>' +
+            '<div class="mlib-skeleton"></div><div class="mlib-skeleton"></div>';
+        }
         g.setAttribute('aria-busy', 'true');
       }
     });

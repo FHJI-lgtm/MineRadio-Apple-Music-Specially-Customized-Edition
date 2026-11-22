@@ -20309,3 +20309,9 @@ body.mlib-opening #am-playlist-detail-modal {
 .mlib-oa-tracks .am-album-track { cursor: pointer }
 /* 未完成初始化的薄板部件默认不显示：漏清理时最多看不见，不会铺成巨幅封面 */
 [data-mlib-slab-part="1"]:not([data-mlib-slab-ready="1"]) { display: none !important }
+
+/* 切源 loading：保留旧书架但半透明、禁点，避免空白闪烁 */
+#mlib-albums-grid.mlib-view-loading, #mlib-playlists-grid.mlib-view-loading, #mlib-artists-grid.mlib-view-loading {
+  opacity: .45; pointer-events: none; transition: opacity .18s ease
+}
+.mlib-empty { padding: 48px 24px; text-align: center; color: rgba(255,255,255,.55); font-size: 14px }

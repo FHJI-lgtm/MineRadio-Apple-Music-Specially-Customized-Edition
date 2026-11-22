@@ -566,11 +566,44 @@ function mlibSwSnapshot(grid, tag, extra) {
   } catch (e) {}
 }
 
+// 临时诊断（第2步）：包住网格实例的 innerHTML setter，记录谁在写、写入前后的卡片数
+function mlibSwWrapInnerHtml(grid) {
+  if (!grid || grid.dataset.mlibSwHtmlWrapped === '1') return;
+  grid.dataset.mlibSwHtmlWrapped = '1';
+  var desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+  if (!desc || !desc.set) return;
+  try {
+    Object.defineProperty(grid, 'innerHTML', {
+      configurable: true,
+      get: function () { return desc.get.call(grid); },
+      set: function (v) {
+        try {
+          var from = grid.querySelectorAll('.mlib-album-card').length;
+          var rec = {
+            t: Date.now(),
+            tag: 'innerHTML-set',
+            grid: grid.id,
+            fromCards: from,
+            toHtmlLen: String(v == null ? '' : v).length,
+            stack: String((new Error()).stack || '').split('\n').slice(1, 7).join(' | ')
+          };
+          window.__mlibSwLog = window.__mlibSwLog || [];
+          window.__mlibSwLog.push(rec);
+          if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
+          console.info('[mlib-sw] innerHTML-set ' + JSON.stringify(rec));
+        } catch (e) {}
+        desc.set.call(grid, v);
+      }
+    });
+  } catch (e) {}
+}
+
 function initMlibVinylView() {
   disableMlibNativeDrag();
   bindMlibViewStyleSeg();
   ensureMlibVinylPill();
   mlibVinylGrids().forEach(function (grid) {
+    mlibSwWrapInnerHtml(grid);
     bindMlibSlabInput(grid);
     if (grid.dataset.mlibSlabObserved === '1') return;
     grid.dataset.mlibSlabObserved = '1';
