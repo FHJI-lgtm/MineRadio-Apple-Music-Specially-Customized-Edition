@@ -20307,3 +20307,5 @@ body.mlib-opening #am-playlist-detail-modal {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.16) }
 .mlib-oa-btn-ghost:hover { background: rgba(var(--mlib-oa-accent, 90 130 140), .40) }
 .mlib-oa-tracks .am-album-track { cursor: pointer }
+/* 未完成初始化的薄板部件默认不显示：漏清理时最多看不见，不会铺成巨幅封面 */
+[data-mlib-slab-part="1"]:not([data-mlib-slab-ready="1"]) { display: none !important }

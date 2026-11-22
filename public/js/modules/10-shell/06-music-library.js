@@ -128,10 +128,30 @@
     function render(albums, total) {
       var grid = gridEl();
       if (!grid) return;
+      try {
+        var sc = document.getElementById('music-library-scroll');
+        swLog('section:render-before', { rows: (Array.isArray(albums) ? albums.length : -1),
+          gridCards: grid.querySelectorAll('.mlib-album-card').length,
+          gridH: Math.round(grid.getBoundingClientRect().height),
+          scrollTop: sc ? Math.round(sc.scrollTop) : -1 });
+      } catch (e) {}
       var list = Array.isArray(albums) ? albums : [];
       grid.innerHTML = list.map(albumCardHtml).join('');
       Array.prototype.forEach.call(grid.querySelectorAll('.mlib-art img'), bindCover);
       grid.setAttribute('aria-busy', 'false');
+      // 黑胶墙：渲染完成即显式重建薄板（观察器只作外部重建兜底）
+      try {
+        if (typeof resetMlibSlabGrid === 'function' && typeof isMlibVinylActive === 'function' && isMlibVinylActive()) {
+          resetMlibSlabGrid(grid);
+        }
+      } catch (e) {}
+      try {
+        var sc2 = document.getElementById('music-library-scroll');
+        swLog('section:render-after', { rows: list.length,
+          gridCards: grid.querySelectorAll('.mlib-album-card').length,
+          gridH: Math.round(grid.getBoundingClientRect().height),
+          scrollTop: sc2 ? Math.round(sc2.scrollTop) : -1 });
+      } catch (e) {}
       // 父级计数由 syncNavAlbumCount 统一写入（它显示的是当前视图的数量）。
       if (typeof config.onCount === 'function') config.onCount(list.length, total);
       var hint = config.hintId ? pick(config.hintId) : null;
@@ -162,6 +182,7 @@
     }
 
     function begin() {
+      swLog('section:begin', { gridCards: (gridEl() || {}).children ? gridEl().children.length : -1 });
       state.loading = true;
       var grid = gridEl();
       if (grid) grid.setAttribute('aria-busy', 'true');
@@ -247,6 +268,16 @@
 
   // 打开资料库页：一次请求拿本地索引（内含"Apple 是否有变动"的探测结果）。
   // 已有数据且 Apple 无变化时不重复渲染，避免无谓的 DOM 重建与滚动位置丢失。
+  var __albumsReqSeq = 0;
+  function swLog(tag, extra) {
+    try {
+      var rec = Object.assign({ t: Date.now(), tag: tag }, extra || {});
+      window.__mlibSwLog = window.__mlibSwLog || [];
+      window.__mlibSwLog.push(rec);
+      if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
+      console.info('[mlib-sw] ' + tag + ' ' + JSON.stringify(rec));
+    } catch (e) {}
+  }
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
     // 未接入的源不去取数（按钮虽然是 disabled，但这是结构性要求：
@@ -263,16 +294,29 @@
     var first = !(snap && snap.albums) || sourceChanged;
     if (first) { albumsSection.begin(); }
     var requestedSource = mlibActiveSource;
+    var __rid = ++__albumsReqSeq;
+    var __grid = document.getElementById('mlib-albums-grid');
+    var __scroll = document.getElementById('music-library-scroll');
+    swLog('load:start', { rid: __rid, src: requestedSource, first: first, sourceChanged: sourceChanged,
+      snapAlbums: (snap && snap.albums) ? snap.albums.length : -1,
+      gridCards: __grid ? __grid.querySelectorAll('.mlib-album-card').length : -1,
+      gridH: __grid ? Math.round(__grid.getBoundingClientRect().height) : -1,
+      scrollTop: __scroll ? Math.round(__scroll.scrollTop) : -1 });
     return fetchLibraryIndex(requestedSource).then(function (data) {
+      swLog('load:data', { rid: __rid, src: requestedSource, current: mlibActiveSource,
+        albums: (data && Array.isArray(data.albums)) ? data.albums.length : -1,
+        changed: data ? data.changed : null, dropped: requestedSource !== mlibActiveSource });
       // 期间用户又切了源：丢弃这次结果，别把旧源的数据画到新源下
-      if (requestedSource !== mlibActiveSource) return data;
+      if (requestedSource !== mlibActiveSource) { swLog('load:drop', { rid: __rid, src: requestedSource, current: mlibActiveSource }); return data; }
       var changed = first || libraryIndexChanged(data);
       if (!changed) return data;
+      swLog('load:apply', { rid: __rid, src: requestedSource, albums: (data && data.albums) ? data.albums.length : -1 });
       albumsSection.apply(data);
       albumsRenderedSource = requestedSource;
       syncNavAlbumCount();
       return data;
     }).catch(function (err) {
+      swLog('load:fail', { rid: __rid, src: requestedSource, first: first, error: String((err && err.message) || err) });
       if (first) { albumsSection.fail(err); }
       else { setLibraryIndexStale(err); }
       return null;

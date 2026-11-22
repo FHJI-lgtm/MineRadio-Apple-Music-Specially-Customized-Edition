@@ -77,6 +77,25 @@ function mlibSlabState(grid) {
   return grid.__mlibSlab;
 }
 
+// 自己写 DOM 后立刻取走 observer 记录，避免重置触发自己造成的死循环
+function drainMlibSlabRecords(grid) {
+  var obs = grid && grid.__mlibSlabObs;
+  if (obs) { try { obs.takeRecords(); } catch (e) {} }
+}
+// 全局清理上一轮残留：反光整块移除；面片若已不在活着的卡片里也移除
+function sweepMlibSlabParts() {
+  var parts = document.querySelectorAll('[data-mlib-slab-part="1"]');
+  for (var i = 0; i < parts.length; i += 1) {
+    var el = parts[i];
+    if (el.classList && el.classList.contains('mlib-slab-reflection')) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+      continue;
+    }
+    var card = el.closest ? el.closest('.mlib-album-card') : null;
+    if (!card || !card.isConnected) { if (el.parentNode) el.parentNode.removeChild(el); }
+  }
+}
+
 function mlibSlabCards(grid) {
   var list = [];
   var kids = grid.children;
@@ -124,11 +143,16 @@ function ensureMlibSlabFaces(card) {
   var top = document.createElement('div'); top.className = 'mlib-slab-top';
   var bottom = document.createElement('div'); bottom.className = 'mlib-slab-bottom';
 
+  [back, spine, far, top, bottom].forEach(function (el) {
+    el.setAttribute('data-mlib-slab-part', '1');
+    el.setAttribute('data-mlib-slab-ready', '1');
+  });
   card.appendChild(back);
   card.appendChild(spine);
   card.appendChild(far);
   card.appendChild(top);
   card.appendChild(bottom);
+  drainMlibSlabRecords(card.closest ? card.closest('.mlib-albums-shelf, #mlib-albums-grid, #mlib-playlists-grid') : null);
 }
 
 // 轻量镜像盒：只做反射里看得见的两张面
@@ -146,12 +170,14 @@ function ensureMlibSlabReflection(grid, state, index) {
   if (cover) front.style.backgroundImage = 'url("' + cover.replace(/"/g, '%22') + '")';
   var spine = document.createElement('div');
   spine.className = 'mlib-slab-refl-spine';
+  refl.setAttribute('data-mlib-slab-part', '1');
+  front.setAttribute('data-mlib-slab-part', '1');
+  spine.setAttribute('data-mlib-slab-part', '1');
   refl.appendChild(front);
   refl.appendChild(spine);
-  state.internalUntil = performance.now() + 400;
   grid.appendChild(refl);
   state.reflections[index] = refl;
-  state.internalUntil = performance.now() + 400;
+  drainMlibSlabRecords(grid);
   return refl;
 }
 
@@ -205,6 +231,7 @@ function mlibSlabRender(grid) {
   }
   state.internalUntil = performance.now() + 400;
   state.rendering = false;
+  drainMlibSlabRecords(grid);
 }
 
 // ---- 书脊主色：/api/cover 代理 + canvas 采样 ----
@@ -391,21 +418,29 @@ function teardownMlibSlabGrid(grid) {
 }
 
 function resetMlibSlabGrid(grid) {
+  if (!grid) return;
   var state = mlibSlabState(grid);
-  state.internalUntil = performance.now() + 400;
+  sweepMlibSlabParts();
   state.cards = mlibSlabCards(grid);
   state.reflections.forEach(function (r) { if (r && r.parentNode) r.parentNode.removeChild(r); });
   state.reflections = [];
-  // 从第一张专辑开始：把第 0 张放到画面左侧（而不是居中），整排向右侧延伸
-  var stage0 = mlibSlabStageOf(grid);
-  var viewW = stage0 ? stage0.clientWidth : window.innerWidth;
-  var sp0 = mlibSlabMetrics(grid).spacing || 96;
-  var startPos = Math.max(0, Math.round((viewW * 0.42) / sp0));
-  state.pos = Math.min(startPos, Math.max(0, state.cards.length - 1));
-  state.velocity = 0;
+  var fresh = state.cards.filter(function (c) { return c.dataset.mlibSlab !== '1'; });
+  var changedSet = fresh.length > 0 || state.lastCount !== state.cards.length;
+  state.lastCount = state.cards.length;
+  if (changedSet) {
+    // 从第一张专辑开始：把第 0 张放到画面左侧（而不是居中），整排向右侧延伸
+    var stage0 = mlibSlabStageOf(grid);
+    var viewW = stage0 ? stage0.clientWidth : window.innerWidth;
+    var sp0 = mlibSlabMetrics(grid).spacing || 96;
+    var startPos = Math.max(0, Math.round((viewW * 0.42) / sp0));
+    state.pos = Math.min(startPos, Math.max(0, state.cards.length - 1));
+    state.velocity = 0;
+  }
   if (state.cards.length) mlibSlabRender(grid);
+  drainMlibSlabRecords(grid);
+  mlibSwSnapshot(grid, 'reset-done', { fresh: fresh.length, changedSet: changedSet });
+  return fresh.length;
 }
-
 // ---- 胶囊（专辑 / 歌单） ----
 function ensureMlibVinylPill() {
   var existing = document.getElementById('mlib-vinyl-view-switch');
@@ -499,6 +534,38 @@ function bindMlibViewStyleSeg() {
   });
 }
 
+// 临时诊断日志（切源问题定位用，定位完成后移除）
+function mlibSwLog(tag, extra) {
+  try {
+    var rec = Object.assign({ t: Date.now(), tag: tag }, extra || {});
+    window.__mlibSwLog = window.__mlibSwLog || [];
+    window.__mlibSwLog.push(rec);
+    if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
+    console.info('[mlib-sw] ' + tag + ' ' + JSON.stringify(rec));
+  } catch (e) {}
+}
+function mlibSwSnapshot(grid, tag, extra) {
+  try {
+    var state = mlibSlabState(grid);
+    var stage = mlibSlabStageOf(grid);
+    var scroll = document.getElementById('music-library-scroll');
+    mlibSwLog(tag, Object.assign({
+      grid: grid ? grid.id : null,
+      gridCards: grid ? grid.querySelectorAll('.mlib-album-card').length : -1,
+      stateCards: state.cards ? state.cards.length : -1,
+      detached: state.cards ? state.cards.filter(function (c) { return !c.isConnected; }).length : -1,
+      reflections: state.reflections ? state.reflections.length : -1,
+      pos: state.pos,
+      stageH: stage ? stage.clientHeight : -1,
+      gridH: grid ? Math.round(grid.getBoundingClientRect().height) : -1,
+      scrollTop: scroll ? Math.round(scroll.scrollTop) : -1,
+      guardMs: Math.round((state.internalUntil || 0) - performance.now()),
+      vinyl: (typeof isMlibVinylActive === 'function') ? isMlibVinylActive() : null,
+      hidden: grid ? !!grid.hidden : null
+    }, extra || {}));
+  } catch (e) {}
+}
+
 function initMlibVinylView() {
   disableMlibNativeDrag();
   bindMlibViewStyleSeg();
@@ -508,14 +575,30 @@ function initMlibVinylView() {
     if (grid.dataset.mlibSlabObserved === '1') return;
     grid.dataset.mlibSlabObserved = '1';
     if (typeof MutationObserver === 'function') {
-      new MutationObserver(function () {
-        var state = mlibSlabState(grid);
-        if (performance.now() < state.internalUntil) return;
-        state.cards = [];
-        state.reflections = [];
-        state.pos = 0;
-        if (isMlibVinylActive() && !grid.hidden) resetMlibSlabGrid(grid);
-      }).observe(grid, { childList: true });
+      var obs = new MutationObserver(function (records) {
+        // 只由我们自己的面片/反光引起的变更 -> 忽略（这些写入已 takeRecords 过，这里是兜底）
+        var onlyOwn = records.length > 0;
+        for (var r = 0; r < records.length && onlyOwn; r += 1) {
+          var rec = records[r];
+          var nodes = [].concat(Array.prototype.slice.call(rec.addedNodes), Array.prototype.slice.call(rec.removedNodes));
+          for (var n = 0; n < nodes.length; n += 1) {
+            var node = nodes[n];
+            if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-mlib-slab-part') === '1') continue;
+            onlyOwn = false; break;
+          }
+        }
+        mlibSwSnapshot(grid, onlyOwn ? 'observer-own' : 'observer-external');
+        if (onlyOwn) return;
+        if (!isMlibVinylActive() || grid.hidden) return;
+        // 一帧内多次触发合并成一次
+        if (grid.__mlibSlabRaf) return;
+        grid.__mlibSlabRaf = requestAnimationFrame(function () {
+          grid.__mlibSlabRaf = 0;
+          resetMlibSlabGrid(grid);
+        });
+      });
+      grid.__mlibSlabObs = obs;
+      obs.observe(grid, { childList: true });
     }
   });
   var viewsNav = document.getElementById('mlib-nav-children-views');
