@@ -561,7 +561,8 @@ var MLIB_OA_TAIL = 350;
       row.setAttribute('data-am-track-index', String(i));
       var no = document.createElement('div');
       no.className = 'am-album-track-no';
-      no.textContent = String(Number(t.trackNumber) > 0 ? t.trackNumber : i + 1);
+      // 歌单按歌单顺序编号（1..N）；专辑保留专辑内曲目号（trackNumber，可跳号）
+      no.textContent = String(src.isPlaylist ? (i + 1) : (Number(t.trackNumber) > 0 ? t.trackNumber : i + 1));
       var nm = document.createElement('div');
       nm.className = 'am-album-track-name';
       nm.textContent = String(t.name || t.title || '未命名曲目');
