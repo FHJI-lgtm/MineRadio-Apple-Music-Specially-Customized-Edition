@@ -722,14 +722,16 @@ var MLIB_OA_TAIL = 350;
     if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + k;
     return '/api/playlist/tracks?id=' + k;
   }
+  // 归一化只用于展示；必须保留原始字段（id / provider / albumId / durationMs…），
+  // 否则 playSongsInApp → toPlayableSong 会因缺 id 把整列过滤掉（非 Apple 源静默不播）。
   function normalizeSong(t, i) {
     var dur = Number(t && (t.duration || t.durationMs || t.dt || 0)) || 0;
     if (dur > 10000) dur = Math.round(dur / 1000);   // 毫秒 → 秒
-    return {
+    return Object.assign({}, t, {
       name: String((t && (t.name || t.title)) || '未命名曲目'),
       duration: dur,
       trackNumber: Number(t && (t.trackNumber || t.no)) || (i + 1)
-    };
+    });
   }
 
   // 黑胶模式不再打开旧详情弹窗：自己拉数据
