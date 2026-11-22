@@ -20315,3 +20315,35 @@ body.mlib-opening #am-playlist-detail-modal {
   opacity: .45; pointer-events: none; transition: opacity .18s ease
 }
 .mlib-empty { padding: 48px 24px; text-align: center; color: rgba(255,255,255,.55); font-size: 14px }
+/* ============================================================
+   新详情面板：沿用旧专辑详情页的封面取色主题（light → a → dark 连续渐变
+   + 两团柔光 + 底部压暗），变量由 JS 写在 .mlib-oa-detail 上 */
+.mlib-oa-detail {
+  --mlib-theme-a: 30, 42, 52;
+  --mlib-theme-light: 46, 62, 74;
+  --mlib-theme-dark: 16, 23, 29;
+  --mlib-theme-glow: 64, 104, 120;
+  background: linear-gradient(168deg,
+    rgb(var(--mlib-theme-light, 46, 62, 74)) 0%,
+    rgb(var(--mlib-theme-a, 30, 42, 52)) 46%,
+    rgb(var(--mlib-theme-dark, 16, 23, 29)) 100%);
+  border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 34px 100px rgba(0, 0, 0, .52), inset 0 1px 0 rgba(255, 255, 255, .12);
+  overflow: hidden
+}
+.mlib-oa-detail::before {
+  content: ''; position: absolute; inset: -12%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(78% 62% at 18% 6%, rgb(var(--mlib-theme-glow, 64, 104, 120) / 95%), transparent 72%),
+    radial-gradient(70% 58% at 86% 92%, rgb(var(--mlib-theme-a, 30, 42, 52) / 85%), transparent 74%);
+  filter: blur(44px) saturate(1.3)
+}
+.mlib-oa-detail::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,0,0,.10) 0%, rgba(0,0,0,.26) 55%, rgba(0,0,0,.40) 100%);
+  -webkit-backdrop-filter: blur(26px) saturate(1.15); backdrop-filter: blur(26px) saturate(1.15)
+}
+.mlib-oa-hero, .mlib-oa-side { position: relative; z-index: 1 }
+/* 主题背景下右侧文字区不再自带取色底，避免与主题渐变叠两层 */
+.mlib-oa-side { background: transparent }
+.mlib-oa-side::before { background: linear-gradient(to right, rgba(255,255,255,.55), rgba(255,255,255,0)) }

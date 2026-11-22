@@ -134,6 +134,98 @@ var MLIB_OA_TAIL = 350;
     return ch(r) + ' ' + ch(g) + ' ' + ch(b);
   }
 
+  // ---- 旧详情页同款主题取色 ----
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var l = (max + min) / 2, h = 0, s = 0;
+    if (max !== min) {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h, s: s, l: l };
+  }
+  function hslStr(h, s, l) {
+    var r, g, b;
+    if (s === 0) { r = g = b = l; } else {
+      function hue2rgb(p, q, t) {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      }
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1 / 3);
+    }
+    return Math.round(r * 255) + ', ' + Math.round(g * 255) + ', ' + Math.round(b * 255);
+  }
+  function themeVarsFromRgb(r, g, b) {
+    var h = rgbToHsl(r, g, b);
+    return {
+      a: Math.round(r) + ', ' + Math.round(g) + ', ' + Math.round(b),
+      light: hslStr(h.h, Math.min(1, h.s * 0.92), Math.min(0.62, h.l + 0.16)),
+      dark: hslStr(h.h, Math.min(1, h.s * 1.04), Math.max(0.14, h.l - 0.20)),
+      glow: hslStr(h.h, Math.min(1, h.s * 1.15), Math.min(0.60, h.l + 0.10))
+    };
+  }
+  // 与旧详情页一致：32×32 采样 + HSL 直方图（面积 × 饱和加成）选主色
+  function themeFromCover(cover) {
+    return new Promise(function (resolve) {
+      if (!cover) { resolve(null); return; }
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.referrerPolicy = 'no-referrer';
+      img.onload = function () {
+        try {
+          var n = 32;
+          colorCtx.clearRect(0, 0, n, n);
+          var c = document.createElement('canvas'); c.width = n; c.height = n;
+          var ctx = c.getContext('2d');
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, n, n);
+          var data = ctx.getImageData(0, 0, n, n).data;
+          var buckets = {};
+          var fr = 0, fg = 0, fb = 0, fn = 0;
+          for (var i = 0; i < data.length; i += 4) {
+            if (data[i + 3] < 200) continue;
+            var r = data[i], g = data[i + 1], b = data[i + 2];
+            fr += r; fg += g; fb += b; fn += 1;
+            var hsl = rgbToHsl(r, g, b);
+            if (hsl.l < 0.10 || hsl.l > 0.94) continue;
+            var key = Math.round(hsl.h * 18) + ':' + Math.round(hsl.s * 3) + ':' + Math.round(hsl.l * 3);
+            if (!buckets[key]) buckets[key] = { n: 0, r: 0, g: 0, b: 0, s: hsl.s };
+            var bk = buckets[key];
+            bk.n += 1; bk.r += r; bk.g += g; bk.b += b;
+          }
+          var best = null;
+          Object.keys(buckets).forEach(function (k) {
+            var b0 = buckets[k];
+            var score = b0.n * (0.45 + b0.s * 1.55);
+            if (!best || score > best.score) best = { score: score, r: b0.r / b0.n, g: b0.g / b0.n, b: b0.b / b0.n };
+          });
+          if (best) { resolve(themeVarsFromRgb(best.r, best.g, best.b)); return; }
+          if (fn) resolve(themeVarsFromRgb(fr / fn, fg / fn, fb / fn));
+          else resolve(null);
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = '/api/cover?url=' + encodeURIComponent(cover);
+    });
+  }
+  function applyPanelTheme(el, vars) {
+    if (!el || !vars) return;
+    el.style.setProperty('--mlib-theme-a', vars.a);
+    el.style.setProperty('--mlib-theme-light', vars.light);
+    el.style.setProperty('--mlib-theme-dark', vars.dark);
+    el.style.setProperty('--mlib-theme-glow', vars.glow);
+  }
+
   function buildOverlay(card, rect) {
     overlay = document.createElement('div');
     overlay.className = 'mlib-oa';
@@ -506,6 +598,10 @@ var MLIB_OA_TAIL = 350;
 
     var quickAccent = accentFromRgbString(spineColor);
     if (quickAccent) detail.style.setProperty('--mlib-oa-accent', quickAccent);
+    // 先用书脊主色给一版主题（避免闪），随后由封面 32×32 直方图精修
+    var mRgb = String(spineColor || '').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (mRgb) applyPanelTheme(detail, themeVarsFromRgb(+mRgb[1], +mRgb[2], +mRgb[3]));
+    themeFromCover(src.cover).then(function (vars) { if (vars) applyPanelTheme(detail, vars); });
     sampleAccent(src.cover).then(function (rgb) { detail.style.setProperty('--mlib-oa-accent', rgb); });
 
     var close = document.createElement('button');
