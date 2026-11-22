@@ -284,15 +284,7 @@
   // 打开资料库页：一次请求拿本地索引（内含"Apple 是否有变动"的探测结果）。
   // 已有数据且 Apple 无变化时不重复渲染，避免无谓的 DOM 重建与滚动位置丢失。
   var __albumsReqSeq = 0;
-  function swLog(tag, extra) {
-    try {
-      var rec = Object.assign({ t: Date.now(), tag: tag }, extra || {});
-      window.__mlibSwLog = window.__mlibSwLog || [];
-      window.__mlibSwLog.push(rec);
-      if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
-      console.info('[mlib-sw] ' + tag + ' ' + JSON.stringify(rec));
-    } catch (e) {}
-  }
+  function swLog() {}
   function loadLibraryAlbums() {
     if (typeof apiJson !== 'function') return;
     // 未接入的源不去取数（按钮虽然是 disabled，但这是结构性要求：

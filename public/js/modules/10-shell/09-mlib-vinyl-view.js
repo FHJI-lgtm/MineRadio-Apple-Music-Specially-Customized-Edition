@@ -534,76 +534,14 @@ function bindMlibViewStyleSeg() {
   });
 }
 
-// 临时诊断日志（切源问题定位用，定位完成后移除）
-function mlibSwLog(tag, extra) {
-  try {
-    var rec = Object.assign({ t: Date.now(), tag: tag }, extra || {});
-    window.__mlibSwLog = window.__mlibSwLog || [];
-    window.__mlibSwLog.push(rec);
-    if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
-    console.info('[mlib-sw] ' + tag + ' ' + JSON.stringify(rec));
-  } catch (e) {}
-}
-function mlibSwSnapshot(grid, tag, extra) {
-  try {
-    var state = mlibSlabState(grid);
-    var stage = mlibSlabStageOf(grid);
-    var scroll = document.getElementById('music-library-scroll');
-    mlibSwLog(tag, Object.assign({
-      grid: grid ? grid.id : null,
-      gridCards: grid ? grid.querySelectorAll('.mlib-album-card').length : -1,
-      stateCards: state.cards ? state.cards.length : -1,
-      detached: state.cards ? state.cards.filter(function (c) { return !c.isConnected; }).length : -1,
-      reflections: state.reflections ? state.reflections.length : -1,
-      pos: state.pos,
-      stageH: stage ? stage.clientHeight : -1,
-      gridH: grid ? Math.round(grid.getBoundingClientRect().height) : -1,
-      scrollTop: scroll ? Math.round(scroll.scrollTop) : -1,
-      guardMs: Math.round((state.internalUntil || 0) - performance.now()),
-      vinyl: (typeof isMlibVinylActive === 'function') ? isMlibVinylActive() : null,
-      hidden: grid ? !!grid.hidden : null
-    }, extra || {}));
-  } catch (e) {}
-}
-
-// 临时诊断（第2步）：包住网格实例的 innerHTML setter，记录谁在写、写入前后的卡片数
-function mlibSwWrapInnerHtml(grid) {
-  if (!grid || grid.dataset.mlibSwHtmlWrapped === '1') return;
-  grid.dataset.mlibSwHtmlWrapped = '1';
-  var desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-  if (!desc || !desc.set) return;
-  try {
-    Object.defineProperty(grid, 'innerHTML', {
-      configurable: true,
-      get: function () { return desc.get.call(grid); },
-      set: function (v) {
-        try {
-          var from = grid.querySelectorAll('.mlib-album-card').length;
-          var rec = {
-            t: Date.now(),
-            tag: 'innerHTML-set',
-            grid: grid.id,
-            fromCards: from,
-            toHtmlLen: String(v == null ? '' : v).length,
-            stack: String((new Error()).stack || '').split('\n').slice(1, 7).join(' | ')
-          };
-          window.__mlibSwLog = window.__mlibSwLog || [];
-          window.__mlibSwLog.push(rec);
-          if (window.__mlibSwLog.length > 500) window.__mlibSwLog.shift();
-          console.info('[mlib-sw] innerHTML-set ' + JSON.stringify(rec));
-        } catch (e) {}
-        desc.set.call(grid, v);
-      }
-    });
-  } catch (e) {}
-}
+function mlibSwLog() {}
+function mlibSwSnapshot() {}
 
 function initMlibVinylView() {
   disableMlibNativeDrag();
   bindMlibViewStyleSeg();
   ensureMlibVinylPill();
   mlibVinylGrids().forEach(function (grid) {
-    mlibSwWrapInnerHtml(grid);
     bindMlibSlabInput(grid);
     if (grid.dataset.mlibSlabObserved === '1') return;
     grid.dataset.mlibSlabObserved = '1';
