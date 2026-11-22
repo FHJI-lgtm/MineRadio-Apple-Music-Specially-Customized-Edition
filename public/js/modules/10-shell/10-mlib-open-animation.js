@@ -294,6 +294,60 @@ var MLIB_OA_TAIL = 350;
       .catch(function () {});
   }
 
+  // 播放：Apple 走 AMC（与旧详情页同一通道），非 Apple 才走内部播放器
+  function appleSource() {
+    try { return (typeof mlibActiveSource === 'string' && mlibActiveSource) ? mlibActiveSource : 'apple'; }
+    catch (e) { return 'apple'; }
+  }
+  function amcBridge() {
+    return (window.mineradio && window.mineradio.amc) || null;
+  }
+  function toast(msg) { if (typeof showToast === 'function') showToast(msg); }
+  function playAlbumStart(src) {
+    var amc = amcBridge();
+    if (appleSource() === 'apple' && amc && typeof amc.playAlbum === 'function') {
+      toast('正在让 Apple Music 播放：' + src.title);
+      Promise.resolve(amc.playAlbum({ name: src.title, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
+        .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
+        .catch(function () { toast('Apple Music 播放失败'); });
+      return;
+    }
+    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, 0, appleSource(), src.title);
+  }
+  function playAlbumTrack(src, index) {
+    var trackName = String((src.tracks[index] && (src.tracks[index].name || src.tracks[index].title)) || '');
+    var amc = amcBridge();
+    if (appleSource() === 'apple' && amc && typeof amc.playAlbum === 'function') {
+      toast('正在让 Apple Music 播放：' + trackName);
+      Promise.resolve(amc.playAlbum({ name: src.title, track: trackName, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
+        .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放：' + trackName : 'Apple Music 未确认播放：' + trackName); })
+        .catch(function () { toast('Apple Music 播放失败'); });
+      return;
+    }
+    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, index, appleSource(), src.title);
+  }
+  function playPlaylistStart(src, shuffled) {
+    var amc = amcBridge();
+    var fn = shuffled ? (amc && amc.playPlaylistShuffled) : (amc && amc.playPlaylist);
+    if (appleSource() === 'apple' && typeof fn === 'function') {
+      toast('正在让 Apple Music 播放：' + src.title + (shuffled ? '（随机）' : ''));
+      Promise.resolve(fn.call(amc, { name: src.title, scopeLabel: '你的资料库' }))
+        .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
+        .catch(function () { toast('Apple Music 播放失败'); });
+      return;
+    }
+    if (typeof window.playSongsInApp === 'function') {
+      var arr = src.tracks.slice();
+      if (shuffled) {
+        for (var i = arr.length - 1; i > 0; i -= 1) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+        }
+      }
+      window.playSongsInApp(arr, 0, appleSource(), src.title);
+    }
+  }
+
   function buildDetailPanel() {
     if (!overlay || !panelSource) return;
     var src = panelSource;
@@ -351,7 +405,8 @@ var MLIB_OA_TAIL = 350;
       playBtn.className = 'mlib-oa-btn mlib-oa-btn-primary';
       playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5.5v13l10.5-6.5z"/></svg><span>' + (src.isPlaylist ? '播放歌单' : '播放专辑') + '</span>';
       playBtn.addEventListener('click', function () {
-        window.playSongsInApp(src.tracks, 0, 'apple', src.title);
+        if (src.isPlaylist) playPlaylistStart(src, false);
+        else playAlbumStart(src);
       });
       actions.appendChild(playBtn);
       if (src.isPlaylist) {
@@ -359,14 +414,7 @@ var MLIB_OA_TAIL = 350;
         shuffleBtn.type = 'button';
         shuffleBtn.className = 'mlib-oa-btn mlib-oa-btn-ghost';
         shuffleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h4l8 10h4M4 17h4l8-10h4"/><path d="M17 4l3 3-3 3M17 14l3 3-3 3"/></svg><span>随机播放</span>';
-        shuffleBtn.addEventListener('click', function () {
-          var arr = src.tracks.slice();
-          for (var i = arr.length - 1; i > 0; i -= 1) {
-            var j = Math.floor(Math.random() * (i + 1));
-            var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-          }
-          window.playSongsInApp(arr, 0, 'apple', src.title + ' · 随机');
-        });
+        shuffleBtn.addEventListener('click', function () { playPlaylistStart(src, true); });
         actions.appendChild(shuffleBtn);
       }
       side.appendChild(actions);
@@ -417,7 +465,8 @@ var MLIB_OA_TAIL = 350;
         if (!row) return;
         var idx = Number(row.getAttribute('data-am-track-index'));
         if (isFinite(idx) && idx >= 0 && idx < src.tracks.length) {
-          window.playSongsInApp(src.tracks, idx, 'apple', src.title);
+          if (src.isPlaylist) playPlaylistStart(src, false);
+          else playAlbumTrack(src, idx);
         }
       });
     }

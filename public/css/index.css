@@ -20222,7 +20222,8 @@ body.mlib-opening #am-playlist-detail-modal {
 }
 
 /* ---------- 黑胶墙打开后的新详情页：左全封面 + 右数据 ---------- */
-.mlib-oa.is-detail { pointer-events: auto }
+.mlib-oa.is-detail { pointer-events: none }
+.mlib-oa-detail, .mlib-oa-close, .mlib-oa-scrim { pointer-events: auto }
 .mlib-oa-scrim { position: absolute; inset: 0; background: rgba(4, 8, 10, .52); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px) }
 /* 详情页 = 居中面板（不铺满全屏） */
 .mlib-oa-detail { position: absolute; display: flex; overflow: hidden;
