@@ -591,13 +591,13 @@ var MLIB_OA_TAIL = 350;
     return '/api/netease/library/album/tracks?id=' + enc;
   }
   function playlistTracksUrl(provider, id) {
-    var enc = encodeURIComponent(id);
-    if (provider === 'apple') return '/api/apple/playlist/tracks?id=' + enc + '&all=1';
-    if (provider === 'kugou') return '/api/kugou/library/playlist/tracks?id=' + enc;
-    if (provider === 'qq') return '/api/qq/library/playlist/tracks?id=' + enc;
-    if (provider === 'qishui') return '/api/qishui/library/playlist/tracks?id=' + enc;
-    if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + enc;
-    return '/api/playlist/tracks?id=' + encodeURIComponent(stripSourcePrefix(id));
+    var k = encodeURIComponent(stripSourcePrefix(id));
+    if (provider === 'apple') return '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
+    if (provider === 'kugou') return '/api/kugou/library/playlist/tracks?id=' + k;
+    if (provider === 'qq') return '/api/qq/library/playlist/tracks?id=' + k;
+    if (provider === 'qishui') return '/api/qishui/library/playlist/tracks?id=' + k;
+    if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + k;
+    return '/api/playlist/tracks?id=' + k;
   }
   function normalizeSong(t, i) {
     var dur = Number(t && (t.duration || t.durationMs || t.dt || 0)) || 0;
@@ -635,7 +635,18 @@ var MLIB_OA_TAIL = 350;
     var tracksUrl = src.isPlaylist
       ? playlistTracksUrl(src.provider, src.id)
       : albumTracksUrl(src.provider, src.id);
-    return fetch(tracksUrl, { credentials: 'same-origin' })
+    function fetchJson(url) {
+      return fetch(url, { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return { error: 'NETWORK' }; });
+    }
+    return fetchJson(tracksUrl)
+      .then(function (j) {
+        if (j && j.error && !((j.tracks || j.songs || []).length)) {
+          return new Promise(function (res) { setTimeout(res, 600); }).then(function () { return fetchJson(tracksUrl); });
+        }
+        return j;
+      })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         src.error = String((j && (j.error || j.reason)) || '');
