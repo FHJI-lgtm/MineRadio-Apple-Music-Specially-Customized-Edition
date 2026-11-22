@@ -305,31 +305,31 @@ var MLIB_OA_TAIL = 350;
   function toast(msg) { if (typeof showToast === 'function') showToast(msg); }
   function playAlbumStart(src) {
     var amc = amcBridge();
-    if (appleSource() === 'apple' && amc && typeof amc.playAlbum === 'function') {
+    if (src.provider === 'apple' && amc && typeof amc.playAlbum === 'function') {
       toast('正在让 Apple Music 播放：' + src.title);
       Promise.resolve(amc.playAlbum({ name: src.title, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
         .catch(function () { toast('Apple Music 播放失败'); });
       return;
     }
-    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, 0, appleSource(), src.title);
+    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, 0, src.provider, src.title);
   }
   function playAlbumTrack(src, index) {
     var trackName = String((src.tracks[index] && (src.tracks[index].name || src.tracks[index].title)) || '');
     var amc = amcBridge();
-    if (appleSource() === 'apple' && amc && typeof amc.playAlbum === 'function') {
+    if (src.provider === 'apple' && amc && typeof amc.playAlbum === 'function') {
       toast('正在让 Apple Music 播放：' + trackName);
       Promise.resolve(amc.playAlbum({ name: src.title, track: trackName, scopeLabel: '你的资料库', sectionLabel: '专辑' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放：' + trackName : 'Apple Music 未确认播放：' + trackName); })
         .catch(function () { toast('Apple Music 播放失败'); });
       return;
     }
-    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, index, appleSource(), src.title);
+    if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, index, src.provider, src.title);
   }
   function playPlaylistStart(src, shuffled) {
     var amc = amcBridge();
     var fn = shuffled ? (amc && amc.playPlaylistShuffled) : (amc && amc.playPlaylist);
-    if (appleSource() === 'apple' && typeof fn === 'function') {
+    if (src.provider === 'apple' && typeof fn === 'function') {
       toast('正在让 Apple Music 播放：' + src.title + (shuffled ? '（随机）' : ''));
       Promise.resolve(fn.call(amc, { name: src.title, scopeLabel: '你的资料库' }))
         .then(function (res) { toast(res && res.verified ? '✓ Apple Music 已开始播放' : 'Apple Music 播放未确认'); })
@@ -344,7 +344,7 @@ var MLIB_OA_TAIL = 350;
           var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
         }
       }
-      window.playSongsInApp(arr, 0, appleSource(), src.title);
+      window.playSongsInApp(arr, 0, src.provider, src.title);
     }
   }
 
@@ -465,8 +465,12 @@ var MLIB_OA_TAIL = 350;
         if (!row) return;
         var idx = Number(row.getAttribute('data-am-track-index'));
         if (isFinite(idx) && idx >= 0 && idx < src.tracks.length) {
-          if (src.isPlaylist) playPlaylistStart(src, false);
-          else playAlbumTrack(src, idx);
+          if (src.isPlaylist) {
+            if (src.provider === 'apple') playPlaylistStart(src, false);
+            else if (typeof window.playSongsInApp === 'function') window.playSongsInApp(src.tracks, idx, src.provider, src.title);
+          } else {
+            playAlbumTrack(src, idx);
+          }
         }
       });
     }
@@ -566,6 +570,39 @@ var MLIB_OA_TAIL = 350;
     })();
   }
 
+  function currentProvider() {
+    try { return (typeof mlibActiveSource === 'string' && mlibActiveSource) ? mlibActiveSource : 'apple'; }
+    catch (e) { return 'apple'; }
+  }
+  function stripSourcePrefix(id) { return String(id || '').replace(/^(ne|kg|qq|qs|sp|am):/i, ''); }
+  function albumTracksUrl(provider, id) {
+    var k = stripSourcePrefix(id);
+    if (provider === 'apple') return '/api/apple/library/album/tracks?id=' + encodeURIComponent(id) + '&limit=100';
+    if (provider === 'kugou') return '/api/kugou/library/album/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'qq') return '/api/qq/library/album/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'qishui') return '/api/qishui/library/album/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'spotify') return '/api/spotify/library/album/tracks?id=' + encodeURIComponent(k);
+    return '/api/netease/library/album/tracks?id=' + encodeURIComponent(k);
+  }
+  function playlistTracksUrl(provider, id) {
+    var k = stripSourcePrefix(id);
+    if (provider === 'apple') return '/api/apple/playlist/tracks?id=' + encodeURIComponent(id) + '&all=1';
+    if (provider === 'kugou') return '/api/kugou/library/playlist/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'qq') return '/api/qq/library/playlist/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'qishui') return '/api/qishui/library/playlist/tracks?id=' + encodeURIComponent(k);
+    if (provider === 'spotify') return '/api/spotify/library/playlist/tracks?id=' + encodeURIComponent(k);
+    return '/api/playlist/tracks?id=' + encodeURIComponent(k);
+  }
+  function normalizeSong(t, i) {
+    var dur = Number(t && (t.duration || t.durationMs || t.dt || 0)) || 0;
+    if (dur > 10000) dur = Math.round(dur / 1000);   // 毫秒 → 秒
+    return {
+      name: String((t && (t.name || t.title)) || '未命名曲目'),
+      duration: dur,
+      trackNumber: Number(t && (t.trackNumber || t.no)) || (i + 1)
+    };
+  }
+
   // 黑胶模式不再打开旧详情弹窗：自己拉数据
   function panelSourceOf(grid, card) {
     var isPlaylist = grid && grid.id === 'mlib-playlists-grid';
@@ -575,6 +612,7 @@ var MLIB_OA_TAIL = 350;
     var sub = subEl ? String(subEl.textContent || '').trim() : '';
     return {
       isPlaylist: isPlaylist,
+      provider: currentProvider(),
       id: isPlaylist ? String(card.getAttribute('data-mlib-playlist-id') || '') : String(card.getAttribute('data-album-id') || ''),
       title: title,
       sub: sub,
@@ -589,14 +627,14 @@ var MLIB_OA_TAIL = 350;
 
   function loadPanelData(src) {
     var tracksUrl = src.isPlaylist
-      ? '/api/apple/playlist/tracks?id=' + encodeURIComponent(src.id) + '&limit=100'
-      : '/api/apple/library/album/tracks?id=' + encodeURIComponent(src.id) + '&limit=100';
+      ? playlistTracksUrl(src.provider, src.id)
+      : albumTracksUrl(src.provider, src.id);
     return fetch(tracksUrl, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        src.tracks = (j && (j.songs || j.tracks)) || [];
+        src.tracks = ((j && (j.songs || j.tracks)) || []).map(normalizeSong);
         src.total = Number(j && (j.total || src.tracks.length)) || src.tracks.length;
-        if (!src.isPlaylist) {
+        if (!src.isPlaylist && src.provider === 'apple') {
           return fetch('/api/apple/library/album/notes?id=' + encodeURIComponent(src.id), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (n) {
